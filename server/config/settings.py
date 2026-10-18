@@ -1,0 +1,73 @@
+import os
+import secrets
+from pathlib import Path
+from urllib.parse import urlsplit, unquote
+from django.core.exceptions import ImproperlyConfigured
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+DEVELOPMENT = os.environ.get('ARMADA_DEVELOPMENT') == '1'
+DEBUG = DEVELOPMENT
+RUNTIME = BASE_DIR / '.runtime'
+if DEVELOPMENT:
+    RUNTIME.mkdir(mode=0o700, exist_ok=True)
+    key_file = RUNTIME / 'secret-key'
+    if not key_file.exists():
+        try:
+            with open(key_file, 'x', opener=lambda p, flags: os.open(p, flags, 0o600)) as f:
+                f.write(secrets.token_urlsafe(64))
+        except FileExistsError:
+            pass
+    SECRET_KEY = key_file.read_text().strip()
+else:
+    SECRET_KEY = os.environ.get('ARMADA_SECRET_KEY', '')
+    if len(SECRET_KEY) < 50:
+        raise ImproperlyConfigured('Set ARMADA_SECRET_KEY (at least 50 random characters) securely.')
+ALLOWED_HOSTS = [v.strip() for v in os.environ.get('ARMADA_ALLOWED_HOSTS', 'localhost,127.0.0.1' if DEVELOPMENT else '').split(',') if v.strip()]
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured('Set ARMADA_ALLOWED_HOSTS.')
+INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts']
+MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware', 'accounts.middleware.AccountStateMiddleware', 'django.contrib.messages.middleware.MessageMiddleware', 'django.middleware.clickjacking.XFrameOptionsMiddleware']
+ROOT_URLCONF = 'config.urls'
+WSGI_APPLICATION = 'config.wsgi.application'
+TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates', 'DIRS':[BASE_DIR/'server/templates'], 'APP_DIRS':True, 'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
+url = os.environ.get('DATABASE_URL', '')
+if url:
+    u = urlsplit(url)
+    if u.scheme not in ('postgres', 'postgresql'):
+        raise ImproperlyConfigured('DATABASE_URL must use PostgreSQL.')
+    DATABASES = {'default':{'ENGINE':'django.db.backends.postgresql','NAME':unquote(u.path.lstrip('/')),'USER':unquote(u.username or ''),'PASSWORD':unquote(u.password or ''),'HOST':u.hostname,'PORT':u.port or 5432,'CONN_MAX_AGE':60}}
+elif DEVELOPMENT:
+    DATABASES = {'default':{'ENGINE':'django.db.backends.sqlite3', 'NAME':RUNTIME/'development.sqlite3', 'OPTIONS':{'timeout':20}}}
+else:
+    raise ImproperlyConfigured('Set DATABASE_URL for the production PostgreSQL database.')
+AUTH_USER_MODEL = 'accounts.User'
+AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator','OPTIONS':{'user_attributes':['phone','full_name']}},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':14}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
+PASSWORD_HASHERS = ['django.contrib.auth.hashers.Argon2PasswordHasher', 'django.contrib.auth.hashers.PBKDF2PasswordHasher']
+LANGUAGE_CODE = 'ru'
+TIME_ZONE = 'Asia/Omsk'
+USE_TZ = True
+STATIC_URL = '/static/'
+STATIC_ROOT = RUNTIME / 'static'
+STATICFILES_DIRS = [BASE_DIR/'server/static']
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+LOGIN_URL = '/cabinet/login/'
+LOGIN_REDIRECT_URL = '/cabinet/'
+SESSION_COOKIE_NAME = 'armada_session'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = not DEVELOPMENT
+CSRF_COOKIE_SECURE = not DEVELOPMENT
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SECURE_SSL_REDIRECT = not DEVELOPMENT
+SECURE_HSTS_SECONDS = 31536000 if not DEVELOPMENT else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
+DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024
+# Only enable a forwarded scheme header when a trusted proxy overwrites it.
+if os.environ.get('ARMADA_TRUST_PROXY') == '1':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = [v for v in os.environ.get('ARMADA_CSRF_ORIGINS','').split(',') if v]
