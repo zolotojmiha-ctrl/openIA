@@ -68,7 +68,7 @@ class AccessGrant(models.Model):
         constraints=[models.UniqueConstraint(fields=['user','permission'],name='unique_user_permission')]
 
 class AuditEvent(models.Model):
-    ACTIONS=[('leader_bootstrap','Созданы руководители'),('login','Вход'),('logout','Выход'),('password_changed','Изменён пароль'),('employee_created','Создан сотрудник'),('employee_updated','Изменены данные и права'),('employee_password_reset','Сброшен пароль')]
+    ACTIONS=[('leader_bootstrap','Созданы руководители'),('login','Вход'),('logout','Выход'),('password_changed','Изменён пароль'),('employee_created','Создан сотрудник'),('employee_updated','Изменены данные и права'),('employee_password_reset','Сброшен пароль'),('object_created','Создан объект'),('object_updated','Изменён объект'),('object_access_changed','Назначен доступ к объекту'),('contract_created','Создан договор'),('contract_updated','Изменён договор'),('contract_access_changed','Изменён доступ к договору')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)
