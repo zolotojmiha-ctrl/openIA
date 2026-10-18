@@ -11,7 +11,6 @@ services:
     network_mode: none
     read_only: true
     mem_limit: 128m
-    pids_limit: 32
     volumes:
       - config:/run/armada
     security_opt:
@@ -41,8 +40,6 @@ services:
       timeout: 3s
       retries: 20
     mem_limit: 384m
-    cpus: 0.75
-    pids_limit: 100
     security_opt:
       - no-new-privileges:true
   web:
@@ -78,8 +75,6 @@ services:
       retries: 6
       start_period: 30s
     mem_limit: 512m
-    cpus: 1
-    pids_limit: 100
     cap_drop:
       - ALL
     security_opt:
