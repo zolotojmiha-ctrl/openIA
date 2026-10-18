@@ -1,0 +1,11 @@
+.git
+.venv
+.runtime
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+nas-data
+reference
+previous-draft
+tests

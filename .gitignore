@@ -7,3 +7,8 @@ __pycache__/
 !.env.example
 .coverage
 .pytest_cache/
+
+/deploy/synology/nas-data/
+/deploy/synology/.env
+
+/nas-data/
