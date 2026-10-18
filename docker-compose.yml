@@ -1,7 +1,7 @@
 # Local test only. No existing Synology folders or Docker socket are mounted.
 services:
   init:
-    image: armada-test-web:local
+    image: armada-test-web:objects-v2
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
@@ -43,7 +43,7 @@ services:
     security_opt:
       - no-new-privileges:true
   web:
-    image: armada-test-web:local
+    image: armada-test-web:objects-v2
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
