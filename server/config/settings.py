@@ -42,7 +42,7 @@ if LAN_TEST:
             raise ImproperlyConfigured('LAN test hosts must be explicit local IPv4 addresses.')
         if address.version != 4 or not any(address in network for network in private_networks):
             raise ImproperlyConfigured('LAN test is restricted to local IPv4 addresses.')
-INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects']
+INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects', 'documents']
 MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'whitenoise.middleware.WhiteNoiseMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware', 'accounts.middleware.AccountStateMiddleware', 'django.contrib.messages.middleware.MessageMiddleware', 'django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -89,3 +89,5 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024
 if os.environ.get('ARMADA_TRUST_PROXY') == '1':
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_TRUSTED_ORIGINS = [v for v in os.environ.get('ARMADA_CSRF_ORIGINS','').split(',') if v]
+
+PRIVATE_DOCUMENT_ROOT = Path(os.environ.get("PRIVATE_DOCUMENT_ROOT", BASE_DIR / ".runtime" / "documents"))

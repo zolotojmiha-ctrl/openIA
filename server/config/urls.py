@@ -1,6 +1,7 @@
 from django.urls import path
 from accounts import views
 from projects import views as projects
+from documents import views as documents
 urlpatterns=[
  path('',views.public_site,name='public'),
  path('portal/',views.prototype,name='prototype'),
@@ -24,4 +25,14 @@ urlpatterns=[
  path('cabinet/contracts/<uuid:pk>/',projects.contract_detail,name='contract_detail'),
  path('cabinet/contracts/<uuid:pk>/edit/',projects.contract_edit,name='contract_edit'),
  path('cabinet/contracts/<uuid:pk>/access/',projects.share_contract,name='contract_share'),
+ path('cabinet/documents/',documents.documents,name='documents'),
+ path('cabinet/documents/upload/',documents.upload,name='document_upload'),
+ path('cabinet/documents/export/',documents.export,name='document_export'),
+ path('cabinet/documents/approvals/',documents.approvals,name='document_approvals'),
+ path('cabinet/documents/<uuid:pk>/',documents.detail,name='document_detail'),
+ path('cabinet/documents/<uuid:pk>/replace/',documents.replace,name='document_replace'),
+ path('cabinet/documents/<uuid:pk>/archive/',documents.archive,name='document_archive'),
+ path('cabinet/documents/<uuid:pk>/access/',documents.share,name='document_share'),
+ path('cabinet/documents/<uuid:pk>/versions/<uuid:version>/download/',documents.download,name='document_download'),
+ path('cabinet/documents/<uuid:pk>/versions/<uuid:version>/approve/',documents.approve,name='document_approve'),
 ]

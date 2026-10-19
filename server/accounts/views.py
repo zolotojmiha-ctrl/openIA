@@ -98,8 +98,9 @@ def password_view(request):
 @login_required
 def dashboard(request):
     from projects.access import visible_objects, visible_contracts
+    from documents.access import visible_documents
     grants=list(request.user.grants.values_list('permission',flat=True))
-    return render(request,'accounts/dashboard.html',{'object_count':visible_objects(request.user).count(),'contract_count':visible_contracts(request.user).count(),'permissions':[(p,PERMISSIONS[p]) for p in grants if p in PERMISSIONS],'employee_count':User.objects.filter(leader_slot__isnull=True).count() if request.user.is_leader else None})
+    return render(request,'accounts/dashboard.html',{'document_count':visible_documents(request.user).filter(archived=False).count(),'object_count':visible_objects(request.user).count(),'contract_count':visible_contracts(request.user).count(),'permissions':[(p,PERMISSIONS[p]) for p in grants if p in PERMISSIONS],'employee_count':User.objects.filter(leader_slot__isnull=True).count() if request.user.is_leader else None})
 
 @leader_required
 def users(request):

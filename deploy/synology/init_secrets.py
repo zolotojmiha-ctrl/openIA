@@ -23,3 +23,8 @@ write_once('postgres-admin-password',secrets.token_urlsafe(32))
 password=write_once('postgres-app-password',secrets.token_urlsafe(32))
 write_once('database-url',f'postgresql://armada_app:{password}@db:5432/armada')
 print('Isolated configuration prepared. Secret values are not logged.')
+
+documents=Path("/var/lib/armada-documents")
+documents.mkdir(parents=True,exist_ok=True)
+os.chown(documents,10001,10001)
+os.chmod(documents,0o700)

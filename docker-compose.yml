@@ -1,7 +1,7 @@
 # Local test only. No existing Synology folders or Docker socket are mounted.
 services:
   init:
-    image: armada-test-web:objects-v2
+    image: armada-test-web:documents-v3.0.0
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
@@ -13,6 +13,7 @@ services:
     mem_limit: 128m
     volumes:
       - config:/run/armada
+      - documents:/var/lib/armada-documents
     security_opt:
       - no-new-privileges:true
   db:
@@ -43,7 +44,7 @@ services:
     security_opt:
       - no-new-privileges:true
   web:
-    image: armada-test-web:objects-v2
+    image: armada-test-web:documents-v3.0.0
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
@@ -54,6 +55,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      PRIVATE_DOCUMENT_ROOT: /var/lib/armada-documents
       ARMADA_LAN_TEST: "1"
       ARMADA_SECRET_KEY_FILE: /run/armada/django-key
       DATABASE_URL_FILE: /run/armada/database-url
@@ -62,6 +64,7 @@ services:
       - "${NAS_IP:-192.168.50.248}:18080:8000"
     volumes:
       - config:/run/armada:ro
+      - documents:/var/lib/armada-documents
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,uid=10001,gid=10001
@@ -80,6 +83,7 @@ services:
     security_opt:
       - no-new-privileges:true
 volumes:
+  documents:
   config:
   database:
 networks:

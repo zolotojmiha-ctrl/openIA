@@ -69,6 +69,7 @@ class AccessGrant(models.Model):
 
 class AuditEvent(models.Model):
     ACTIONS=[('leader_bootstrap','Созданы руководители'),('login','Вход'),('logout','Выход'),('password_changed','Изменён пароль'),('employee_created','Создан сотрудник'),('employee_updated','Изменены данные и права'),('employee_password_reset','Сброшен пароль'),('object_created','Создан объект'),('object_updated','Изменён объект'),('object_access_changed','Назначен доступ к объекту'),('contract_created','Создан договор'),('contract_updated','Изменён договор'),('contract_access_changed','Изменён доступ к договору')]
+    ACTIONS += [(key,label) for key,label in [('document_uploaded','Загружен документ'),('document_replaced','Новая версия документа'),('document_decided','Решение по версии'),('document_archived','Документ в архиве'),('document_restored','Документ восстановлен'),('document_access_changed','Изменён доступ к документу'),('document_downloaded','Скачан документ'),('document_exported','Экспорт списка документов'),('document_integrity_error','Ошибка сохранности файла')]]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)
