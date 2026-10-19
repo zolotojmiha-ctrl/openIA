@@ -1,7 +1,9 @@
 from django.urls import path
 from accounts import views
+from accounts import personal
 from projects import views as projects
 from documents import views as documents
+from finance import views as finance
 urlpatterns=[
  path('',views.public_site,name='public'),
  path('portal/',views.prototype,name='prototype'),
@@ -35,4 +37,41 @@ urlpatterns=[
  path('cabinet/documents/<uuid:pk>/access/',documents.share,name='document_share'),
  path('cabinet/documents/<uuid:pk>/versions/<uuid:version>/download/',documents.download,name='document_download'),
  path('cabinet/documents/<uuid:pk>/versions/<uuid:version>/approve/',documents.approve,name='document_approve'),
+ path('cabinet/users/<uuid:pk>/transfer/',personal.transfer,name='transfer_documents'),
+ path('cabinet/notifications/',personal.notifications,name='notifications'),
+ path('cabinet/profile/',personal.profile,name='profile'),
+ path('cabinet/profile/sessions/',personal.end_sessions,name='end_sessions'),
+ path('cabinet/reminders/',personal.reminders,name='reminders'),
+ path('cabinet/reminders/<int:pk>/',personal.reminders,name='reminder_edit'),
+ path('cabinet/favorite/<str:kind>/<uuid:pk>/',personal.favorite,name='favorite'),
+ path('cabinet/support/',personal.support,name='support'),
+ path('cabinet/support/<int:pk>/',personal.support,name='support_detail'),
+ path('cabinet/documents/bulk/',documents.bulk,name='document_bulk'),
+ path('cabinet/documents/<uuid:pk>/links/',documents.links,name='document_links'),
+ path('cabinet/documents/<uuid:pk>/preview/',documents.preview,name='document_preview'),
+ path('cabinet/documents/<uuid:pk>/comments/',documents.comment,name='document_comment'),
+ path('cabinet/documents/<uuid:pk>/versions/<uuid:version>/preview/',documents.download,{'preview':True},name='document_preview_file'),
+ path('cabinet/bundles/',documents.bundles,name='bundles'),
+ path('cabinet/bundles/<uuid:pk>/',documents.bundle_detail,name='bundle_detail'),
+ path('cabinet/bundles/<uuid:pk>/primary/',documents.bundle_primary,name='bundle_primary'),
+ path('cabinet/bundles/<uuid:pk>/access/',documents.share,{'bundle':True},name='bundle_share'),
+ path('cabinet/bundles/<uuid:pk>/download/',documents.bundle_zip,name='bundle_zip'),
+ path('cabinet/objects/<uuid:pk>/personnel-export/',documents.personnel_export,name='personnel_export'),
+ path('cabinet/personnel/',documents.people,name='people'),
+ path('cabinet/personnel/new/',documents.person_edit,name='person_new'),
+ path('cabinet/personnel/<uuid:pk>/',documents.person_detail,name='person_detail'),
+ path('cabinet/personnel/<uuid:pk>/edit/',documents.person_edit,name='person_edit'),
+ path('cabinet/personnel/<uuid:pk>/assignment/',documents.person_assignment,name='person_assignment'),
+ path('cabinet/personnel/<uuid:pk>/archive/',documents.person_archive,name='person_archive'),
+ path('cabinet/finance/',finance.dashboard,name='finance'),
+ path('cabinet/finance/offsets/<int:pk>/reverse/',finance.reverse_offset,name='finance_reverse_offset'),
+ path('cabinet/finance/allocations/<int:pk>/reverse/',finance.reverse_allocation,name='finance_reverse'),
+ path('cabinet/finance/edit/<str:kind>/<str:pk>/',finance.edit_entry,name='finance_edit'),
+ path('cabinet/finance/import/<uuid:pk>/confirm/',finance.confirm_report,name='finance_confirm'),
+ path('cabinet/finance/import/',finance.import_report,name='finance_import'),
+ path('cabinet/finance/new/<str:kind>/',finance.create,name='finance_create'),
+ path('cabinet/finance/receipts/<uuid:pk>/',finance.allocate,name='finance_allocate'),
+ path('cabinet/finance/works/<uuid:pk>/accept/',finance.accept,name='finance_accept'),
+ path('cabinet/finance/<uuid:pk>/edit/',finance.scope_edit,name='finance_scope_edit'),
+ path('cabinet/finance/<uuid:pk>/',finance.detail,name='finance_detail'),
 ]

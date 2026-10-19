@@ -18,6 +18,11 @@ class DocumentsBrowserAcceptance(StaticLiveServerTestCase):
         ObjectAccess.objects.create(project_object=obj,user=employee,granted_by=leader)
         for permission in ['read','upload','replace','download']:
             AccessGrant.objects.create(user=employee,permission='document.'+permission,granted_by=leader)
+        from finance.models import FinancialScope,FinancialImport,OpeningSnapshot,PendingWork
+        source=FinancialImport.objects.create(sha256='a'*64,original_name='synthetic-finance.xlsx',uploaded_by=leader)
+        scope=FinancialScope.objects.create(legal_entity=company,title='Учебная финансовая карточка',created_by=leader)
+        OpeningSnapshot.objects.create(scope=scope,source=source,total_defects=10,repaired_defects=4,advance_received=5000000,accepted=8000000,paid_for_work=6000000,advance_offset=2000000,declared_advance_balance=3000000,declared_pending=1000000)
+        PendingWork.objects.create(scope=scope,title='Учебное выполнение',amount=1000000,source=source)
         env=os.environ.copy();env.update(ARMADA_TEST_URL=self.live_server_url,ARMADA_TEST_PASSWORD=password)
         with tempfile.TemporaryDirectory(prefix='armada-browser-docs-') as root,override_settings(PRIVATE_DOCUMENT_ROOT=root):
             result=subprocess.run(['node',str(settings.BASE_DIR/'tests/documents-browser.cjs')],env=env,capture_output=True,text=True,timeout=120)

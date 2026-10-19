@@ -11,6 +11,13 @@ class AccountStateMiddleware:
                 return redirect('login')
             if request.user.must_change_password and request.path.startswith('/cabinet/') and request.path not in ['/cabinet/password/','/cabinet/logout/']:
                 return redirect('password')
+        if request.user.is_authenticated and request.session.session_key:
+            from .models import UserSession
+            from django.utils import timezone
+            now=int(timezone.now().timestamp())
+            if now-request.session.get('_session_seen',0)>=60:
+                UserSession.objects.update_or_create(session_key=request.session.session_key,defaults={'user':request.user,'device':request.headers.get('User-Agent','')[:200]})
+                request.session['_session_seen']=now
         response=self.get_response(request)
         if request.path.startswith('/cabinet/'):
             response['Cache-Control']='no-store, private'

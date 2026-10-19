@@ -99,8 +99,15 @@ def password_view(request):
 def dashboard(request):
     from projects.access import visible_objects, visible_contracts
     from documents.access import visible_documents
-    grants=list(request.user.grants.values_list('permission',flat=True))
-    return render(request,'accounts/dashboard.html',{'document_count':visible_documents(request.user).filter(archived=False).count(),'object_count':visible_objects(request.user).count(),'contract_count':visible_contracts(request.user).count(),'permissions':[(p,PERMISSIONS[p]) for p in grants if p in PERMISSIONS],'employee_count':User.objects.filter(leader_slot__isnull=True).count() if request.user.is_leader else None})
+    from .personal import favorite_items
+    from .models import Reminder, SupportRequest
+    context={'object_count':visible_objects(request.user).count(),'contract_count':visible_contracts(request.user).count(),'document_count':visible_documents(request.user).filter(archived=False).count(),
+        'favorites':favorite_items(request.user),'reminders':Reminder.objects.filter(user=request.user,done=False).filter(document__isnull=True).order_by('date')[:5],
+        'support_count':SupportRequest.objects.filter(status='new').count() if request.user.is_leader else 0}
+    if request.user.is_leader:
+        from finance.views import dashboard_data
+        context.update(dashboard_data(request.user))
+    return render(request,'accounts/dashboard.html',context)
 
 @leader_required
 def users(request):
@@ -111,7 +118,7 @@ def users(request):
 @sensitive_variables('temporary')
 def employee_edit(request,pk=None):
     employee=get_object_or_404(User,pk=pk,leader_slot__isnull=True) if pk else None
-    initial={'expected_version':employee.session_version,'full_name':employee.full_name,'phone':employee.phone,'role':employee.role,'is_active':employee.is_active,'permissions':list(employee.grants.values_list('permission',flat=True))} if employee else None
+    initial={'expected_version':employee.session_version,'full_name':employee.full_name,'phone':employee.phone,'role':employee.role,'is_active':employee.is_active,'permissions':[p for p in employee.grants.values_list('permission',flat=True) if p in PERMISSIONS]} if employee else None
     form=EmployeeForm(request.POST or None,initial=initial,user=employee)
     if request.method=='POST' and form.is_valid():
         temporary=None
@@ -134,6 +141,9 @@ def employee_edit(request,pk=None):
                 employee.is_active=form.cleaned_data['is_active']
                 employee.session_version+=1
                 employee.save()
+                if not employee.is_active:
+                    from documents.models import Person
+                    Person.objects.filter(user=employee).update(archived=True)
                 employee.grants.all().delete()
                 AccessGrant.objects.bulk_create([AccessGrant(user=employee,permission=p,granted_by=request.user) for p in form.cleaned_data['permissions']])
                 audit(request.user,'employee_created' if temporary else 'employee_updated',employee,previous_permissions=before,permissions=form.cleaned_data['permissions'],active=employee.is_active)

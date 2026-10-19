@@ -9,12 +9,13 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
- 'document.read':'Просматривать документы', 'document.upload':'Загружать документы',
- 'document.replace':'Заменять файл новой версией', 'document.archive':'Архивировать документы',
- 'document.restore':'Восстанавливать из архива', 'document.download':'Скачивать документы',
- 'document.export':'Экспортировать документы', 'document.personal':'Доступ к персональным документам',
- 'document.subcontractor':'Доступ к документам субподрядчиков',
+ 'document.upload':'Загружать документы',
+ 'document.export':'Экспортировать список документов в CSV',
+ 'personnel.manage':'Вести карточки персонала и назначения',
+ 'finance.read':'Просматривать финансовый учёт',
+ 'finance.write':'Вносить финансовые записи и распределять выплаты',
 }
+
 ROLES = [('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Охрана труда и безопасность'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик')]
 
 def normalize_phone(value):
@@ -70,6 +71,8 @@ class AccessGrant(models.Model):
 class AuditEvent(models.Model):
     ACTIONS=[('leader_bootstrap','Созданы руководители'),('login','Вход'),('logout','Выход'),('password_changed','Изменён пароль'),('employee_created','Создан сотрудник'),('employee_updated','Изменены данные и права'),('employee_password_reset','Сброшен пароль'),('object_created','Создан объект'),('object_updated','Изменён объект'),('object_access_changed','Назначен доступ к объекту'),('contract_created','Создан договор'),('contract_updated','Изменён договор'),('contract_access_changed','Изменён доступ к договору')]
     ACTIONS += [(key,label) for key,label in [('document_uploaded','Загружен документ'),('document_replaced','Новая версия документа'),('document_decided','Решение по версии'),('document_archived','Документ в архиве'),('document_restored','Документ восстановлен'),('document_access_changed','Изменён доступ к документу'),('document_downloaded','Скачан документ'),('document_exported','Экспорт списка документов'),('document_integrity_error','Ошибка сохранности файла')]]
+    ACTIONS += [('document_links_changed','Изменены связи документа'),('document_commented','Комментарий к документу'),('document_bulk_changed','Массовое изменение документов'),('person_updated','Изменена карточка работника'),('person_assigned','Назначение работника'),('person_archived','Архив работника'),('sessions_ended','Завершены сеансы'),('support_updated','Обращение сотрудника'),('finance_created','Финансовая запись'),('finance_allocated','Распределена выплата'),('finance_accepted','Подтверждено принятое выполнение'),('finance_imported','Загружена финансовая справка')]
+    ACTIONS += [('document_responsibility_changed','Передана ответственность за документ'),('document_bundle_primary','Выбран основной файл комплекта'),('finance_corrected','Исправлена финансовая запись'),('finance_offset_reversed','Отменён зачёт аванса'),('finance_allocation_reversed','Отменено распределение выплаты'),('finance_scope_updated','Изменены параметры финансового направления')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)
@@ -80,3 +83,40 @@ class LoginAttempt(models.Model):
     key=models.CharField(max_length=64,unique=True)
     count=models.PositiveIntegerField(default=0)
     window_start=models.DateTimeField()
+
+
+class Preference(models.Model):
+    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='preferences')
+    hints=models.BooleanField('Показывать подсказки',default=True)
+    notify_documents=models.BooleanField('Уведомления о новых документах',default=True)
+    notify_versions=models.BooleanField('Уведомления о новых версиях',default=True)
+    notify_comments=models.BooleanField('Уведомления об обращении внимания',default=True)
+    large_text=models.BooleanField('Увеличенный текст',default=False)
+    compact=models.BooleanField('Компактный список',default=False)
+
+class Reminder(models.Model):
+    user=models.ForeignKey(User,on_delete=models.CASCADE)
+    document=models.ForeignKey('documents.Document',on_delete=models.PROTECT,null=True,blank=True)
+    date=models.DateField('Напомнить')
+    text=models.CharField('О чём напомнить',max_length=300)
+    done=models.BooleanField(default=False)
+
+class Favorite(models.Model):
+    user=models.ForeignKey(User,on_delete=models.CASCADE)
+    kind=models.CharField(max_length=20,choices=[('document','Документ'),('bundle','Комплект'),('object','Объект'),('contract','Договор')])
+    entity_id=models.UUIDField()
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['user','kind','entity_id'],name='unique_favorite')]
+
+class SupportRequest(models.Model):
+    author=models.ForeignKey(User,on_delete=models.PROTECT)
+    text=models.TextField('Что не получилось / предложение',max_length=3000)
+    status=models.CharField('Статус',max_length=20,choices=[('new','Новое'),('progress','В работе'),('done','Решено')],default='new')
+    response=models.TextField('Ответ',max_length=3000,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+class UserSession(models.Model):
+    user=models.ForeignKey(User,on_delete=models.CASCADE,related_name='active_sessions')
+    session_key=models.CharField(max_length=40,unique=True)
+    device=models.CharField(max_length=200,blank=True)
+    last_seen=models.DateTimeField(auto_now=True)

@@ -1,70 +1,92 @@
 from django import forms
 from accounts.models import User
 from projects.access import visible_objects,visible_contracts,contract_card
-from .access import scoped_documents,has_permission
-from .models import Document, KINDS, SECTIONS
+from .access import visible_people,visible_bundles,can_manage_bundle,sharing_users
+from .models import Document, Bundle, Person, PersonAssignment
 from .storage import validate_upload
 
 class ContractChoice(forms.ModelMultipleChoiceField):
     def __init__(self,*args,user,**kwargs):self.user=user;super().__init__(*args,**kwargs)
     def label_from_instance(self,obj):return contract_card(obj,self.user)['title']
 
-class UploadForm(forms.ModelForm):
-    file=forms.FileField(label='Файл — до 10 МБ')
+class LinkForm(forms.ModelForm):
+    expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
     linked_objects=forms.ModelMultipleChoiceField(label='Объекты',queryset=None,required=False,widget=forms.CheckboxSelectMultiple)
-    linked_people=forms.ModelMultipleChoiceField(label='Сотрудник, к которому относится персональный документ',queryset=User.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
-    comment=forms.CharField(label='Комментарий к версии',max_length=2000,required=False,widget=forms.Textarea)
+    linked_people=forms.ModelMultipleChoiceField(label='Работники',queryset=Person.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    confirm_access=forms.BooleanField(label='Я проверил список получателей при смене комплекта',required=False)
     class Meta:
         model=Document
-        fields=['title','number','date','section','kind']
+        fields=['title','section','number','date','bundle','is_primary','link_not_required']
         widgets={'date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
+        labels={'section':'Раздел','title':'Название — можно оставить имя файла'}
     def __init__(self,*args,user,**kwargs):
-        self.user=user
-        super().__init__(*args,**kwargs)
+        self.user=user;super().__init__(*args,**kwargs)
+        self.fields['title'].required=False
+        self.fields['section'].initial='general'
         self.fields['linked_objects'].queryset=visible_objects(user).order_by('name')
         self.fields['linked_contracts']=ContractChoice(label='Договоры',queryset=visible_contracts(user).order_by('id'),user=user,required=False,widget=forms.CheckboxSelectMultiple)
-        if user.is_leader:
-            self.fields['linked_people'].queryset=User.objects.order_by('full_name')
-            self.fields['linked_people'].label_from_instance=lambda u:u.full_name
-        else:
-            self.fields['section'].choices=[choice for choice in SECTIONS if choice[0]==user.role]
-            self.fields['kind'].choices=[('work','Рабочий документ')]
-            self.fields['linked_people'].widget=forms.HiddenInput()
-    def clean_file(self):
-        value=self.cleaned_data['file'];self.file_data=validate_upload(value);return value
+        self.fields['linked_people'].queryset=visible_people(user).filter(archived=False).order_by('full_name')
+        self.fields['bundle'].queryset=visible_bundles(user).filter(created_by=user) if not user.is_leader else visible_bundles(user)
+        if not self.instance._state.adding:
+            self.fields['title'].required=True
+        self.fields['bundle'].required=False
     def clean(self):
         data=super().clean()
-        objects=data.get('linked_objects')
-        if not self.user.is_leader and not objects:self.add_error('linked_objects','Выберите хотя бы один назначенный объект.')
-        if data.get('kind')=='personal' and not data.get('linked_people'):self.add_error('linked_people','Укажите сотрудника персонального документа.')
-        for contract in data.get('linked_contracts',[]):
-            if not contract.objects_linked.filter(pk__in=[obj.pk for obj in objects or []]).exists():
-                self.add_error('linked_contracts','Каждый договор должен иметь хотя бы один из выбранных объектов.')
+        if data.get('is_primary') and not data.get('bundle'):self.add_error('is_primary','Основной файл выбирается только внутри комплекта.')
         return data
+
+class UploadForm(LinkForm):
+    upload_token=forms.UUIDField(required=False,widget=forms.HiddenInput)
+    file=forms.FileField(label='Файл — до 10 МБ')
+    comment=forms.CharField(label='Комментарий',max_length=2000,required=False)
+    bundle_title=forms.CharField(label='Или создать новый комплект',max_length=200,required=False)
+    recipients=forms.ModelMultipleChoiceField(label='Открыть доступ сотрудникам (необязательно)',queryset=User.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    collision=forms.ChoiceField(label='При совпадении имён',choices=[('ask','Спросить'),('replace','Заменить новой версией'),('both','Оставить оба')],initial='ask')
+    collision_id=forms.UUIDField(required=False,widget=forms.HiddenInput)
+    defer_link=forms.BooleanField(label='Сохранить без связи во «На разбор»',required=False)
+    def __init__(self,*args,user,**kwargs):
+        super().__init__(*args,user=user,**kwargs)
+        self.fields['recipients'].queryset=sharing_users(user).filter(is_active=True).exclude(pk=user.pk).order_by('full_name')
+        self.fields['recipients'].label_from_instance=lambda u:u.full_name
+    def clean_file(self):
+        value=self.cleaned_data['file'];self.file_data=validate_upload(value);return value
 
 class VersionForm(forms.Form):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput)
     file=forms.FileField(label='Новый файл — до 10 МБ')
-    comment=forms.CharField(label='Что изменено',max_length=2000,widget=forms.Textarea)
+    comment=forms.CharField(label='Что изменено (необязательно)',max_length=2000,required=False,widget=forms.Textarea)
     def clean_file(self):
         value=self.cleaned_data['file'];self.file_data=validate_upload(value);return value
-
-class ApprovalForm(forms.Form):
-    decision=forms.ChoiceField(label='Решение',choices=[('approved','Утвердить'),('revision','Отправить на доработку')],widget=forms.RadioSelect)
-    reason=forms.CharField(label='Что доработать / комментарий',max_length=2000,required=False,widget=forms.Textarea)
-    def clean(self):
-        data=super().clean()
-        if data.get('decision')=='revision' and not data.get('reason','').strip():self.add_error('reason','Укажите, что нужно доработать.')
-        return data
 
 class ShareForm(forms.Form):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput)
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=User.objects.none())
-    enabled=forms.BooleanField(label='Разрешить просмотр карточки и сведений о текущей версии',required=False)
-    can_download=forms.BooleanField(label='Разрешить скачивать текущий файл целиком',required=False)
-    can_history=forms.BooleanField(label='Разрешить просмотр истории всех версий',required=False)
-    def __init__(self,*args,document,**kwargs):
+    enabled=forms.BooleanField(label='Просмотр и скачивание',required=False,initial=True)
+    can_replace=forms.BooleanField(label='Также разрешить новые версии',required=False)
+    def __init__(self,*args,document=None,actor=None,**kwargs):
         super().__init__(*args,**kwargs)
-        ids=[u.pk for u in User.objects.filter(is_active=True,leader_slot__isnull=True) if scoped_documents(u).filter(pk=document.pk).exists()]
-        self.fields['employee'].queryset=User.objects.filter(pk__in=ids).order_by('full_name')
-        self.fields['employee'].label_from_instance=lambda u:u.full_name
+        from django.db.models import Q
+        qs=sharing_users(actor) if actor is not None else User.objects.none()
+        if document is not None:
+            qs=qs.filter(Q(is_active=True)|Q(pk__in=document.access_rules.values('user_id'))).exclude(pk__in=[value for value in [document.created_by_id,getattr(document,'responsible_id',None)] if value])
+        else:qs=qs.filter(is_active=True)
+        self.fields['employee'].queryset=qs.order_by('full_name')
+        self.fields['employee'].label_from_instance=lambda u:u.full_name+(' (вход заблокирован)' if not u.is_active else '')
+
+class PersonForm(forms.ModelForm):
+    expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
+    class Meta:
+        model=Person
+        fields=['full_name','position']
+
+class AssignmentForm(forms.ModelForm):
+    class Meta:
+        model=PersonAssignment
+        fields=['project_object','start_date','end_date']
+        widgets={key:forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}) for key in ['start_date','end_date']}
+    def __init__(self,*args,user,**kwargs):
+        super().__init__(*args,**kwargs);self.fields['project_object'].queryset=visible_objects(user)
+    def clean(self):
+        data=super().clean()
+        if data.get('start_date') and data.get('end_date') and data['end_date']<data['start_date']:self.add_error('end_date','Окончание раньше начала.')
+        return data

@@ -2,7 +2,7 @@
 
 Корпоративный сайт и серверный кабинет: вход по телефону и паролю, два равноправных руководителя, сотрудники, индивидуальные права, блокировка, смена и сброс паролей, журнал действий. Добавлены рабочие объекты и договоры с индивидуальным доступом: [OBJECTS_CONTRACTS.md](OBJECTS_CONTRACTS.md).
 
-Добавлен модуль документов версии **3.0.0-documents**: [DOCUMENTS.md](DOCUMENTS.md).
+Текущая версия **4.0.0-workspace**: документы, комплекты, персонал, личные настройки и финансовая аналитика с ручным учётом. [WORKSPACE_4.md](WORKSPACE_4.md).
 
 **Публичная рабочая установка пока не опубликована.** Учётные записи создаются владельцем установки на своём сервере. GitHub Pages обслуживает только отдельный демонстрационный прототип.
 
@@ -28,7 +28,7 @@ ARMADA_DEVELOPMENT=1 .venv/bin/python server/manage.py runserver 127.0.0.1:8020
 ## Проверки
 
 ```sh
-ARMADA_DEVELOPMENT=1 .venv/bin/python server/manage.py test accounts projects documents --verbosity 1
+ARMADA_DEVELOPMENT=1 .venv/bin/python server/manage.py test accounts projects documents finance --verbosity 1
 ARMADA_DEVELOPMENT=1 .venv/bin/python server/manage.py check
 node tests/prototype.cjs
 ```

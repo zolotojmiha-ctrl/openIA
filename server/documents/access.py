@@ -1,44 +1,75 @@
-from django.db.models import Exists, OuterRef, Q
-from projects.access import visible_objects, visible_contracts
+from django.db.models import Exists, OuterRef, Q, F, Case, When, Value, BooleanField
 from projects.models import COMPANY_TAX_ID
-from .models import Document, DocumentAccess, DocumentObject, DocumentContract
+from .models import Document, DocumentAccess, Bundle, BundleAccess, DocumentRead
 
 def has_permission(user,permission):
     return user.is_authenticated and user.is_active and (user.is_leader or user.grants.filter(permission=permission).exists())
 
-def scoped_documents(user):
-    qs=Document.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
+def visible_bundles(user):
+    qs=Bundle.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
+    qs=qs.annotate(has_unread=Exists(unread_documents(user).filter(bundle_id=OuterRef('pk'))))
     if user.is_leader:return qs
-    if not has_permission(user,'document.read'):return qs.none()
-    bad_objects=DocumentObject.objects.filter(document_id=OuterRef('pk')).exclude(project_object_id__in=visible_objects(user).values('pk'))
-    bad_contracts=DocumentContract.objects.filter(document_id=OuterRef('pk')).exclude(contract_id__in=visible_contracts(user).values('pk'))
-    has_objects=DocumentObject.objects.filter(document_id=OuterRef('pk'))
-    qs=qs.annotate(_bad_objects=Exists(bad_objects),_bad_contracts=Exists(bad_contracts),_has_objects=Exists(has_objects)).filter(_bad_objects=False,_bad_contracts=False)
-    # General company files without an object are not opened by an incidental grant.
-    qs=qs.filter(Q(_has_objects=True)|Q(kind='personal',people_linked=user))
-    if not has_permission(user,'document.personal'):qs=qs.exclude(kind='personal')
-    if not has_permission(user,'document.subcontractor'):qs=qs.exclude(kind='subcontractor')
-    return qs.distinct()
+    return qs.filter(Q(created_by=user)|Q(access_rules__user=user,access_rules__enabled=True)).distinct()
+
+def scoped_documents(user):
+    # File permission is explicit. Linking never grants a file or its parent card.
+    return Document.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
 
 def visible_documents(user):
     qs=scoped_documents(user)
+    if not user.is_authenticated or not user.is_active:return qs.none()
+    reads=DocumentRead.objects.filter(document_id=OuterRef('pk'),user=user,version_id=OuterRef('current_version_id'))
+    qs=qs.annotate(_already_read=Exists(reads)).annotate(is_unread=Case(When(_already_read=True,then=Value(False)),When(current_version__uploaded_by=user,then=Value(False)),default=Value(True),output_field=BooleanField()))
     if user.is_leader:return qs
-    deny=DocumentAccess.objects.filter(document_id=OuterRef('pk'),user=user,enabled=False)
-    allow=DocumentAccess.objects.filter(document_id=OuterRef('pk'),user=user,enabled=True)
-    return qs.annotate(_deny=Exists(deny),_allow=Exists(allow)).filter(_deny=False).filter(Q(_allow=True)|Q(created_by=user,kind='work'))
+    rules=DocumentAccess.objects.filter(document_id=OuterRef('pk'),user=user)
+    inherited=BundleAccess.objects.filter(bundle_id=OuterRef('bundle_id'),user=user,enabled=True)
+    return qs.annotate(_deny=Exists(rules.filter(enabled=False)),_allow=Exists(rules.filter(enabled=True)),_bundle=Exists(inherited)).filter(
+        Q(created_by=user)|Q(responsible=user)|Q(archived=False,_deny=False)&(Q(_allow=True)|Q(_bundle=True)|Q(bundle__created_by=user)))
+
+def can_manage(user,document):
+    return user.is_leader or document.created_by_id==user.pk or document.responsible_id==user.pk
+
+def can_manage_bundle(user,bundle):
+    return user.is_leader or bundle.created_by_id==user.pk
 
 def version_visible(user,document,version):
-    if version.document_id!=document.pk:return False
-    if user.is_leader or document.current_version_id==version.pk:return True
-    if document.created_by_id==user.pk and version.uploaded_by_id==user.pk:return True
-    return document.access_rules.filter(user=user,enabled=True,can_history=True).exists()
+    return version.document_id==document.pk
 
 def can_download(user,document,version):
-    if not has_permission(user,'document.download') or not version_visible(user,document,version):return False
-    if user.is_leader:return True
-    if document.archived or version.status=='revision':return False
-    if document.created_by_id==user.pk and version.uploaded_by_id==user.pk:return True
-    return document.access_rules.filter(user=user,enabled=True,can_download=True).exists()
+    return version_visible(user,document,version) and (not document.archived or can_manage(user,document))
 
 def can_modify(user,document,permission):
-    return has_permission(user,permission) and (user.is_leader or document.section==user.role)
+    if can_manage(user,document):return True
+    if document.archived:return False
+    if permission!='document.replace':return False
+    rule=document.access_rules.filter(user=user).first()
+    if rule is not None:return rule.enabled and rule.can_replace
+    return document.bundle_id is not None and BundleAccess.objects.filter(bundle_id=document.bundle_id,user=user,enabled=True,can_replace=True).exists()
+
+def unread_documents(user):
+    reads=DocumentRead.objects.filter(document_id=OuterRef('pk'),user=user,version_id=OuterRef('current_version_id'))
+    return visible_documents(user).filter(archived=False,current_version__isnull=False).exclude(current_version__uploaded_by=user).annotate(_read=Exists(reads)).filter(_read=False)
+
+def unsorted_documents(user):
+    qs=visible_documents(user).filter(archived=False,link_not_required=False)
+    return qs.filter(Q(section='contracts',contracts_linked__isnull=True)|Q(section='personnel',personnel_linked__isnull=True,people_linked__isnull=True)|Q(section__in=['journals','as_built'],objects_linked__isnull=True)).distinct()
+
+def visible_people(user):
+    from .models import Person
+    qs=Person.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
+    if user.is_leader or has_permission(user,'personnel.manage'):return qs
+    # External participants never receive a directory of other contractors' personnel.
+    if user.role=='subcontractor':return qs.filter(Q(created_by=user)|Q(user=user))
+    # Viewing a file does not grant a whole personnel card.
+    return qs.filter(Q(created_by=user)|Q(assignments__project_object__assignments__user=user)).distinct()
+
+
+def sharing_users(user):
+    from accounts.models import User
+    qs=User.objects.filter(leader_slot__isnull=True)
+    if user.is_leader:return qs
+    if user.role=='subcontractor':return qs.none()
+    return qs.exclude(role='subcontractor')
+
+def can_share(user,document):
+    return user.role!='subcontractor' and can_manage(user,document)

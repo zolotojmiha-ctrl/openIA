@@ -88,11 +88,11 @@ class AccountTests(TestCase):
         for index,leader in enumerate([self.first,self.second]):
             self.client.force_login(leader)
             phone='+7000000000'+str(4+index)
-            r=self.client.post(reverse('employee_new'),self.employee_data(phone=phone,permissions=['document.read','document.replace'],leader_slot='1',is_superuser='on'))
+            r=self.client.post(reverse('employee_new'),self.employee_data(phone=phone,permissions=['document.upload','personnel.manage'],leader_slot='1',is_superuser='on'))
             self.assertEqual(r.status_code,200)
             user=User.objects.get(phone=phone)
             self.assertFalse(user.is_leader)
-            self.assertEqual(set(user.grants.values_list('permission',flat=True)),{'document.read','document.replace'})
+            self.assertEqual(set(user.grants.values_list('permission',flat=True)),{'document.upload','personnel.manage'})
             self.assertTrue(user.must_change_password)
             temporary=r.context['temporary'];self.assertTrue(user.check_password(temporary))
             self.assertNotEqual(user.password,temporary)
@@ -169,7 +169,7 @@ class AccountTests(TestCase):
     def test_stale_employee_settings_cannot_overwrite_other_leader(self):
         self.leader_login()
         url=reverse('employee_edit',args=[self.employee.pk])
-        self.client.post(url,self.employee_data(phone=self.employee.phone,permissions=['document.read']))
+        self.client.post(url,self.employee_data(phone=self.employee.phone,permissions=['document.upload']))
         response=self.client.post(url,self.employee_data(phone=self.employee.phone,permissions=['document.export']))
         self.assertContains(response,'Настройки уже изменил другой руководитель')
-        self.assertEqual(list(self.employee.grants.values_list('permission',flat=True)),['document.read'])
+        self.assertEqual(list(self.employee.grants.values_list('permission',flat=True)),['document.upload'])

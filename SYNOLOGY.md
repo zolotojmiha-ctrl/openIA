@@ -49,4 +49,4 @@ HTTP здесь используется только для локальног�
 
 ## Текущая версия
 
-`3.0.0-documents`, образ web/init `armada-test-web:documents-v3.0.0`. Обновление сохраняет прежние database/config и добавляет отдельный том documents. Подробности и ограничения: [DOCUMENTS.md](DOCUMENTS.md).
+`4.0.0-workspace`, образ web/init `armada-test-web:workspace-v4.0.0`. Обновление сохраняет прежние database/config/documents. Финансы хранятся в той же защищённой базе. Подробности и ограничения: [WORKSPACE_4.md](WORKSPACE_4.md).

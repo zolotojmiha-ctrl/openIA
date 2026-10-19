@@ -6,6 +6,7 @@ from django.db.models import Q
 from uuid import UUID
 from django.shortcuts import get_object_or_404, redirect, render
 from accounts.models import User
+from documents.access import visible_documents,visible_people
 from accounts.views import leader_required, audit
 from .access import visible_objects, visible_contracts, contract_card
 from .forms import ObjectForm, ContractForm, AssignmentForm, ContractShareForm
@@ -23,7 +24,7 @@ def objects(request):
 def object_detail(request,pk):
     obj=get_object_or_404(visible_objects(request.user),pk=pk)
     contracts=visible_contracts(request.user).filter(objects_linked=obj).prefetch_related('access_rules')
-    return render(request,'projects/object.html',{'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
+    return render(request,'projects/object.html',{'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
         'assignments':obj.assignments.select_related('user').order_by('user__full_name') if request.user.is_leader else None})
 
 @leader_required
@@ -101,7 +102,7 @@ def contract_detail(request,pk):
     shares=None
     if request.user.is_leader:
         shares=[{'user':rule.user,'fields':[label for flag,label in SHARED_FIELDS.items() if getattr(rule,flag)]} for rule in contract.access_rules.select_related('user').order_by('user__full_name')]
-    return render(request,'projects/contract.html',{'card':contract_card(contract,request.user),'linked':linked,'shares':shares})
+    return render(request,'projects/contract.html',{'documents':visible_documents(request.user).filter(contracts_linked=contract,archived=False),'card':contract_card(contract,request.user),'linked':linked,'shares':shares})
 
 @leader_required
 def contract_edit(request,pk=None):

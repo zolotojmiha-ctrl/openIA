@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import uuid
+import unicodedata
 import zipfile
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -15,34 +16,20 @@ TYPES={'.pdf':'application/pdf','.docx':'application/vnd.openxmlformats-officedo
 def validate_upload(upload):
     if not upload or upload.size<=0 or upload.size>MAX_FILE_SIZE:
         raise ValidationError('Выберите непустой файл размером до 10 МБ.')
-    name=re.sub(r'[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]','',upload.name.replace('\\','/').split('/')[-1])[:200]
-    suffix=Path(name).suffix.lower()
-    if suffix not in TYPES:raise ValidationError('Допустимы PDF, DOCX, XLSX, PNG, JPG и TXT. Исполняемые файлы и архивы не принимаются.')
-    content=upload.read(MAX_FILE_SIZE+1)
-    upload.seek(0)
+    name=re.sub(r'[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]','',upload.name.replace('\\','/').split('/')[-1])[:200].strip()
+    if not name:raise ValidationError('У файла должно быть название.')
+    content=upload.read(MAX_FILE_SIZE+1);upload.seek(0)
     if not content or len(content)>MAX_FILE_SIZE:raise ValidationError('Файл превышает 10 МБ.')
-    valid=True
-    if suffix=='.pdf':valid=content.startswith(b'%PDF-')
-    elif suffix=='.png':valid=content.startswith(b'\x89PNG\r\n\x1a\n')
-    elif suffix in ('.jpg','.jpeg'):valid=content.startswith(b'\xff\xd8\xff')
-    elif suffix=='.txt':
-        try:content.decode('utf-8')
-        except UnicodeDecodeError:valid=False
-        if b'\x00' in content:valid=False
-    elif suffix in ('.docx','.xlsx'):
-        try:
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                members=archive.infolist()
-                names={entry.filename for entry in members}
-                expected='word/document.xml' if suffix=='.docx' else 'xl/workbook.xml'
-                valid=expected in names and '[Content_Types].xml' in names and len(members)<=2000 and sum(e.file_size for e in members)<=50*1024*1024
-                for entry in members:
-                    path=Path(entry.filename)
-                    if path.is_absolute() or '..' in path.parts or '\\' in entry.filename or entry.flag_bits&1 or entry.file_size>max(1,entry.compress_size)*200 or 'vbaproject' in entry.filename.lower() or '/embeddings/' in entry.filename.lower():valid=False
-                if valid and archive.testzip() is not None:valid=False
-        except (zipfile.BadZipFile,RuntimeError,NotImplementedError,EOFError):valid=False
-    if not valid:raise ValidationError('Содержимое файла не соответствует формату либо содержит недопустимые вложения. Проверка не заменяет антивирус.')
-    return {'name':name,'content_type':TYPES[suffix],'size':len(content),'sha256':hashlib.sha256(content).hexdigest(),'content':content}
+    # Arbitrary files are opaque attachments. Never unpack, import or execute them.
+    mime='application/octet-stream'
+    suffix=Path(name).suffix.lower()
+    if suffix=='.pdf' and content.startswith(b'%PDF-'):mime='application/pdf'
+    elif suffix=='.png' and content.startswith(b'\x89PNG\r\n\x1a\n'):mime='image/png'
+    elif suffix in ('.jpg','.jpeg') and content.startswith(b'\xff\xd8\xff'):mime='image/jpeg'
+    elif suffix=='.txt' and b'\x00' not in content:
+        try:content.decode('utf-8');mime='text/plain'
+        except UnicodeDecodeError:pass
+    return {'name':name,'content_type':mime,'size':len(content),'sha256':hashlib.sha256(content).hexdigest(),'content':content}
 
 def private_path(key):
     if not re.fullmatch(r'[a-f0-9]{2}/[a-f0-9]{32}',key):raise ValueError('Недопустимый ключ файла.')
