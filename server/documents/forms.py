@@ -18,7 +18,7 @@ class LinkForm(forms.ModelForm):
         model=Document
         fields=['title','section','number','date','bundle','is_primary','link_not_required']
         widgets={'date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
-        labels={'section':'Раздел','title':'Название — можно оставить имя файла'}
+        labels={'section':'Раздел','title':'Название','bundle':'Комплект','is_primary':'Основной документ комплекта','number':'Номер','date':'Дата документа','link_not_required':'Связь не требуется'}
     def __init__(self,*args,user,**kwargs):
         self.user=user;super().__init__(*args,**kwargs)
         self.fields['title'].required=False
@@ -32,7 +32,7 @@ class LinkForm(forms.ModelForm):
         self.fields['bundle'].required=False
     def clean(self):
         data=super().clean()
-        if data.get('is_primary') and not data.get('bundle'):self.add_error('is_primary','Основной файл выбирается только внутри комплекта.')
+        if data.get('is_primary') and not (data.get('bundle') or data.get('bundle_title')):self.add_error('is_primary','Основной файл выбирается только внутри комплекта.')
         return data
 
 class UploadForm(LinkForm):
@@ -59,6 +59,7 @@ class VersionForm(forms.Form):
         value=self.cleaned_data['file'];self.file_data=validate_upload(value);return value
 
 class ShareForm(forms.Form):
+    permission=forms.ChoiceField(label='Разрешение',choices=[('view','Просмотр и скачивание'),('versions','Просмотр и добавление версий'),('closed','Закрыть доступ')],required=False,initial='view')
     expected_revision=forms.IntegerField(widget=forms.HiddenInput)
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=User.objects.none())
     enabled=forms.BooleanField(label='Просмотр и скачивание',required=False,initial=True)
@@ -72,6 +73,15 @@ class ShareForm(forms.Form):
         else:qs=qs.filter(is_active=True)
         self.fields['employee'].queryset=qs.order_by('full_name')
         self.fields['employee'].label_from_instance=lambda u:u.full_name+(' (вход заблокирован)' if not u.is_active else '')
+        self.fields['permission'].initial='closed' if self.initial.get('enabled') is False else 'versions' if self.initial.get('can_replace') else 'view'
+    def clean(self):
+        data=super().clean()
+        if 'permission' in self.data:
+            permission=data.get('permission')
+            if not permission:self.add_error('permission','Выберите разрешение.')
+            data['enabled']=permission!='closed'
+            data['can_replace']=permission=='versions'
+        return data
 
 class PersonForm(forms.ModelForm):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
@@ -83,6 +93,7 @@ class AssignmentForm(forms.ModelForm):
     class Meta:
         model=PersonAssignment
         fields=['project_object','start_date','end_date']
+        labels={'project_object':'Объект','start_date':'Начало работы','end_date':'Окончание работы'}
         widgets={key:forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}) for key in ['start_date','end_date']}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['project_object'].queryset=visible_objects(user)

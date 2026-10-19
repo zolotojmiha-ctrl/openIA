@@ -97,11 +97,12 @@ def password_view(request):
 
 @login_required
 def dashboard(request):
-    from projects.access import visible_objects, visible_contracts
-    from documents.access import visible_documents
+    from projects.access import visible_objects, visible_contracts,contract_card
+    from documents.access import visible_documents,unread_documents
     from .personal import favorite_items
     from .models import Reminder, SupportRequest
     context={'object_count':visible_objects(request.user).count(),'contract_count':visible_contracts(request.user).count(),'document_count':visible_documents(request.user).filter(archived=False).count(),
+        'recent_objects':visible_objects(request.user).order_by('name')[:5],'recent_contracts':[contract_card(c,request.user) for c in visible_contracts(request.user).order_by('id')[:5]],'new_documents':unread_documents(request.user).select_related('current_version').order_by('-current_version__created_at')[:5],
         'favorites':favorite_items(request.user),'reminders':Reminder.objects.filter(user=request.user,done=False).filter(document__isnull=True).order_by('date')[:5],
         'support_count':SupportRequest.objects.filter(status='new').count() if request.user.is_leader else 0}
     if request.user.is_leader:

@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'4.0.0-workspace'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'5.0.0-interface'}
     if request.user.is_authenticated:
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents

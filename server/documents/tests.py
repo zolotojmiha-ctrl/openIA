@@ -245,3 +245,34 @@ class DocumentTests(TransactionTestCase):
         self.assertNotContains(self.client.get(reverse('document_upload')),competitor.full_name)
         doc=self.doc(external)
         self.assertEqual(self.client.get(reverse('document_share',args=[doc.pk])).status_code,403)
+
+    def test_simple_share_levels_revoke_without_broadening_permissions(self):
+        doc=self.doc(self.employee)
+        for level,enabled,replace in [('view',True,False),('versions',True,True),('closed',False,False)]:
+            self.client.force_login(self.employee);doc.refresh_from_db()
+            response=self.client.post(reverse('document_share',args=[doc.pk]),{'expected_revision':doc.revision,'employee':self.other.pk,'permission':level})
+            self.assertEqual(response.status_code,302)
+            rule=doc.access_rules.get(user=self.other);self.assertEqual((rule.enabled,rule.can_replace),(enabled,replace))
+            self.assertEqual(visible_documents(self.other).filter(pk=doc.pk).exists(),enabled)
+
+    def test_new_bundle_can_have_primary_without_preexisting_bundle(self):
+        response=self.upload(self.employee,bundle_title='ТЕСТ новый комплект',is_primary='on')
+        self.assertEqual(response.status_code,302)
+        doc=Document.objects.latest('created_at');self.assertTrue(doc.is_primary);self.assertEqual(doc.bundle.title,'ТЕСТ новый комплект')
+
+    def test_single_file_grant_does_not_reveal_bundle_title_in_grouped_list(self):
+        b=Bundle.objects.create(title='СКРЫТОЕ ИМЯ КОМПЛЕКТА',created_by=self.leader,legal_entity=self.company)
+        doc=self.doc(self.leader,bundle=b.pk);self.grant(doc,self.other);self.client.force_login(self.other)
+        response=self.client.get(reverse('documents')+'?mode=all')
+        self.assertContains(response,doc.title);self.assertNotContains(response,b.title)
+
+    def test_upload_context_uses_allowed_parent_and_defaults_deferred_organization(self):
+        person=Person.objects.create(legal_entity=self.company,created_by=self.leader,full_name='ТЕСТ работник')
+        self.client.force_login(self.leader)
+        response=self.client.get(reverse('document_upload')+'?person='+str(person.pk))
+        self.assertEqual(response.context['form'].initial['linked_people'],[person.pk]);self.assertEqual(response.context['form'].initial['section'],'personnel')
+        self.assertTrue(response.context['form'].initial['defer_link']);self.assertEqual(response.context['destination'],person.full_name)
+        AccessGrant.objects.create(user=self.other,permission='document.upload',granted_by=self.leader)
+        self.client.force_login(self.other)
+        response=self.client.get(reverse('document_upload')+'?person='+str(person.pk))
+        self.assertIsNone(response.context['destination']);self.assertNotContains(response,person.full_name)

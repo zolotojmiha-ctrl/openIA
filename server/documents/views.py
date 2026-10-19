@@ -21,6 +21,7 @@ from .forms import UploadForm,VersionForm,ShareForm,LinkForm,PersonForm,Assignme
 from .access import visible_documents,has_permission,can_modify,can_manage,can_manage_bundle,visible_bundles,visible_people,unread_documents,unsorted_documents,can_share
 from .storage import store_file,private_path,verified_file
 from .services import upload_one,make_version,Conflict
+from .presentation import file_groups
 
 
 def listing(user,query):
@@ -51,24 +52,32 @@ def documents(request):
             qs=qs.filter(**{field:value})
     from .models import SECTIONS
     section_cards=[{'code':code,'label':label,'count':qs.filter(section=code).distinct().count()} for code,label in SECTIONS]
-    bundle_cards=[]
-    if not q and not request.GET.get('bundle') and request.GET.get('section'):
-        bundle_cards=list(visible_bundles(request.user).filter(documents__in=qs).distinct().order_by('title'))
-        qs=qs.exclude(bundle__in=bundle_cards)
     params=request.GET.copy();params.pop('page',None)
     page=Paginator(qs.distinct(),25).get_page(request.GET.get('page'))
     unread=set(unread_documents(request.user).filter(pk__in=[d.pk for d in page]).values_list('pk',flat=True))
     from .models import SECTIONS
-    return render(request,'documents/list.html',{'page':page,'q':q,'mode':mode,'section_cards':section_cards,'bundle_cards':bundle_cards,'rows':[{'document':d,'unread':d.pk in unread,'manage':can_manage(request.user,d)} for d in page],'sections':SECTIONS,'objects_filter':visible_objects(request.user),'contracts_filter':[contract_card(c,request.user) for c in visible_contracts(request.user)],'people_filter':visible_people(request.user),'query_without_page':params.urlencode(),'upload_allowed':has_permission(request.user,'document.upload'),'export_allowed':request.user.is_leader or has_permission(request.user,'document.export')})
+    return render(request,'documents/list.html',{'page':page,'q':q,'mode':mode,'section_cards':section_cards,'file_groups':file_groups(request.user,qs.filter(pk__in=[d.pk for d in page]).distinct()),'rows':[{'document':d,'unread':d.pk in unread,'manage':can_manage(request.user,d)} for d in page],'sections':SECTIONS,'objects_filter':visible_objects(request.user),'contracts_filter':[contract_card(c,request.user) for c in visible_contracts(request.user)],'people_filter':visible_people(request.user),'query_without_page':params.urlencode(),'upload_allowed':has_permission(request.user,'document.upload'),'export_allowed':request.user.is_leader or has_permission(request.user,'document.export')})
 
 @login_required
 def upload(request):
     if not has_permission(request.user,'document.upload'):raise PermissionDenied
-    initial={'section':'general'}
+    initial={'section':'general','defer_link':True}
+    destination=None;back_url=None;bundle_shared=False
     for param,field,qs in [('contract','linked_contracts',visible_contracts(request.user)),('object','linked_objects',visible_objects(request.user)),('person','linked_people',visible_people(request.user)),('bundle','bundle',visible_bundles(request.user))]:
         try:pk=UUID(request.GET.get(param,''))
         except ValueError:continue
-        if qs.filter(pk=pk).exists():initial[field]=pk if field=='bundle' else [pk]
+        obj=qs.filter(pk=pk).first()
+        if obj:
+            if field=='bundle' and not can_manage_bundle(request.user,obj):continue
+            initial[field]=pk if field=='bundle' else [pk]
+            from django.urls import reverse
+            if param=='contract':
+                initial['section']='contracts';destination=contract_card(obj,request.user)['title'];back_url=reverse('contract_detail',args=[pk])
+            elif param=='person':initial['section']='personnel';destination=obj.full_name;back_url=reverse('person_detail',args=[pk])
+            elif param=='object':destination=obj.name;back_url=reverse('object_detail',args=[pk])
+            else:
+                destination=obj.title;back_url=reverse('bundle_detail',args=[pk]);bundle_shared=obj.access_rules.filter(enabled=True).exists()
+
     form=UploadForm(request.POST or None,request.FILES or None,user=request.user,initial=initial)
     if request.method=='POST':
         if form.is_valid():
@@ -85,7 +94,7 @@ def upload(request):
                 messages.success(request,'Документ загружен. Утверждение не требуется.')
                 return redirect('document_detail',pk=doc.pk)
         if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'errors':form.errors.get_json_data()},status=409 if form.non_field_errors() else 400)
-    return render(request,'documents/upload.html',{'form':form})
+    return render(request,'documents/upload.html',{'form':form,'destination':destination,'upload_back':back_url,'bundle_shared':bundle_shared})
 
 
 def doc_url(doc):
@@ -99,10 +108,15 @@ def detail(request,pk):
         DocumentRead.objects.update_or_create(document=doc,user=request.user,defaults={'version_id':doc.current_version_id})
         Notice.objects.filter(user=request.user,document=doc,read=False).update(read=True)
     contracts=[contract_card(c,request.user) for c in visible_contracts(request.user).filter(documents=doc)]
+    text=None
+    if doc.current_version_id and doc.current_version.content_type=='text/plain':
+        try:
+            with verified_file(doc.current_version) as stream:text=stream.read(256*1024).decode('utf-8',errors='replace')
+        except OSError:return HttpResponse('Файл не прошёл проверку сохранности.',status=503)
     versions=[{'version':v,'download':True} for v in doc.versions.select_related('uploaded_by')]
     direct=doc.access_rules.select_related('user') if can_manage(request.user,doc) else []
     inherited=doc.bundle.access_rules.select_related('user').filter(enabled=True) if doc.bundle_id and can_manage(request.user,doc) else []
-    return render(request,'documents/detail.html',{'document':doc,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
+    return render(request,'documents/detail.html',{'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
 
 @login_required
 def replace(request,pk):
@@ -361,13 +375,13 @@ def approve(request,pk,version):return HttpResponse('Обязательное у
 def people(request):
     qs=visible_people(request.user).filter(archived=request.GET.get('archive')=='1').order_by('full_name')
     q=request.GET.get('q','').strip()[:150]
-    if q:qs=qs.filter(full_name__icontains=q)
+    if q:qs=qs.filter(Q(full_name__icontains=q)|Q(position__icontains=q))
     return render(request,'documents/people.html',{'people':qs,'can_manage':has_permission(request.user,'personnel.manage'),'q':q})
 
 @login_required
 def person_detail(request,pk):
     person=get_object_or_404(visible_people(request.user),pk=pk)
-    return render(request,'documents/person.html',{'person':person,'assignments':person.assignments.filter(project_object__in=visible_objects(request.user)).select_related('project_object'),'documents':visible_documents(request.user).filter(personnel_linked=person),'can_manage':has_permission(request.user,'personnel.manage')})
+    return render(request,'documents/person.html',{'person':person,'assignments':person.assignments.filter(project_object__in=visible_objects(request.user)).select_related('project_object'),'documents':visible_documents(request.user).filter(personnel_linked=person),'file_groups':file_groups(request.user,visible_documents(request.user).filter(personnel_linked=person)),'can_manage':has_permission(request.user,'personnel.manage')})
 
 @login_required
 def person_edit(request,pk=None):

@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from .models import Preference,Reminder,Favorite,SupportRequest,UserSession,User
+from .models import Preference,Reminder,Favorite,SupportRequest,UserSession,User,PERMISSIONS
 from .views import audit
 from documents.access import visible_documents,visible_bundles,has_permission
 from projects.access import visible_objects,visible_contracts
@@ -24,7 +24,7 @@ def profile(request):
     if request.method=='POST' and form.is_valid():form.save();return redirect('profile')
     keys=Session.objects.filter(expire_date__gt=timezone.now()).values('session_key')
     sessions=request.user.active_sessions.filter(session_key__in=keys).order_by('-last_seen')
-    return render(request,'accounts/profile.html',{'form':form,'sessions':sessions,'current_key':request.session.session_key,'permissions':request.user.grants.all()})
+    return render(request,'accounts/profile.html',{'form':form,'sessions':sessions,'current_key':request.session.session_key,'permissions':request.user.grants.filter(permission__in=PERMISSIONS)})
 
 @login_required
 @require_POST

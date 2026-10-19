@@ -14,6 +14,7 @@ class DocumentsBrowserAcceptance(StaticLiveServerTestCase):
         password=secrets.token_urlsafe(24)
         leader=User.objects.create_user('+70000000001',password,full_name='ТЕСТ Руководитель',leader_slot=1,must_change_password=False)
         employee=User.objects.create_user('+70000000003',password,full_name='ТЕСТ Мастер',role='foreman',must_change_password=False)
+        other=User.objects.create_user('+70000000004',password,full_name='ТЕСТ Эколог',role='ecology',must_change_password=False)
         obj=ProjectObject.objects.create(legal_entity=company,name='Учебный объект')
         ObjectAccess.objects.create(project_object=obj,user=employee,granted_by=leader)
         for permission in ['read','upload','replace','download']:
