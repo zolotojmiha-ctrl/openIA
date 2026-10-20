@@ -4,7 +4,25 @@ from accounts import personal
 from projects import views as projects
 from documents import views as documents
 from finance import views as finance
+from repairs import views as repairs
+from repairs import import_views as repair_import
 urlpatterns=[
+ path('cabinet/repairs/',repairs.jobs,name='repairs'),
+ path('cabinet/repairs/sections/new/',repairs.section_new,name='repair_section_new'),
+ path('cabinet/repairs/sections/<uuid:section_id>/new/',repairs.job_edit,name='repair_new_section_job'),
+ path('cabinet/repairs/new/',repairs.job_edit,name='repair_new'),
+ path('cabinet/repairs/import/',repair_import.upload,name='repair_import'),
+ path('cabinet/repairs/import/<uuid:pk>/',repair_import.review,name='repair_import_review'),
+ path('cabinet/repairs/import/<uuid:pk>/source/',repair_import.source,name='repair_import_source'),
+ path('cabinet/repairs/couplings/<uuid:pk>/new/',repairs.coupling_new,name='repair_coupling_new'),
+ path('cabinet/repairs/sections/<uuid:pk>/assignees/',repairs.section_assignees,name='repair_assignees'),
+ path('cabinet/repairs/sections/<uuid:pk>/assign/',repairs.assign_many,name='repair_assign_many'),
+ path('cabinet/repairs/files/<uuid:pk>/',repairs.attachment,name='repair_attachment'),
+ path('cabinet/repairs/<uuid:pk>/',repairs.detail,name='repair_detail'),
+ path('cabinet/repairs/<uuid:pk>/edit/',repairs.job_edit,name='repair_edit'),
+ path('cabinet/repairs/<uuid:pk>/report/<str:action>/',repairs.report,name='repair_report'),
+ path('cabinet/repairs/<uuid:pk>/confirm/',repairs.confirm,name='repair_confirm'),
+ path('cabinet/repairs/<uuid:pk>/accept/',repairs.accept,name='repair_accept'),
  path('',views.public_site,name='public'),
  path('portal/',views.prototype,name='prototype'),
  path('portal/<str:filename>',views.prototype),

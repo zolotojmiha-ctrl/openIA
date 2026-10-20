@@ -39,6 +39,22 @@ if(!document.body.dataset.hintsOff){
  'id_vat_description':'Условия НДС вводятся по конкретному договору. Отсутствующая ставка не заменяется предположением.'};
  if(location.pathname.startsWith('/cabinet/users/'))descriptions.id_full_name='Имя пользователя, которому предоставляется вход в кабинет.';
  if(location.pathname.startsWith('/cabinet/reminders/'))descriptions.id_date='Дата вашего личного напоминания. Другим пользователям оно не назначается.';
+ if(location.pathname.startsWith('/cabinet/repairs/'))Object.assign(descriptions,{
+  id_section:'Участок трубопровода в пределах объекта. Определяет место работ; доступ мастеру назначается отдельно.',
+  id_kilometre:'Километр из ведомости. Сохраняем до шести знаков после запятой.',
+  id_defect_numbers:'Несколько номеров через точку с запятой относятся к одной общей ремонтной конструкции.',
+  id_pipe_section:'Номер трубы между двумя кольцевыми стыками из исходной ведомости.',
+  id_length_m:'Общая длина конструкции в метрах. Размеры отдельных муфт указываются отдельно.',
+  id_composition:'Например, 2+2+1,5 — отдельные муфты в составе общей конструкции.',
+  id_performed_date:'Фактическая дата этого события. Она не заменяет плановую дату или приёмку заказчиком.',
+  id_assigned_to:'Мастер увидит эту работу, если ему также назначен доступ к объекту.',
+  id_materials:'Наличие необходимых материалов учитывается отдельно от выполнения ремонта.',
+  id_problem:'Причина, которая мешает работе. Фотографию и пояснение можно добавить ниже.',
+  id_basis:'Номер акта или другое основание приёмки заказчиком. Финансовые суммы автоматически не меняются.',
+  id_date:'Дата приёмки заказчиком по подтверждающему документу.',
+  id_serial:'Заводской номер с маркировки или паспорта. Ведущие нули и знаки сохраняются.',
+  id_length_mm:'Длина конкретной муфты в миллиметрах.',
+  id_warehouse:'Место хранения или получения конкретной муфты.'});
  if(!location.pathname.includes('/cost'))descriptions.id_scope='Направление или договор, к которому относится финансовая запись.';
  for(const [id,description] of Object.entries(descriptions)){const field=document.getElementById(id);const label=document.querySelector('label[for="'+id+'"]');if(field&&label)label.dataset.hint=description;}
  const permissions={

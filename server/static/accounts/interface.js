@@ -19,3 +19,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelec
 document.addEventListener('click',e=>{for(const menu of document.querySelectorAll('.action-menu[open],.inline-menu[open]'))if(!menu.contains(e.target))menu.open=false});
 // Reveal invalid fields inside optional details after server-side validation.
 for(const list of document.querySelectorAll('.errorlist')){let details=list.closest('details');while(details){details.open=true;details=details.parentElement.closest('details')}}
+
+// Clear private field drafts on an explicit logout, from every cabinet page.
+for(const form of document.querySelectorAll('form[action$="/logout/"]'))form.addEventListener('submit',async event=>{
+ if(!window.indexedDB)return;event.preventDefault();window.dispatchEvent(new Event('armada:logout'));
+ try{await new Promise((resolve,reject)=>{const req=indexedDB.open('armada-field-drafts',1);req.onupgradeneeded=()=>req.result.createObjectStore('drafts',{keyPath:'key'});req.onerror=()=>reject(req.error);req.onsuccess=()=>{const db=req.result;if(!db.objectStoreNames.contains('drafts')){db.close();resolve();return;}const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').clear();tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>{db.close();reject(tx.error);};};});}catch{}
+ form.submit();
+});
