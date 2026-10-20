@@ -330,7 +330,7 @@ class RepairsTests(TestCase):
     def test_standard_excel_groups_and_rejects_different_km_or_conflicting_sizes(self):
         rows=self.standard_rows();parsed=parse_work(self.standard_file(rows))
         self.assertEqual(len(parsed['jobs']),2);self.assertEqual(len(parsed['jobs'][0]['defects']),2)
-        self.assertEqual(parsed['jobs'][0]['wall_mm'],'10.25')
+        self.assertEqual(Decimal(parsed['jobs'][0]['wall_mm']),Decimal('10.25'))
         for column,value in [(1,'202'),(4,'П2'),(5,'4'),(6,'8'),(7,self.other.phone)]:
             changed=[list(row) for row in rows];changed[1][column]=value
             with self.assertRaisesMessage(Exception,'различаются'):parse_work(self.standard_file(changed))
@@ -425,3 +425,23 @@ class RepairsTests(TestCase):
             self.assertEqual(response.status_code,200)
             book=read_book(SimpleUploadedFile('scoped.xlsx',response.content))
             self.assertTrue(all(r==1 for r,c in book['cells']))
+
+    def test_standard_excel_accepts_serialization_noise_without_losing_real_precision(self):
+        rows=self.standard_rows()
+        for row in rows[:2]:
+            row[1]='101.12345599999999';row[5]='2.9999999999999996';row[6]='10.249999999999998'
+        parsed=parse_work(self.standard_file(rows))
+        first=parsed['jobs'][0]
+        self.assertEqual(Decimal(first['defects'][0]['km']),Decimal('101.123456'))
+        self.assertEqual(Decimal(first['length_m']),Decimal('3'))
+        self.assertEqual(Decimal(first['wall_mm']),Decimal('10.25'))
+        for column,value in [(1,'101.1234567'),(5,'3.0001'),(6,'10.251')]:
+            changed=[list(r) for r in rows];changed[0][column]=value
+            with self.assertRaises(Exception):parse_work(self.standard_file(changed))
+    def test_standard_excel_reports_missing_code_and_bad_method_separately(self):
+        rows=self.standard_rows();rows[0][0]=''
+        with self.assertRaisesMessage(Exception,'не заполнен «Код ремонта»'):parse_work(self.standard_file(rows))
+        rows=self.standard_rows();rows[0][4]='П99'
+        with self.assertRaisesMessage(Exception,'неизвестный тип конструкции'):parse_work(self.standard_file(rows))
+        rows=self.standard_rows();rows[0][1]='не число'
+        with self.assertRaisesMessage(Exception,'некорректный километр'):parse_work(self.standard_file(rows))

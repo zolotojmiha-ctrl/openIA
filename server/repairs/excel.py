@@ -32,6 +32,18 @@ def workbook(rows):
         z.writestr('xl/worksheets/sheet1.xml',ET.tostring(sheet,encoding='utf-8',xml_declaration=True))
     return stream.getvalue()
 
+def fixed_decimal(value,places,upper,allow_zero=False):
+    """Discard binary Excel serialization noise, never meaningful extra digits."""
+    number=numeric(value)
+    if number is None or not (0<=number<upper if allow_zero else 0<number<upper):
+        return None
+    rounded=number.quantize(Decimal(1).scaleb(-places))
+    if abs(number-rounded)>Decimal('0.000000001'):
+        return None
+    if not (0<=rounded<upper if allow_zero else 0<rounded<upper):return None
+    return rounded
+
+
 def parse_standard(book):
     cells=book['cells'];header={str(v).strip():c for (r,c),v in cells.items() if r==1}
     if not set(HEADERS[:8]).issubset(header):
@@ -43,19 +55,24 @@ def parse_standard(book):
     for row in sorted({r for r,c in cells if r>1}):
         if not any(value(row,h) for h in HEADERS[:8]):continue
         code=value(row,'Код ремонта');number=value(row,'№ дефекта');pipe=value(row,'№ секции')
-        km=numeric(value(row,'Км'));m=method(value(row,'Тип конструкции'))
+        km=fixed_decimal(value(row,'Км'),6,Decimal('1000000'),allow_zero=True);m=method(value(row,'Тип конструкции'))
         if value(row,'Тип конструкции').lower() in ('другой способ','other'):m='other'
-        if not code or len(code)>80 or not number or len(number)>80 or len(pipe)>80:
-            raise ValidationError(f'Строка {row}: укажите код ремонта и номер дефекта длиной до 80 символов; номер секции — до 80 символов.')
-        if km is None or not 0<=km<1000000 or km.as_tuple().exponent < -6 or not m:
-            raise ValidationError(f'Строка {row}: проверьте километр (до 6 знаков после запятой) и тип конструкции: П1–П5У, шлифовка или вырезка.')
+        if not code:raise ValidationError(f'Строка {row}: не заполнен «Код ремонта». Для отдельных ремонтов укажите разные номера, например 1, 2, 3.')
+        if len(code)>80:raise ValidationError(f'Строка {row}: код ремонта должен быть не длиннее 80 символов.')
+        if not number:raise ValidationError(f'Строка {row}: не заполнен «№ дефекта».')
+        if len(number)>80:raise ValidationError(f'Строка {row}: номер дефекта должен быть не длиннее 80 символов.')
+        if len(pipe)>80:raise ValidationError(f'Строка {row}: номер секции должен быть не длиннее 80 символов.')
+        if km is None:
+            raise ValidationError(f'Строка {row}: некорректный километр. Укажите число от 0 до 999999.999999, например 153.569. Допустима точность до 6 знаков после запятой.')
+        if not m:
+            raise ValidationError(f'Строка {row}: неизвестный тип конструкции «{value(row,"Тип конструкции")[:80]}». Допустимы П1, П2, П3, П4, П5У, шлифовка, вырезка или другой способ.')
         identity=(km,number)
         if identity in seen:raise ValidationError(f'Строка {row}: дефект на этом километре повторяется. Один дефект не может входить в две группы.')
         seen.add(identity)
         specs=[]
         for name,places,upper in [('Длина, м',3,Decimal('1000000')),('Толщина стенки, мм',2,Decimal('10000'))]:
-            text=value(row,name);v=numeric(text) if text else None
-            if text and (v is None or not 0<v<upper or v.as_tuple().exponent < -places):
+            text=value(row,name);v=fixed_decimal(text,places,upper) if text else None
+            if text and v is None:
                 raise ValidationError(f'Строка {row}: некорректное поле «{name}».')
             specs.append(str(v) if v is not None else '')
         if m.startswith('p') and not specs[0]:raise ValidationError(f'Строка {row}: укажите длину конструкции.')
