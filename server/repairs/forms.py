@@ -8,7 +8,7 @@ from accounts.models import User
 from projects.access import visible_objects
 from documents.storage import validate_upload
 from .access import visible_sections, selectable_couplings
-from .models import Section, Job, Coupling, METHODS, PROBLEMS
+from .models import Section, Job, Defect, Coupling, METHODS, PROBLEMS
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 
@@ -43,7 +43,7 @@ class JobForm(forms.ModelForm):
         self.fields['wall_mm'].min_value=Decimal('.01')
         if self.instance.pk and self.instance.section_id:
             self.initial['section']=self.instance.section_id
-            defects=list(self.instance.defects.order_by('number'))
+            defects=sorted(self.instance.active_defects,key=lambda d:d.number)
             self.initial.update(expected_version=self.instance.version,defect_numbers='; '.join(d.number for d in defects),kilometre=defects[0].kilometre if defects else None,pipe_section=defects[0].pipe_section if defects else '')
             self.fields['section'].disabled=True
     def clean_wall_mm(self):
@@ -58,6 +58,9 @@ class JobForm(forms.ModelForm):
     def clean(self):
         c=super().clean()
         if c.get('method') in ['p1','p2','p3','p4','p5u'] and not c.get('length_m'):self.add_error('length_m','Укажите необходимую длину конструкции.')
+        if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
+            if Defect.objects.filter(section=c['section'],kilometre=c['kilometre'],number__in=c['defect_numbers'],archived_at__isnull=False).exists():
+                self.add_error('defect_numbers','Этот дефект удалён из списка. Восстановите его в разделе «Удалённые», чтобы сохранить прежнюю историю.')
         return c
 
 class CouplingForm(forms.ModelForm):
@@ -135,7 +138,7 @@ class ReportForm(forms.Form):
         if self.simple and c.get('coordinates'):
             c['latitude'],c['longitude']=c['coordinates']
         if self.simple and self.action=='result':
-            if len({d.kilometre for d in self.job.defects.all()})>1:
+            if len({d.kilometre for d in self.job.active_defects})>1:
                 self.add_error(None,'В группе дефекты на разных километрах. Техник должен разделить задание на отдельные ремонты с отдельными координатами.')
             c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(Coupling.objects.filter(installation__job=self.job)))
         if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other') and not c.get('note','').strip():

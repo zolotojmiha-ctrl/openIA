@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Min, F
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -22,17 +22,19 @@ from .services import report_work, confirm_work
 
 @login_required
 def jobs(request):
-    qs=visible_jobs(request.user)
+    archived=request.GET.get('archive')=='1' and can_prepare(request.user)
+    qs=visible_jobs(request.user,include_archived=archived)
+    if archived:qs=qs.filter(defects__archived_at__isnull=False).distinct()
     sid=request.GET.get('section','');q=request.GET.get('q','').strip()[:150];state=request.GET.get('state','');year=request.GET.get('year','')
     try:
         if sid:qs=qs.filter(section_id=uuid.UUID(sid))
         if request.GET.get('object'):qs=qs.filter(section__project_object_id=uuid.UUID(request.GET['object']))
     except ValueError:qs=qs.none();sid=''
     if q:
-        search=Q(defects__number__icontains=q)|Q(defects__pipe_section__icontains=q)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
+        search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
         try:
             km=Decimal(q.replace(',','.'))
-            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km)
+            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km,defects__archived_at__isnull=not archived)
         except InvalidOperation:pass
         qs=qs.filter(search).distinct()
     master=request.GET.get('master','')
@@ -44,7 +46,19 @@ def jobs(request):
     if state=='problems':qs=qs.exclude(problem='')
     elif state in dict(Job._meta.get_field('state').choices):qs=qs.filter(state=state)
     elif state=='materials':qs=qs.filter(materials='missing')
-    return render(request,'repairs/list.html',{'page':Paginator(qs.order_by('planned_date','created_at','pk'),25).get_page(request.GET.get('page')),'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
+    ordered=qs.annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=not archived))).order_by('first_km','created_at','pk')
+    page=Paginator(ordered,25).get_page(request.GET.get('page'))
+    offset=max(0,page.start_index()-1)
+    previous_ids=list(ordered.values_list('pk',flat=True)[:offset]) if offset else []
+    number=Defect.objects.filter(jobs__pk__in=previous_ids,archived_at__isnull=not archived).count()
+    groups=[]
+    for job in page:
+        defects=job.archived_defects if archived else job.active_defects
+        rows=[]
+        for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
+            number+=1;rows.append({'number':number,'defect':d})
+        if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows)})
+    return render(request,'repairs/list.html',{'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
 @prepare_required
 def section_new(request):
@@ -63,6 +77,7 @@ def job_edit(request,pk=None,section_id=None):
         with transaction.atomic():
             locked=Job.objects.select_for_update().get(pk=job.pk) if job else None
             if locked and locked.version!=form.cleaned_data['expected_version']:form.add_error(None,'Работу уже изменили. Обновите страницу.')
+            elif locked and locked.defects.filter(archived_at__isnull=False).exists():form.add_error(None,'В работе есть удалённые из списка дефекты. Сначала восстановите их; история и привязки сохраняются.')
             elif locked and locked.state=='confirmed':form.add_error(None,'Подтверждённая история сохранена. Для изменения результата используйте «Внести исправление».')
             else:
                 saved=form.save(commit=False)
@@ -85,7 +100,7 @@ def job_edit(request,pk=None,section_id=None):
 
 @login_required
 def detail(request,pk):
-    job=get_object_or_404(visible_jobs(request.user),pk=pk)
+    job=get_object_or_404(visible_jobs(request.user,include_archived=can_prepare(request.user)),pk=pk)
     reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
     result=reports.filter(kind__in=['partial','complete','correction']).first()
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
@@ -178,11 +193,11 @@ class BatchAssignment(forms.Form):
     def __init__(self,*args,section,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['master'].queryset=assignees(section);self.fields['master'].label_from_instance=lambda u:u.full_name
-        base=Job.objects.filter(section=section,assigned_to__isnull=True).exclude(state='confirmed')
+        base=Job.objects.filter(section=section,assigned_to__isnull=True,pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk')).exclude(state='confirmed')
         ids=list(base.order_by('planned_date','pk').values_list('pk',flat=True)[:300])
         qs=base.filter(pk__in=ids).prefetch_related('defects').order_by('planned_date','pk')
         self.fields['jobs'].queryset=qs
-        self.fields['jobs'].label_from_instance=lambda j:', '.join(str(d) for d in j.defects.all())+' · '+j.get_method_display()+' · '+(j.assigned_to.full_name if j.assigned_to_id else 'мастер не назначен')
+        self.fields['jobs'].label_from_instance=lambda j:', '.join(str(d) for d in j.active_defects)+' · '+j.get_method_display()+' · '+(j.assigned_to.full_name if j.assigned_to_id else 'мастер не назначен')
         self.initial['snapshot']=signing.dumps({str(j.pk):j.version for j in qs},salt='repair-assignment')
     def clean_snapshot(self):
         try:return signing.loads(self.cleaned_data['snapshot'],salt='repair-assignment',max_age=8*60*60)
@@ -210,3 +225,33 @@ def assign_many(request,pk):
                 audit(request.user,'repair_prepared',kind='assignment',section=str(section.pk),previous=before,master=str(form.cleaned_data['master'].pk))
                 messages.success(request,f'Мастер назначен на {len(selected)} работ.');return redirect('repairs')
     return render(request,'repairs/assign.html',{'form':form,'section':section})
+
+
+@prepare_required
+def defect_visibility(request,pk,restore=False):
+    """Reversible removal of one defect, preserving every report and attachment."""
+    defect=get_object_or_404(Defect.objects.filter(section__in=visible_sections(request.user)),pk=pk)
+    error='';status=200
+    def snapshot(item,jobs):
+        return {'defect':str(item.pk),'archived':str(item.archived_at or ''),'jobs':{str(j.pk):j.version for j in jobs}}
+    jobs=list(Job.objects.filter(defects=defect).order_by('pk'))
+    if request.method=='POST':
+        try:expected=signing.loads(request.POST.get('snapshot',''),salt='repair-defect-visibility',max_age=8*60*60)
+        except signing.BadSignature:expected=None
+        with transaction.atomic():
+            jobs=list(Job.objects.select_for_update().filter(defects=defect).order_by('pk'))
+            defect=Defect.objects.select_for_update().get(pk=defect.pk)
+            if expected!=snapshot(defect,jobs):
+                error='Запись изменилась. Проверьте данные и подтвердите действие заново.';status=409
+            elif (defect.archived_at is None)==restore:
+                error='Действие уже выполнено. Вернитесь к списку.';status=409
+            else:
+                defect.archived_at=None if restore else timezone.now()
+                defect.archived_by=None if restore else request.user
+                defect.save(update_fields=['archived_at','archived_by'])
+                Job.objects.filter(pk__in=[j.pk for j in jobs]).update(version=F('version')+1)
+                audit(request.user,'repair_defect_restored' if restore else 'repair_defect_archived',entity_id=str(defect.pk),jobs=[str(j.pk) for j in jobs])
+                messages.success(request,'Дефект восстановлен.' if restore else 'Дефект удалён из списка. История и фотографии сохранены; запись можно восстановить.')
+                return redirect('repairs')
+    token=signing.dumps(snapshot(defect,jobs),salt='repair-defect-visibility')
+    return render(request,'repairs/delete.html',{'defect':defect,'jobs':jobs,'restore':restore,'snapshot':token,'error':error},status=status)

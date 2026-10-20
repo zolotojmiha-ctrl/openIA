@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q,Prefetch
 from django.http import HttpResponse
 from django.core.exceptions import ValidationError
-from .access import visible_jobs,prepare_required
+from .access import visible_jobs,prepare_required,can_prepare
 from .models import Report
 from .excel import workbook
 from accounts.views import audit
@@ -23,7 +23,9 @@ def template(request):
 
 @login_required
 def export(request):
-    qs=visible_jobs(request.user)
+    archived=request.GET.get('archive')=='1' and can_prepare(request.user)
+    qs=visible_jobs(request.user,include_archived=archived)
+    if archived:qs=qs.filter(defects__archived_at__isnull=False).distinct()
     if request.GET.get('section'):
         import uuid
         try:qs=qs.filter(section_id=uuid.UUID(request.GET['section']))
@@ -34,10 +36,10 @@ def export(request):
         except (ValueError,TypeError):return HttpResponse('Некорректный объект.',status=400)
     q=request.GET.get('q','').strip()[:150]
     if q:
-        search=Q(defects__number__icontains=q)|Q(defects__pipe_section__icontains=q)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
+        search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
         try:
             km=Decimal(q.replace(',','.'))
-            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km)
+            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km,defects__archived_at__isnull=not archived)
         except InvalidOperation:pass
         qs=qs.filter(search).distinct()
     year=request.GET.get('year','')
@@ -57,7 +59,7 @@ def export(request):
     for job in selected:
         result=next((r for r in job.export_reports if r.kind in ('complete','partial','correction')),None)
         coordinates=f'{result.latitude}, {result.longitude}' if result and result.latitude is not None and result.longitude is not None else ''
-        for d in job.defects.all():
+        for d in (job.archived_defects if archived else job.active_defects):
             rows.append([job.repair_label,d.km,d.pipe_section,d.number,job.get_method_display(),job.length_m,job.wall_mm,job.assigned_to.phone if job.assigned_to_id else '',str(job.section_id),job.section.project_object.name,job.section.name,job.get_state_display(),coordinates,job.get_problem_display() if job.problem else '',job.problem_note])
     audit(request.user,'repair_exported',jobs=len(selected),defects=len(rows))
-    return download(rows,'openIA-defects.xlsx')
+    return download(rows,'openIA-archived-defects.xlsx' if archived else 'openIA-defects.xlsx')

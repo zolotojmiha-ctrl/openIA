@@ -42,7 +42,7 @@ def report_work(user,job_id,action,data):
                 method=data.get('method',''),length_m=data.get('length_m'),composition=data.get('composition',''),note=data.get('note',''),problem=data.get('problem',''),
                 latitude=data.get('latitude'),longitude=data.get('longitude'),outcome=data.get('outcome',''),
                 coupling_snapshot=[{'id':str(c.pk),'serial':c.serial,'method':c.get_method_display(),'length_mm':c.length_mm,'warehouse':c.warehouse} for c in couplings],
-                context={'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.defects.all()],'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
+                context={'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.active_defects],'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
             for datafile in data.get('files',[]):
                 key=store_file(datafile);stored.append(key)
                 Attachment.objects.create(report=report,storage_key=key,**{k:datafile[k] for k in ['name','content_type','size','sha256']})

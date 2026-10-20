@@ -22,8 +22,11 @@ from .models import Job, Section, Coupling
 def visible_sections(user):
     return Section.objects.filter(project_object__in=visible_objects(user))
 
-def visible_jobs(user):
+def visible_jobs(user,include_archived=False):
     qs=Job.objects.filter(section__in=visible_sections(user))
+    if not include_archived:
+        # Keep outer queries DISTINCT-free: PostgreSQL must be able to lock jobs.
+        qs=qs.filter(pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk'))
     if not can_prepare(user):qs=qs.filter(assigned_to=user)
     return qs.select_related('section','section__project_object','assigned_to').prefetch_related('defects')
 

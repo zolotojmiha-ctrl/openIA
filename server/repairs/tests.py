@@ -445,3 +445,73 @@ class RepairsTests(TestCase):
         with self.assertRaisesMessage(Exception,'неизвестный тип конструкции'):parse_work(self.standard_file(rows))
         rows=self.standard_rows();rows[0][1]='не число'
         with self.assertRaisesMessage(Exception,'некорректный километр'):parse_work(self.standard_file(rows))
+    def visibility_token(self,defect=None,restore=False):
+        route='repair_defect_restore' if restore else 'repair_defect_delete'
+        response=self.client.get(reverse(route,args=[(defect or self.d1).pk]))
+        self.assertEqual(response.status_code,200)
+        return response.context['snapshot']
+    def test_delete_defect_is_reversible_and_preserves_reports_photos_and_group(self):
+        self.assertEqual(self.send('repaired',self.simple_payload(coordinates='56, 73')).status_code,302)
+        report=self.job.reports.get();old_context=report.context
+        self.client.force_login(self.leader)
+        token=self.visibility_token()
+        self.assertEqual(self.client.post(reverse('repair_defect_delete',args=[self.d1.pk]),{'snapshot':token}).status_code,302)
+        self.d1.refresh_from_db();self.assertIsNotNone(self.d1.archived_at)
+        self.assertEqual(self.job.defects.count(),2);self.assertEqual(self.job.reports.count(),1)
+        report.refresh_from_db();self.assertEqual(report.context,old_context)
+        response=self.client.get(reverse('repairs'));self.assertNotContains(response,self.d1.number);self.assertContains(response,self.d2.number)
+        self.assertContains(self.client.get(reverse('repairs'),{'archive':'1'}),self.d1.number)
+        from .importer import read_book
+        exported=self.client.get(reverse('repair_excel_export'))
+        book=read_book(SimpleUploadedFile('export.xlsx',exported.content))
+        values=list(book['cells'].values());self.assertNotIn(self.d1.number,values);self.assertIn(self.d2.number,values)
+        token=self.visibility_token(restore=True)
+        self.assertEqual(self.client.post(reverse('repair_defect_restore',args=[self.d1.pk]),{'snapshot':token}).status_code,302)
+        self.d1.refresh_from_db();self.assertIsNone(self.d1.archived_at)
+        self.assertContains(self.client.get(reverse('repairs')),self.d1.number)
+    def test_delete_requires_preparation_permission_object_access_and_confirmation(self):
+        url=reverse('repair_defect_delete',args=[self.d1.pk])
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.client.force_login(self.leader)
+        self.visibility_token();self.d1.refresh_from_db();self.assertIsNone(self.d1.archived_at)
+        self.assertEqual(self.client.post(url,{}).status_code,409)
+        from accounts.models import AccessGrant
+        AccessGrant.objects.create(user=self.other,permission='repairs.prepare',granted_by=self.leader)
+        self.client.force_login(self.other);self.assertEqual(self.client.get(url).status_code,404)
+        ObjectAccess.objects.create(user=self.other,project_object=self.obj,granted_by=self.leader)
+        token=self.visibility_token();self.assertEqual(self.client.post(url,{'snapshot':token}).status_code,302)
+    def test_deleting_last_defect_hides_job_and_invalidates_old_master_draft(self):
+        stale=self.simple_payload(coordinates='56, 73')
+        self.client.force_login(self.leader)
+        token=self.visibility_token()
+        self.client.post(reverse('repair_defect_delete',args=[self.d1.pk]),{'snapshot':token})
+        self.client.force_login(self.worker)
+        self.assertEqual(self.send('repaired',stale).status_code,409)
+        self.client.force_login(self.leader);token=self.visibility_token(self.d2)
+        self.client.post(reverse('repair_defect_delete',args=[self.d2.pk]),{'snapshot':token})
+        self.assertEqual(self.client.get(reverse('repairs')).context['page'].paginator.count,1) # unrelated visible job
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('repair_detail',args=[self.job.pk])).status_code,404)
+        self.assertEqual(self.send('repaired',stale).status_code,404)
+        self.assertEqual(self.job.reports.count(),0)
+    def test_stale_delete_confirmation_does_not_hide_changed_work(self):
+        self.client.force_login(self.leader);token=self.visibility_token()
+        self.job.version+=1;self.job.save()
+        response=self.client.post(reverse('repair_defect_delete',args=[self.d1.pk]),{'snapshot':token})
+        self.assertEqual(response.status_code,409);self.d1.refresh_from_db();self.assertIsNone(self.d1.archived_at)
+    def test_register_is_one_compact_table_with_defects_sorted_by_kilometre(self):
+        response=self.client.get(reverse('repairs'))
+        groups=response.context['groups'];self.assertEqual(len(groups),1)
+        self.assertEqual([row['number'] for row in groups[0]['rows']],[1,2])
+        html=response.content.decode()
+        self.assertLess(html.index('>№<'),html.index('>Км<'))
+        self.assertLess(html.index('>№ дефекта<'),html.index('>№ секции<'))
+        self.assertNotIn('class="repair-card"',html)
+
+    def test_manual_creation_cannot_silently_reuse_removed_defect(self):
+        self.d1.archived_at=timezone.now();self.d1.save()
+        self.client.force_login(self.leader)
+        before=Job.objects.count()
+        response=self.client.post(reverse('repair_new'),{'section':self.section.pk,'kilometre':str(self.d1.kilometre),'defect_numbers':self.d1.number,'method':'p1','length_m':'3','materials':'unknown','expected_version':0})
+        self.assertContains(response,'Восстановите его')
+        self.assertEqual(Job.objects.count(),before)

@@ -47,6 +47,8 @@ class ReviewForm(forms.Form):
             if c.get(f'row_{index}')=='new' and item.get('assigned_to') and item['assigned_to'] not in eligible:
                 self.add_error(None,'Доступ выбранного мастера изменился. Загрузите ведомость заново после проверки доступа.')
             selected=c.get(f'row_{index}')
+            if selected=='new' and any(Defect.objects.filter(section=self.batch.section,kilometre=Decimal(d['km']),number=d['number'],archived_at__isnull=False).exists() for d in item['defects']):
+                self.add_error(f'row_{index}','Этот дефект удалён из списка. Сначала восстановите его в разделе «Удалённые».')
             if self.batch.payload.get('format')=='openia-v1' and selected=='new':
                 overlap=any(Job.objects.filter(section=self.batch.section,defects__kilometre=Decimal(d['km']),defects__number=d['number']).exists() for d in item['defects'])
                 if overlap:

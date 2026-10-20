@@ -25,6 +25,8 @@ class Defect(models.Model):
     kilometre=models.DecimalField('Километр',max_digits=12,decimal_places=6)
     number=models.CharField('Номер дефекта',max_length=80)
     pipe_section=models.CharField('Номер секции трубы',max_length=80,blank=True)
+    archived_at=models.DateTimeField(null=True,blank=True)
+    archived_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     description=models.TextField('Описание',max_length=3000,blank=True)
     latitude=models.DecimalField('Широта',max_digits=9,decimal_places=6,null=True,blank=True)
     longitude=models.DecimalField('Долгота',max_digits=9,decimal_places=6,null=True,blank=True)
@@ -59,6 +61,10 @@ class Job(models.Model):
     source=models.JSONField(default=dict,blank=True)
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(length_m__isnull=True)|models.Q(length_m__gt=0),name='repair_length_positive')]
+    @property
+    def active_defects(self):return [d for d in self.defects.all() if d.archived_at is None]
+    @property
+    def archived_defects(self):return [d for d in self.defects.all() if d.archived_at is not None]
     @property
     def repair_label(self):return self.source.get('repair_code') or str(self.pk)
     def __str__(self):return f'{self.section.name} · {self.get_method_display()}'
