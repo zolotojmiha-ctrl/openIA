@@ -8,7 +8,7 @@ from django.shortcuts import render,redirect,get_object_or_404
 from django.http import FileResponse,Http404
 from django.utils import timezone
 from accounts.views import leader_required,audit
-from .access import visible_sections
+from .access import visible_sections,prepare_required
 from .models import Section,ImportBatch,Job,Defect,JobDefect,Coupling,Report,METHODS
 from .importer import parse_work
 from documents.storage import validate_upload,store_file,private_path,verified_file
@@ -22,26 +22,61 @@ class UploadForm(forms.Form):
 
 def matches(section,item):
     query=Q(pk__in=[])
-    for d in item['defects']:query|=Q(defects__number=d['number'])
+    for d in item['defects']:
+        query|=Q(defects__number=d['number'],defects__kilometre=Decimal(d['km'])) if item.get('code') else Q(defects__number=d['number'])
     return Job.objects.filter(query,section=section).prefetch_related('defects').distinct()
 
 class ReviewForm(forms.Form):
     include_couplings=forms.BooleanField(label='Сохранить также сведения о муфтах с заводскими номерами',required=False,initial=True)
-    def __init__(self,*args,batch,**kwargs):
-        super().__init__(*args,**kwargs)
+    def __init__(self,*args,batch,user,**kwargs):
+        super().__init__(*args,**kwargs);self.batch=batch
+        if not user.is_leader:
+            self.fields['include_couplings'].initial=False
+            self.fields['include_couplings'].disabled=True
         for index,item in enumerate(batch.payload['jobs']):
             candidates=list(matches(batch.section,item).filter(pk__in=item.get('candidates',[])))
             choices=[('new','Создать новую работу'),('skip','Пропустить')]
             choices += [(str(j.pk),'Добавить сведения в историю: '+', '.join(str(d) for d in j.defects.all())+' · '+j.get_state_display()) for j in candidates]
             self.fields[f'row_{index}']=forms.ChoiceField(label='Действие',choices=choices,initial='skip' if candidates else 'new')
 
-@leader_required
+    def clean(self):
+        c=super().clean()
+        from .views import assignees
+        eligible=set(str(pk) for pk in assignees(self.batch.section).values_list('pk',flat=True))
+        for index,item in enumerate(self.batch.payload['jobs']):
+            if c.get(f'row_{index}')=='new' and item.get('assigned_to') and item['assigned_to'] not in eligible:
+                self.add_error(None,'Доступ выбранного мастера изменился. Загрузите ведомость заново после проверки доступа.')
+            selected=c.get(f'row_{index}')
+            if self.batch.payload.get('format')=='openia-v1' and selected=='new':
+                overlap=any(Job.objects.filter(section=self.batch.section,defects__kilometre=Decimal(d['km']),defects__number=d['number']).exists() for d in item['defects'])
+                if overlap:
+                    self.add_error(f'row_{index}','Дефект уже внесён. Пропустите строку или дополните историю существующей группы; повторный ремонт не создаётся автоматически.')
+                if Job.objects.filter(section=self.batch.section,source__repair_code=item['code']).exists():
+                    self.add_error(f'row_{index}','Код ремонта уже используется на участке. Для нового ремонта укажите другой код.')
+            if self.batch.payload.get('format')=='openia-v1' and selected not in ('new','skip',None):
+                job=matches(self.batch.section,item).filter(pk=selected).first()
+                desired={(Decimal(d['km']),d['number'],d['pipe_section']) for d in item['defects']}
+                if not job or {(d.kilometre,d.number,d.pipe_section) for d in job.defects.all()}!=desired:
+                    self.add_error(f'row_{index}','Состав группы отличается. Импорт не объединяет и не заменяет дефекты существующего ремонта.')
+        return c
+
+@prepare_required
 def upload(request):
     form=UploadForm(request.POST or None,request.FILES or None,user=request.user)
     if request.method=='POST' and form.is_valid():
         try:
             payload=parse_work(form.cleaned_data['file'],form.cleaned_data['sheet'])
-            for item in payload['jobs']:item['candidates']=[str(j.pk) for j in matches(form.cleaned_data['section'],item)]
+            section=form.cleaned_data['section']
+            for item in payload['jobs']:
+                if item.get('section_id') and item['section_id']!=str(section.pk):
+                    raise ValidationError('В файле есть строки другого участка. Перед экспортом выберите нужный участок или подготовьте отдельную ведомость.')
+                item['candidates']=[str(j.pk) for j in matches(section,item)]
+                item['assigned_to']=None
+                if item.get('master_phone'):
+                    from .views import assignees
+                    master=assignees(section).filter(phone=item['master_phone']).first()
+                    if not master:raise ValidationError('Мастер '+item['master_phone']+' не найден, неактивен или не имеет доступа к объекту. Проверьте доступ перед загрузкой.')
+                    item['assigned_to']=str(master.pk);item['master_name']=master.full_name
             original=validate_upload(form.cleaned_data['file']);key=store_file(original)
             try:batch=ImportBatch.objects.create(section=form.cleaned_data['section'],author=request.user,filename=original['name'],storage_key=key,size=original['size'],sha256=payload['sha256'],sheet=payload['sheet'],payload=payload)
             except Exception:private_path(key).unlink(missing_ok=True);raise
@@ -49,7 +84,7 @@ def upload(request):
         except ValidationError as e:form.add_error('file',e.messages[0])
     return render(request,'repairs/import.html',{'form':form})
 
-@leader_required
+@prepare_required
 def source(request,pk):
     batch=get_object_or_404(ImportBatch.objects.filter(section__in=visible_sections(request.user)),pk=pk)
     if not batch.storage_key:raise Http404
@@ -58,16 +93,18 @@ def source(request,pk):
     response=FileResponse(file,as_attachment=True,filename=batch.filename,content_type='application/octet-stream')
     response['Cache-Control']='private, no-store';response['Content-Security-Policy']="default-src 'none'; sandbox";return response
 
-@leader_required
+@prepare_required
 def review(request,pk):
     batch=get_object_or_404(ImportBatch.objects.filter(section__in=visible_sections(request.user)),pk=pk)
-    form=ReviewForm(request.POST or None,batch=batch)
+    form=ReviewForm(request.POST or None,batch=batch,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             # Serialize all imports into one section, including repeats of the same file.
             Section.objects.select_for_update().get(pk=batch.section_id)
             locked=ImportBatch.objects.select_for_update().get(pk=batch.pk)
-            if locked.applied_at or ImportBatch.objects.filter(section=batch.section,sha256=batch.sha256,sheet=batch.sheet,applied_at__isnull=False).exists():
+            form=ReviewForm(request.POST,batch=batch,user=request.user)
+            if not form.is_valid():pass
+            elif locked.applied_at or ImportBatch.objects.filter(section=batch.section,sha256=batch.sha256,sheet=batch.sheet,applied_at__isnull=False).exists():
                 form.add_error(None,'Этот лист этой версии файла уже перенесён. Повторный импорт не выполняется.')
             else:
                 new_candidates=[]
@@ -85,9 +122,9 @@ def review(request,pk):
                     for i,item in enumerate(batch.payload['jobs']):
                         action=form.cleaned_data[f'row_{i}']
                         if action=='skip':continue
-                        source={'batch':str(batch.pk),'sha256':batch.sha256,'sheet':batch.sheet,'rows':item['rows'],'original':item['raw']}
+                        source={'repair_code':item.get('code',''),'batch':str(batch.pk),'sha256':batch.sha256,'sheet':batch.sheet,'rows':item['rows'],'original':item['raw']}
                         if action=='new':
-                            job=Job.objects.create(section=batch.section,created_by=request.user,method=item['method'],length_m=Decimal(item['length_m']) if item['length_m'] else None,composition=item['composition'],planned_date=item['planned_date'] or None,notes=item['note'],materials='missing' if 'нет муфт' in item['note'].lower() else 'unknown',source=source)
+                            job=Job.objects.create(section=batch.section,created_by=request.user,method=item['method'],assigned_to_id=item.get('assigned_to'),wall_mm=Decimal(item['wall_mm']) if item.get('wall_mm') else None,length_m=Decimal(item['length_m']) if item['length_m'] else None,composition=item['composition'],planned_date=item['planned_date'] or None,notes=item['note'],materials='missing' if 'нет муфт' in item['note'].lower() else 'unknown',source=source)
                             created+=1
                         else:
                             job=Job.objects.select_for_update().get(pk=action,section=batch.section);job.version+=1;job.save(update_fields=['version']);linked+=1

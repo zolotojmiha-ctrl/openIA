@@ -82,6 +82,9 @@ def read_book(upload,sheet_name=''):
 
 def parse_work(upload,sheet_name=''):
     book=read_book(upload,sheet_name);cells=book['cells'];merges=book['merges']
+    if any(r==1 and str(v).strip()=='Код ремонта' for (r,c),v in cells.items()):
+        from .excel import parse_standard
+        return parse_standard(book)
     def origin(r,c):
         for r1,c1,r2,c2 in merges:
             if r1<=r<=r2 and c1<=c<=c2:return r1,c1

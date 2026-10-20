@@ -6,7 +6,7 @@ from django.db import models
 
 METHODS = [('p1','П1'),('p2','П2'),('p3','П3'),('p4','П4'),('p5u','П5У'),('grind','Шлифовка'),('cut','Вырезка'),('other','Другой способ')]
 STATES = [('planned','Запланировано'),('progress','В работе'),('partial','Выполнено частично'),('reported','Результат на проверке'),('confirmed','Выполнение подтверждено')]
-PROBLEMS = [('','Нет открытой проблемы'),('materials','Нет материалов'),('access','Нет доступа'),('water','Котлован затоплен'),('other','Другая проблема')]
+PROBLEMS = [('','Нет открытой проблемы'),('materials','Нет материалов'),('access','Нет доступа'),('water','Котлован затоплен'),('other','Другая причина'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала')]
 
 class Section(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
@@ -42,6 +42,7 @@ class Job(models.Model):
     assigned_to=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     method=models.CharField('Способ ремонта',max_length=20,choices=METHODS)
     length_m=models.DecimalField('Длина конструкции, м',max_digits=9,decimal_places=3,null=True,blank=True)
+    wall_mm=models.DecimalField('Толщина стенки конструкции, мм',max_digits=6,decimal_places=2,null=True,blank=True)
     composition=models.CharField('Состав конструкции, м',max_length=200,blank=True)
     planned_date=models.DateField('Плановая дата',null=True,blank=True)
     notes=models.TextField('Задание и условия работ',max_length=3000,blank=True)
@@ -58,6 +59,8 @@ class Job(models.Model):
     source=models.JSONField(default=dict,blank=True)
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(length_m__isnull=True)|models.Q(length_m__gt=0),name='repair_length_positive')]
+    @property
+    def repair_label(self):return self.source.get('repair_code') or str(self.pk)
     def __str__(self):return f'{self.section.name} · {self.get_method_display()}'
 
 class JobDefect(models.Model):

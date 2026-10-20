@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'repairs.prepare':'Вести ведомости дефектов и назначать работы мастерам',
  'document.upload':'Загружать документы',
  'document.export':'Экспортировать список документов в CSV',
  'personnel.manage':'Вести карточки персонала и назначения',
@@ -73,7 +74,7 @@ class AuditEvent(models.Model):
     ACTIONS += [(key,label) for key,label in [('document_uploaded','Загружен документ'),('document_replaced','Новая версия документа'),('document_decided','Решение по версии'),('document_archived','Документ в архиве'),('document_restored','Документ восстановлен'),('document_access_changed','Изменён доступ к документу'),('document_downloaded','Скачан документ'),('document_exported','Экспорт списка документов'),('document_integrity_error','Ошибка сохранности файла')]]
     ACTIONS += [('document_links_changed','Изменены связи документа'),('document_commented','Комментарий к документу'),('document_bulk_changed','Массовое изменение документов'),('person_updated','Изменена карточка работника'),('person_assigned','Назначение работника'),('person_archived','Архив работника'),('sessions_ended','Завершены сеансы'),('support_updated','Обращение сотрудника'),('finance_created','Финансовая запись'),('finance_allocated','Распределена выплата'),('finance_accepted','Подтверждено принятое выполнение'),('finance_imported','Загружена финансовая справка')]
     ACTIONS += [('document_responsibility_changed','Передана ответственность за документ'),('document_bundle_primary','Выбран основной файл комплекта'),('finance_corrected','Исправлена финансовая запись'),('finance_offset_reversed','Отменён зачёт аванса'),('finance_allocation_reversed','Отменено распределение выплаты'),('finance_scope_updated','Изменены параметры финансового направления')]
-    ACTIONS += [('repair_prepared','Подготовлены ремонтные работы'),('repair_reported','Внесены сведения с участка'),('repair_confirmed','Подтверждено выполнение ремонта'),('repair_corrected','Исправлен результат ремонта'),('repair_accepted','Отмечена приёмка ремонта'),('repair_imported','Перенесена ведомость дефектов')]
+    ACTIONS += [('repair_prepared','Подготовлены ремонтные работы'),('repair_reported','Внесены сведения с участка'),('repair_confirmed','Подтверждено выполнение ремонта'),('repair_corrected','Исправлен результат ремонта'),('repair_accepted','Отмечена приёмка ремонта'),('repair_imported','Перенесена ведомость дефектов'),('repair_exported','Экспортирована ведомость дефектов')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

@@ -28,7 +28,7 @@ class JobForm(forms.ModelForm):
     pipe_section=forms.CharField(label='Номер секции трубы',max_length=80,required=False)
     class Meta:
         model=Job
-        fields=['section','method','length_m','composition','planned_date','assigned_to','materials','notes']
+        fields=['section','method','length_m','wall_mm','composition','planned_date','assigned_to','materials','notes']
         labels={'section':'Участок','assigned_to':'Ответственный мастер'}
         widgets={'planned_date':DATE,'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,user,**kwargs):
@@ -40,11 +40,17 @@ class JobForm(forms.ModelForm):
         self.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=s.project_object if s else None)).distinct().order_by('full_name') if s else User.objects.none()
         self.fields['assigned_to'].label_from_instance=lambda u:u.full_name
         self.fields['length_m'].min_value=Decimal('.001')
+        self.fields['wall_mm'].min_value=Decimal('.01')
         if self.instance.pk and self.instance.section_id:
             self.initial['section']=self.instance.section_id
             defects=list(self.instance.defects.order_by('number'))
             self.initial.update(expected_version=self.instance.version,defect_numbers='; '.join(d.number for d in defects),kilometre=defects[0].kilometre if defects else None,pipe_section=defects[0].pipe_section if defects else '')
             self.fields['section'].disabled=True
+    def clean_wall_mm(self):
+        value=self.cleaned_data.get('wall_mm')
+        if value is not None and value<=0:
+            raise forms.ValidationError('Толщина стенки должна быть больше нуля.')
+        return value
     def clean_defect_numbers(self):
         values=[s.strip() for s in self.cleaned_data['defect_numbers'].split(';') if s.strip()]
         if not values or len(values)>30 or any(len(s)>80 for s in values):raise forms.ValidationError('Укажите от 1 до 30 номеров, каждый не длиннее 80 символов.')
@@ -86,6 +92,10 @@ class ReportForm(forms.Form):
     longitude=forms.DecimalField(max_digits=9,decimal_places=6,min_value=-180,max_value=180,required=False,widget=forms.HiddenInput)
     def __init__(self,*args,job,action,user,**kwargs):
         super().__init__(*args,**kwargs);self.action=action
+        self.simple=action in ('repaired','unrepaired');self.job=job
+        if self.simple:
+            action='result' if action=='repaired' else 'problem'
+            self.action=action
         self.initial.update(token=uuid.uuid4(),expected_version=job.version,performed_date=timezone.localdate(),method=job.method,length_m=job.length_m,composition=job.composition,couplings=list(job.installed_couplings.values_list('coupling_id',flat=True)))
         self.fields['couplings'].queryset=selectable_couplings(job,include_historical=user.is_leader)
         self.fields['couplings'].label_from_instance=lambda c:str(c)+(' · в ведомости указан монтаж'+(' на км '+c.source.get('mount_km','') if c.source.get('mount_km') else '')+(' от '+c.source.get('installation_date','') if c.source.get('installation_date') else '') if c.source.get('historical_installation') else '')
@@ -93,16 +103,51 @@ class ReportForm(forms.Form):
             for name in ['outcome','method','length_m','composition','couplings']:self.fields.pop(name)
         if action!='problem':self.fields.pop('problem')
         if action=='correction' and not user.is_leader:raise forms.ValidationError('Исправлять подтверждённый результат может руководитель.')
+        if self.simple:
+            for name in ['outcome','method','length_m','composition','couplings']:
+                self.fields.pop(name,None)
+            if action=='problem':
+                self.fields['problem'].choices=[('', 'Выберите причину'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала'),('other','Другая причина')]
+            if action in ('result','problem'):
+                self.fields.pop('latitude');self.fields.pop('longitude')
+                self.fields['coordinates']=forms.CharField(label='Координаты точки ремонта',max_length=100,required=action=='result',
+                    widget=forms.TextInput(attrs={'placeholder':'56.123456, 73.123456','autocomplete':'off'}),
+                    help_text='Скопируйте координаты точки из Google Карт и вставьте сюда. Например: 56.123456, 73.123456.')
+
+    def clean_coordinates(self):
+        text=self.cleaned_data['coordinates'].strip()
+        if not text:return None
+        # Google Maps: decimal degrees, latitude first. Also accept decimal commas
+        # when the pair is separated unambiguously by a semicolon.
+        pattern=r'([+-]?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*([+-]?\d{1,3}(?:\.\d+)?)'
+        match=re.fullmatch(pattern,text)
+        if not match and ';' in text:
+            match=re.fullmatch(r'([+-]?\d{1,3}(?:,\d+)?)\s*;\s*([+-]?\d{1,3}(?:,\d+)?)',text)
+        if not match:
+            raise forms.ValidationError('Вставьте пару координат, например: 56.123456, 73.123456. Ссылка на карту не подходит.')
+        lat,lon=(Decimal(v.replace(',','.')) for v in match.groups())
+        if not -90<=lat<=90 or not -180<=lon<=180:
+            raise forms.ValidationError('Координаты вне допустимого диапазона: широта от −90 до 90, долгота от −180 до 180.')
+        return (lat.quantize(Decimal('.000001')),lon.quantize(Decimal('.000001')))
+
     def clean(self):
         c=super().clean()
+        if self.simple and c.get('coordinates'):
+            c['latitude'],c['longitude']=c['coordinates']
+        if self.simple and self.action=='result':
+            if len({d.kilometre for d in self.job.defects.all()})>1:
+                self.add_error(None,'В группе дефекты на разных километрах. Техник должен разделить задание на отдельные ремонты с отдельными координатами.')
+            c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(Coupling.objects.filter(installation__job=self.job)))
+        if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other') and not c.get('note','').strip():
+            self.add_error('note','Поясните, какого материала не хватает или укажите другую причину.')
         if c.get('performed_date') and c['performed_date']>timezone.localdate():self.add_error('performed_date','Фактическая дата не может быть в будущем.')
         if self.action=='problem' and not c.get('problem'):self.add_error('problem','Выберите причину.')
         if self.action in ('result','correction'):
-            if not c.get('method'):self.add_error('method','Выберите фактический способ.')
+            if not c.get('method'):self.add_error(None if self.simple else 'method','Выберите фактический способ.')
             if c.get('method') in ['p1','p2','p3','p4','p5u']:
-                if not c.get('length_m'):self.add_error('length_m','Укажите фактическую длину.')
-                if not c.get('couplings') and not c.get('note'):self.add_error('note','Если заводские номера пока неизвестны, укажите это в пояснении.')
-            elif c.get('couplings'):self.add_error('couplings','Для этого способа муфты не используются.')
+                if not c.get('length_m'):self.add_error(None if self.simple else 'length_m','В задании не указана длина конструкции. Руководитель должен уточнить задание.' if self.simple else 'Укажите фактическую длину.')
+                if not self.simple and not c.get('couplings') and not c.get('note'):self.add_error('note','Если заводские номера пока неизвестны, укажите это в пояснении.')
+            elif c.get('couplings'):self.add_error(None if self.simple else 'couplings','Для этого способа муфты не используются.')
             elif c.get('method')=='grind':c['length_m']=None;c['composition']=''
         if self.action=='correction' and not c.get('note'):self.add_error('note','Укажите причину исправления. Прежний результат останется в истории.')
         if self.action=='note' and not c.get('note') and not c.get('files'):self.add_error('note','Добавьте фото или пояснение.')

@@ -15,7 +15,7 @@ from django import forms
 from accounts.models import User
 from accounts.views import leader_required, audit
 from documents.storage import verified_file
-from .access import visible_jobs, visible_sections
+from .access import visible_jobs, visible_sections, reportable_jobs, prepare_required, can_prepare
 from .forms import SectionForm, JobForm, ReportForm, CouplingForm, AcceptanceForm
 from .models import Section, Job, Defect, JobDefect, Coupling, Report, Attachment
 from .services import report_work, confirm_work
@@ -35,14 +35,18 @@ def jobs(request):
             if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km)
         except InvalidOperation:pass
         qs=qs.filter(search).distinct()
+    master=request.GET.get('master','')
+    try:
+        if master:qs=qs.filter(assigned_to_id=uuid.UUID(master))
+    except ValueError:qs=qs.none()
     if year.isdigit() and 1900<=int(year)<=2200:qs=qs.filter(planned_date__year=int(year))
     counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').count()}
     if state=='problems':qs=qs.exclude(problem='')
     elif state in dict(Job._meta.get_field('state').choices):qs=qs.filter(state=state)
     elif state=='materials':qs=qs.filter(materials='missing')
-    return render(request,'repairs/list.html',{'page':Paginator(qs.order_by('planned_date','created_at','pk'),25).get_page(request.GET.get('page')),'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts})
+    return render(request,'repairs/list.html',{'page':Paginator(qs.order_by('planned_date','created_at','pk'),25).get_page(request.GET.get('page')),'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
-@leader_required
+@prepare_required
 def section_new(request):
     form=SectionForm(request.POST or None,user=request.user)
     if request.method=='POST' and form.is_valid():
@@ -50,7 +54,7 @@ def section_new(request):
         return redirect('repair_new_section_job',section_id=section.pk)
     return render(request,'repairs/edit.html',{'form':form,'title':'Добавить участок','kind':'section'})
 
-@leader_required
+@prepare_required
 def job_edit(request,pk=None,section_id=None):
     job=get_object_or_404(visible_jobs(request.user),pk=pk) if pk else None
     initial={'section':section_id or request.GET.get('section')}
@@ -89,14 +93,14 @@ def detail(request,pk):
 
 @login_required
 def report(request,pk,action):
-    if action not in ('start','result','problem','note','correction','resolve'):raise Http404
-    job=get_object_or_404(visible_jobs(request.user),pk=pk)
+    if action not in ('start','result','problem','note','correction','resolve','repaired','unrepaired'):raise Http404
+    job=get_object_or_404(reportable_jobs(request.user),pk=pk)
     if action=='correction' and not request.user.is_leader:return render(request,'403.html',status=403)
     form=ReportForm(request.POST or None,request.FILES or None,job=job,action=action,user=request.user)
     status=200
     if request.method=='POST' and form.is_valid():
         try:
-            result=report_work(request.user,job.pk,action,form.cleaned_data)
+            result=report_work(request.user,job.pk,'unrepaired' if action=='unrepaired' else form.action,form.cleaned_data)
             messages.success(request,'Результат отправлен.' if action in ('result','correction') else 'Сведения сохранены.')
             if request.headers.get('Accept')=='application/json':
                 from django.urls import reverse
@@ -107,7 +111,7 @@ def report(request,pk,action):
                 return JsonResponse({'ok':False,'errors':{'__all__':[{'message':e.messages[0]}]},'new_record_version':e.params['version']},status=409)
             form.add_error(None,e.messages[0] if isinstance(e,ValidationError) else 'Назначение изменилось. Откройте список своих работ.');status=409
     if request.method=='POST' and form.errors and request.headers.get('Accept')=='application/json':return JsonResponse({'ok':False,'errors':form.errors.get_json_data()},status=status if status!=200 else 400)
-    titles={'start':'Начать работу','result':'Внести результат','problem':'Сообщить о проблеме','note':'Добавить фото или пояснение','correction':'Исправить результат','resolve':'Препятствие устранено'}
+    titles={'repaired':'Устранён','unrepaired':'Не устранён','start':'Начать работу','result':'Внести результат','problem':'Сообщить о проблеме','note':'Добавить фото или пояснение','correction':'Исправить результат','resolve':'Препятствие устранено'}
     return render(request,'repairs/report.html',{'form':form,'job':job,'action':action,'title':titles[action]},status=status)
 
 @leader_required
@@ -161,7 +165,7 @@ def coupling_new(request,pk):
 def assignees(section):
     return User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=section.project_object)).distinct().order_by('full_name')
 
-@leader_required
+@prepare_required
 def section_assignees(request,pk):
     section=get_object_or_404(visible_sections(request.user),pk=pk)
     return JsonResponse({'users':[{'id':str(u.pk),'name':u.full_name} for u in assignees(section)]})
@@ -188,7 +192,7 @@ class BatchAssignment(forms.Form):
         if qs.count()>300:raise forms.ValidationError('За один раз можно назначить до 300 работ.')
         return qs
 
-@leader_required
+@prepare_required
 def assign_many(request,pk):
     section=get_object_or_404(visible_sections(request.user),pk=pk)
     form=BatchAssignment(request.POST or None,section=section)

@@ -249,3 +249,179 @@ class RepairsTests(TestCase):
     def test_assignee_lookup_is_leader_only_and_scoped(self):
         url=reverse('repair_assignees',args=[self.section.pk]);self.assertEqual(self.client.get(url).status_code,403)
         self.client.force_login(self.leader);ids={u['id'] for u in self.client.get(url).json()['users']};self.assertIn(str(self.worker.pk),ids);self.assertNotIn(str(self.other.pk),ids)
+
+    def simple_payload(self, **changes):
+        data={'token':str(uuid.uuid4()),'expected_version':self.job.version,'performed_date':timezone.localdate().isoformat()}
+        data.update(changes)
+        if 'latitude' in data and 'longitude' in data:
+            data['coordinates']=str(data.pop('latitude'))+', '+str(data.pop('longitude'))
+        return data
+    def test_simple_list_has_defect_specification_and_two_actions(self):
+        self.job.wall_mm=Decimal('10.25');self.job.save()
+        response=self.client.get(reverse('repairs'))
+        for text in ['№ секции','№ дефекта','Тип конструкции','Толщина стенки','СЕК-01','УЧ-01','УЧ-02','10,25','Устранён','Не устранён']:
+            self.assertContains(response,text)
+        self.assertNotContains(response,'ЗАКРЫТЫЙ-ДЕФЕКТ')
+    def test_simple_result_requires_coordinates_and_uses_plan_not_posted_engineering(self):
+        response=self.send('repaired',self.simple_payload())
+        self.assertIn('coordinates',response.context['form'].errors)
+        self.assertEqual(Report.objects.count(),0)
+        response=self.send('repaired',self.simple_payload(latitude='56.123456',longitude='73.123456',method='cut',length_m='999',outcome='partial'))
+        self.assertEqual(response.status_code,302)
+        report=Report.objects.get(job=self.job)
+        self.assertEqual(report.kind,'complete');self.assertEqual(report.method,'p1');self.assertEqual(report.length_m,3)
+        self.assertEqual(report.latitude,Decimal('56.123456'));self.assertEqual(report.attachments.count(),0)
+        self.job.refresh_from_db();self.assertEqual(self.job.state,'reported')
+    def test_simple_problem_reasons_and_required_explanations(self):
+        for reason in ['swamp','coupling','material_other','other']:
+            with self.subTest(reason=reason):
+                data=self.simple_payload(problem=reason)
+                if reason in ('material_other','other'):
+                    response=self.send('unrepaired',data)
+                    self.assertIn('note',response.context['form'].errors)
+                    data['note']='Нет изоляционной ленты' if reason=='material_other' else 'Перекрыта дорога'
+                self.assertEqual(self.send('unrepaired',data).status_code,302)
+                self.job.refresh_from_db();self.assertEqual(self.job.problem,reason)
+        self.assertEqual(self.job.reports.count(),4)
+    def test_simple_actions_preserve_access_confirmed_lock_history_and_retry(self):
+        for action in ['repaired','unrepaired']:
+            self.assertEqual(self.client.get(reverse('repair_report',args=[self.hidden.pk,action])).status_code,404)
+        data=self.simple_payload(latitude='56',longitude='73')
+        self.assertEqual(self.send('repaired',data).status_code,302)
+        self.assertEqual(self.send('repaired',data).status_code,302)
+        self.assertEqual(self.job.reports.count(),1)
+        self.job.refresh_from_db()
+        self.assertEqual(self.send('unrepaired',self.simple_payload(problem='swamp')).status_code,302)
+        self.assertEqual(self.job.reports.count(),2)
+        self.job.refresh_from_db();self.assertEqual(self.job.state,'progress')
+        from .services import confirm_work
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):confirm_work(self.leader,self.job.pk,self.job.version)
+        self.job.refresh_from_db();self.job.state='confirmed';self.job.save()
+        self.assertEqual(self.send('unrepaired',self.simple_payload(problem='swamp')).status_code,409)
+        self.assertEqual(self.job.reports.count(),2)
+    def test_simple_missing_plan_length_returns_error_without_creating_result(self):
+        self.job.length_m=None;self.job.save()
+        response=self.send('repaired',self.simple_payload(latitude='56',longitude='73'))
+        self.assertContains(response,'Руководитель должен уточнить задание')
+        self.assertEqual(Report.objects.count(),0)
+
+    def test_job_wall_thickness_accepts_positive_or_unknown_only(self):
+        from .forms import JobForm
+        data={'section':self.section.pk,'kilometre':'101.1','defect_numbers':'ТЕСТ','method':'p1','length_m':'3','materials':'unknown','expected_version':0}
+        for value in ['0','-1']:
+            form=JobForm(data={**data,'wall_mm':value},user=self.leader)
+            self.assertFalse(form.is_valid());self.assertIn('wall_mm',form.errors)
+        for value in ['','10.25']:
+            form=JobForm(data={**data,'wall_mm':value},user=self.leader)
+            self.assertTrue(form.is_valid(),form.errors)
+    def standard_file(self,rows):
+        from .excel import workbook as make_workbook
+        return SimpleUploadedFile('Дефекты.xlsx',make_workbook(rows))
+    def standard_rows(self):
+        return [['Р-01','101.123456','СЕК-01','НОВ-01','П1','3','10.25',self.worker.phone],
+                ['Р-01','101.123456','СЕК-01','НОВ-02','П1','3','10.25',self.worker.phone],
+                ['Р-02','202.234567','СЕК-02','НОВ-03','П2','1.5','8',self.worker.phone]]
+    def test_paste_coordinates_from_maps_and_validate_range(self):
+        from .forms import ReportForm
+        for value,valid in [('56.12345678, 73.12345678',True),('-56.123456; -73.123456',True),('56,123456;73,123456',True),('56.123456 73.123456',True),('91, 73',False),('56, 181',False),('https://maps.google.com/point',False),('56',False)]:
+            form=ReportForm(data=self.simple_payload(coordinates=value),job=self.job,action='repaired',user=self.worker)
+            self.assertEqual(form.is_valid(),valid,(value,form.errors))
+    def test_standard_excel_groups_and_rejects_different_km_or_conflicting_sizes(self):
+        rows=self.standard_rows();parsed=parse_work(self.standard_file(rows))
+        self.assertEqual(len(parsed['jobs']),2);self.assertEqual(len(parsed['jobs'][0]['defects']),2)
+        self.assertEqual(parsed['jobs'][0]['wall_mm'],'10.25')
+        for column,value in [(1,'202'),(4,'П2'),(5,'4'),(6,'8'),(7,self.other.phone)]:
+            changed=[list(row) for row in rows];changed[1][column]=value
+            with self.assertRaisesMessage(Exception,'различаются'):parse_work(self.standard_file(changed))
+        changed=[list(row) for row in rows];changed[2][1]='101.123456';changed[2][3]='НОВ-01'
+        with self.assertRaisesMessage(Exception,'повторяется'):parse_work(self.standard_file(changed))
+    def test_standard_import_assigns_two_separate_repairs_with_independent_results(self):
+        self.client.force_login(self.leader)
+        response=self.client.post(reverse('repair_import'),{'section':str(self.section.pk),'file':self.standard_file(self.standard_rows())})
+        self.assertEqual(response.status_code,302)
+        batch=ImportBatch.objects.latest('created_at')
+        self.assertEqual(self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'}).status_code,302)
+        jobs=list(Job.objects.filter(source__batch=str(batch.pk)).order_by('source__repair_code'))
+        self.assertEqual(len(jobs),2);self.assertEqual(jobs[0].defects.count(),2);self.assertEqual(jobs[1].defects.count(),1)
+        self.assertTrue(all(j.assigned_to_id==self.worker.pk for j in jobs))
+        self.assertEqual(jobs[0].wall_mm,Decimal('10.25'))
+        self.client.force_login(self.worker)
+        for job,coordinates in zip(jobs,['56.1, 73.1','57.2, 74.2']):
+            data=self.simple_payload(coordinates=coordinates);data['expected_version']=job.version
+            self.assertEqual(self.send('repaired',data,job=job).status_code,302)
+        self.assertEqual(jobs[0].reports.get().latitude,Decimal('56.1'))
+        self.assertEqual(jobs[1].reports.get().latitude,Decimal('57.2'))
+        self.assertEqual(self.job.reports.count(),0)
+    def test_export_is_real_xlsx_scoped_and_roundtrips_groups(self):
+        response=self.client.get(reverse('repair_excel_export'))
+        self.assertEqual(response.status_code,200)
+        self.assertIn('spreadsheetml',response['Content-Type'])
+        parsed=parse_work(SimpleUploadedFile('export.xlsx',response.content))
+        self.assertEqual(len(parsed['jobs']),1);self.assertEqual(len(parsed['jobs'][0]['defects']),2)
+        self.assertEqual(parsed['jobs'][0]['master_phone'],self.worker.phone)
+        self.assertNotIn('ЗАКРЫТЫЙ',str(parsed))
+        self.assertEqual(self.client.get(reverse('repair_excel_export'),{'section':self.section2.pk}).status_code,200)
+        # The inaccessible section produces a header-only workbook, no private rows.
+        from .importer import read_book
+        book=read_book(SimpleUploadedFile('empty.xlsx',self.client.get(reverse('repair_excel_export'),{'section':self.section2.pk}).content))
+        self.assertTrue(all(r==1 for r,c in book['cells']))
+    def test_preparation_grant_scopes_technician_without_granting_reports_or_confirmation(self):
+        from accounts.models import AccessGrant
+        AccessGrant.objects.create(user=self.other,permission='repairs.prepare',granted_by=self.leader)
+        ObjectAccess.objects.create(user=self.other,project_object=self.obj,granted_by=self.leader)
+        self.client.force_login(self.other)
+        for route in ['repair_import','repair_new','repair_excel_template']:
+            self.assertEqual(self.client.get(reverse(route)).status_code,200)
+        self.assertContains(self.client.get(reverse('repairs')),'101.123456')
+        self.assertEqual(self.client.get(reverse('repair_detail',args=[self.hidden.pk])).status_code,404)
+        self.assertEqual(self.send('repaired',self.simple_payload(coordinates='56, 73')).status_code,404)
+        self.assertEqual(self.client.post(reverse('repair_confirm',args=[self.job.pk]),{'expected_version':1}).status_code,403)
+        AccessGrant.objects.filter(user=self.other).delete()
+        self.assertEqual(self.client.get(reverse('repair_import')).status_code,403)
+    def test_import_rejects_unknown_master_wrong_section_and_revoked_master_access(self):
+        self.client.force_login(self.leader);rows=self.standard_rows();rows[0][7]=rows[1][7]=self.other.phone
+        self.assertContains(self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)}),'не имеет доступа')
+        rows=self.standard_rows()
+        for row in rows:row.append(str(self.section2.pk))
+        self.assertContains(self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)}),'другого участка')
+        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(self.standard_rows())})
+        batch=ImportBatch.objects.latest('created_at');ObjectAccess.objects.filter(user=self.worker).delete()
+        response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'})
+        self.assertContains(response,'Доступ выбранного мастера изменился')
+        self.assertEqual(Job.objects.filter(source__batch=str(batch.pk)).count(),0)
+    def test_simple_result_rejects_legacy_group_spanning_different_km(self):
+        self.d2.kilometre=202;self.d2.save()
+        response=self.send('repaired',self.simple_payload(coordinates='56, 73'))
+        self.assertContains(response,'разделить задание')
+        self.assertEqual(self.job.reports.count(),0)
+
+    def test_standard_import_matches_number_and_km_not_number_alone(self):
+        from .import_views import matches
+        item={'code':'Р-NEW','defects':[{'number':self.d1.number,'km':'202','pipe_section':'СЕК-02'}]}
+        self.assertEqual(matches(self.section,item).count(),0)
+        item['defects'][0]['km']=self.d1.km
+        self.assertEqual(matches(self.section,item).get().pk,self.job.pk)
+    def test_technician_cannot_import_inventory_or_duplicate_existing_defects(self):
+        from accounts.models import AccessGrant
+        AccessGrant.objects.create(user=self.other,permission='repairs.prepare',granted_by=self.leader)
+        ObjectAccess.objects.create(user=self.other,project_object=self.obj,granted_by=self.leader)
+        self.client.force_login(self.other)
+        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':workbook(source_rows(),['C7:C8','F7:F8','G7:G8','H7:H8'])})
+        batch=ImportBatch.objects.latest('created_at');count=Coupling.objects.count()
+        response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new','include_couplings':'on'})
+        self.assertEqual(response.status_code,302);self.assertEqual(Coupling.objects.count(),count)
+        rows=self.standard_rows();rows[0][3]=self.d1.number
+        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)})
+        batch=ImportBatch.objects.latest('created_at')
+        response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'})
+        self.assertContains(response,'Дефект уже внесён')
+        self.assertFalse(Job.objects.filter(source__batch=str(batch.pk)).exists())
+
+    def test_export_preserves_object_and_master_filters(self):
+        from .importer import read_book
+        for params in [{'object':str(self.obj2.pk)},{'master':str(self.other.pk)}]:
+            response=self.client.get(reverse('repair_excel_export'),params)
+            self.assertEqual(response.status_code,200)
+            book=read_book(SimpleUploadedFile('scoped.xlsx',response.content))
+            self.assertTrue(all(r==1 for r,c in book['cells']))

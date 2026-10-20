@@ -1,11 +1,11 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.0.0-repairs'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.0.2-repairs'}
     if request.user.is_authenticated:
-        from repairs.access import visible_jobs
+        from repairs.access import visible_jobs,can_prepare
         jobs=visible_jobs(request.user)
-        context.update(can_repairs=request.user.is_leader or jobs.exists(),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
+        context.update(can_repairs=can_prepare(request.user) or jobs.exists(),can_prepare_repairs=can_prepare(request.user),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

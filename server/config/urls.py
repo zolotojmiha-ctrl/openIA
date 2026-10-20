@@ -4,10 +4,13 @@ from accounts import personal
 from projects import views as projects
 from documents import views as documents
 from finance import views as finance
+from repairs import excel_views as repair_excel
 from repairs import views as repairs
 from repairs import import_views as repair_import
 urlpatterns=[
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
+ path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
+ path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),
  path('cabinet/repairs/sections/new/',repairs.section_new,name='repair_section_new'),
  path('cabinet/repairs/sections/<uuid:section_id>/new/',repairs.job_edit,name='repair_new_section_job'),
  path('cabinet/repairs/new/',repairs.job_edit,name='repair_new'),
