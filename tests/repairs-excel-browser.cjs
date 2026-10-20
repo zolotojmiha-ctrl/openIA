@@ -14,7 +14,7 @@ const fs=require('node:fs');
  await technician.screenshot({path:out+'/06-excel-review.png',fullPage:true});
  await technician.getByRole('button',{name:'Сохранить проверенные записи'}).click();await technician.waitForURL(base+'/cabinet/repairs/');
  await technician.locator('[name=master]').selectOption({label:'ТЕСТ Мастер'});await technician.getByRole('button',{name:'Найти',exact:true}).click();
- const exported=technician.waitForEvent('download');await technician.getByRole('link',{name:'Скачать список в Excel',exact:true}).click();assert.equal((await exported).suggestedFilename(),'openIA-defects.xlsx');
+ const exported=technician.waitForEvent('download');await technician.getByRole('link',{name:'↓ Скачать Excel',exact:true}).click();assert.equal((await exported).suggestedFilename(),'openIA-defects.xlsx');
  const worker=await browser.newPage({viewport:{width:1280,height:1000}});worker.on('pageerror',e=>errors.push(e.message));await login(worker,'+70000000003');await worker.goto(base+'/cabinet/repairs/?q=ДЕМО-XL');
  assert.equal(await worker.getByRole('link',{name:'Устранён',exact:true}).count(),2);
  await worker.screenshot({path:out+'/07-separate-repairs.png',fullPage:true});
