@@ -24,6 +24,7 @@ urlpatterns=[
  path('cabinet/repairs/defects/<uuid:pk>/delete/',repairs.defect_visibility,name='repair_defect_delete'),
  path('cabinet/repairs/defects/<uuid:pk>/restore/',repairs.defect_visibility,{'restore':True},name='repair_defect_restore'),
  path('cabinet/repairs/<uuid:pk>/',repairs.detail,name='repair_detail'),
+ path('cabinet/repairs/<uuid:pk>/reassign/',repairs.reassign,name='repair_reassign'),
  path('cabinet/repairs/<uuid:pk>/edit/',repairs.job_edit,name='repair_edit'),
  path('cabinet/repairs/<uuid:pk>/report/<str:action>/',repairs.report,name='repair_report'),
  path('cabinet/repairs/<uuid:pk>/confirm/',repairs.confirm,name='repair_confirm'),

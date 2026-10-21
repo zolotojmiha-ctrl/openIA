@@ -5,6 +5,7 @@ from django.http import HttpResponse
 from django.core.exceptions import ValidationError
 from .access import visible_jobs,prepare_required,can_prepare
 from .models import Report
+from .values import kilometre
 from .excel import workbook
 from accounts.views import audit
 
@@ -38,9 +39,9 @@ def export(request):
     if q:
         search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
         try:
-            km=Decimal(q.replace(',','.'))
-            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km,defects__archived_at__isnull=not archived)
-        except InvalidOperation:pass
+            km=kilometre(q)
+            search|=Q(defects__kilometre__gte=max(Decimal(0),km-Decimal('.0005')),defects__kilometre__lt=km+Decimal('.0005'),defects__archived_at__isnull=not archived)
+        except (InvalidOperation,ValidationError):pass
         qs=qs.filter(search).distinct()
     year=request.GET.get('year','')
     if year.isdigit() and 1900<=int(year)<=2200:qs=qs.filter(planned_date__year=year)
@@ -60,6 +61,6 @@ def export(request):
         result=next((r for r in job.export_reports if r.kind in ('complete','partial','correction')),None)
         coordinates=f'{result.latitude}, {result.longitude}' if result and result.latitude is not None and result.longitude is not None else ''
         for d in (job.archived_defects if archived else job.active_defects):
-            rows.append([job.repair_label,d.km,d.pipe_section,d.number,job.get_method_display(),job.length_m,job.wall_mm,job.assigned_to.phone if job.assigned_to_id else '',str(job.section_id),job.section.project_object.name,job.section.name,job.get_state_display(),coordinates,job.get_problem_display() if job.problem else '',job.problem_note])
+            rows.append([job.repair_label,d.km,d.pipe_section,d.number,job.get_method_display(),job.length_m,job.wall_display if job.wall_display not in ('—','Требует уточнения') else '',job.assigned_to.phone if job.assigned_to_id else '',str(job.section_id),job.section.project_object.name,job.section.name,job.defect_status,coordinates,job.reason_display,job.problem_note])
     audit(request.user,'repair_exported',jobs=len(selected),defects=len(rows))
     return download(rows,'openIA-archived-defects.xlsx' if archived else 'openIA-defects.xlsx')

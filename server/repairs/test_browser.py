@@ -19,9 +19,9 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
         obj=ProjectObject.objects.create(legal_entity=company,name='Учебный объект')
         ObjectAccess.objects.create(project_object=obj,user=worker,granted_by=leader)
         section=Section.objects.create(project_object=obj,rnu='Учебное РНУ',pipeline='Учебный трубопровод',name='Учебный участок')
-        job=Job.objects.create(section=section,method='p1',length_m=3,wall_mm=Decimal('10.25'),source={'repair_code':'Р-01'},composition='1,5+1,5',assigned_to=worker,created_by=leader)
-        for number in ['ДЕМО-01','ДЕМО-02']:
-            d=Defect.objects.create(section=section,number=number,kilometre=Decimal('101.123456'),pipe_section='СЕК-01');JobDefect.objects.create(job=job,defect=d)
+        job=Job.objects.create(section=section,method='p1',length_m=3,wall_mm=Decimal('10'),source={'repair_code':'Р-01'},composition='1,5+1,5',assigned_to=worker,created_by=leader)
+        for number in ['5001','5002']:
+            d=Defect.objects.create(section=section,number=number,kilometre=Decimal('101.123'),pipe_section='1001');JobDefect.objects.create(job=job,defect=d)
         for serial in ['УЧЕБНАЯ-001','УЧЕБНАЯ-002']:Coupling.objects.create(project_object=obj,method='p1',serial=serial,length_mm=1500,warehouse='Учебный склад')
         technician=User.objects.create_user('+70000000004',password,full_name='ТЕСТ Техник',role='as_built',must_change_password=False)
         ObjectAccess.objects.create(project_object=obj,user=technician,granted_by=leader)
@@ -38,9 +38,9 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
             from pathlib import Path
             sample=Path(root)/'defects.xlsx'
             sample.write_bytes(workbook([
-                ['Р-02','202.234567','СЕК-02','ДЕМО-XL03','П2','1.5','8',worker.phone],
-                ['Р-02','202.234567','СЕК-02','ДЕМО-XL04','П2','1.5','8',worker.phone],
-                ['Р-03','303.345678','СЕК-03','ДЕМО-XL05','П3','2','10',worker.phone],
+                ['Р-02','202.235','1002','55003','П2','1.5','8',worker.phone],
+                ['Р-02','202.235','1002','55004','П2','1.5','8',worker.phone],
+                ['Р-03','303.346','1003','55005','П3','2','10',worker.phone],
             ]))
             env['ARMADA_SAMPLE_FILE']=str(sample)
             result=subprocess.run(['node',str(settings.BASE_DIR/'tests/repairs-excel-browser.cjs')],env=env,capture_output=True,text=True,timeout=120)
@@ -49,3 +49,7 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
             self.assertEqual(first.reports.get().latitude,Decimal('56.900001'))
             self.assertEqual(first.defects.count(),2);self.assertEqual(first.assigned_to_id,worker.pk)
             self.assertFalse(second.reports.exists());self.assertEqual(second.state,'planned')
+            transferred=Job.objects.get(defects__number='55006')
+            self.assertEqual(transferred.assigned_to_id,technician.pk);self.assertEqual(transferred.problem,'oversize_p1')
+            self.assertEqual(transferred.reports.filter(kind='problem').count(),2);self.assertEqual(transferred.reports.get(kind='assignment').author_id,technician.pk)
+            self.assertFalse(transferred.installed_couplings.exists())

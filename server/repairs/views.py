@@ -19,6 +19,7 @@ from .access import visible_jobs, visible_sections, reportable_jobs, prepare_req
 from .forms import SectionForm, JobForm, ReportForm, CouplingForm, AcceptanceForm
 from .models import Section, Job, Defect, JobDefect, Coupling, Report, Attachment
 from .services import report_work, confirm_work
+from .values import kilometre,get_or_create_defect
 
 @login_required
 def jobs(request):
@@ -33,9 +34,9 @@ def jobs(request):
     if q:
         search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
         try:
-            km=Decimal(q.replace(',','.'))
-            if km.is_finite() and 0<=km<=999999:search|=Q(defects__kilometre=km,defects__archived_at__isnull=not archived)
-        except InvalidOperation:pass
+            km=kilometre(q)
+            search|=Q(defects__kilometre__gte=max(Decimal(0),km-Decimal('.0005')),defects__kilometre__lt=km+Decimal('.0005'),defects__archived_at__isnull=not archived)
+        except (InvalidOperation,ValidationError):pass
         qs=qs.filter(search).distinct()
     master=request.GET.get('master','')
     try:
@@ -75,6 +76,7 @@ def job_edit(request,pk=None,section_id=None):
     form=JobForm(request.POST or None,user=request.user,instance=job,initial=initial)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            Section.objects.select_for_update().get(pk=form.cleaned_data['section'].pk)
             locked=Job.objects.select_for_update().get(pk=job.pk) if job else None
             if locked and locked.version!=form.cleaned_data['expected_version']:form.add_error(None,'Работу уже изменили. Обновите страницу.')
             elif locked and locked.defects.filter(archived_at__isnull=False).exists():form.add_error(None,'В работе есть удалённые из списка дефекты. Сначала восстановите их; история и привязки сохраняются.')
@@ -82,7 +84,7 @@ def job_edit(request,pk=None,section_id=None):
             else:
                 saved=form.save(commit=False)
                 if job and job.reports.exists():
-                    previous={(d.number,d.kilometre,d.pipe_section) for d in job.defects.all()}
+                    previous={(d.number,kilometre(d.kilometre),d.pipe_section) for d in job.defects.all()}
                     desired={(n,form.cleaned_data['kilometre'],form.cleaned_data['pipe_section']) for n in form.cleaned_data['defect_numbers']}
                     if previous!=desired:form.add_error(None,'После начала работ нельзя заменить привязанные дефекты. Создайте отдельное задание; прежняя история сохранится.')
                 if not form.errors:
@@ -90,7 +92,7 @@ def job_edit(request,pk=None,section_id=None):
                     saved.created_by=job.created_by if job else request.user;saved.version=(locked.version+1) if locked else 1;saved.save()
                     desired=[]
                     for number in form.cleaned_data['defect_numbers']:
-                        defect,_=Defect.objects.get_or_create(section=saved.section,kilometre=form.cleaned_data['kilometre'],number=number,defaults={'pipe_section':form.cleaned_data['pipe_section']})
+                        defect,_=get_or_create_defect(section=saved.section,kilometre=form.cleaned_data['kilometre'],number=number,defaults={'pipe_section':form.cleaned_data['pipe_section']})
                         desired.append(defect)
                     JobDefect.objects.filter(job=saved).exclude(defect__in=desired).delete()
                     for defect in desired:JobDefect.objects.get_or_create(job=saved,defect=defect)
@@ -255,3 +257,34 @@ def defect_visibility(request,pk,restore=False):
                 return redirect('repairs')
     token=signing.dumps(snapshot(defect,jobs),salt='repair-defect-visibility')
     return render(request,'repairs/delete.html',{'defect':defect,'jobs':jobs,'restore':restore,'snapshot':token,'error':error},status=status)
+
+class ReassignmentForm(forms.Form):
+    expected_version=forms.IntegerField(widget=forms.HiddenInput)
+    master=forms.ModelChoiceField(label='Новый ответственный мастер',queryset=User.objects.none(),required=False,empty_label='Пока не назначен')
+    def __init__(self,*args,job,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['master'].queryset=assignees(job.section)
+        self.fields['master'].label_from_instance=lambda user:user.full_name
+        self.initial.update(expected_version=job.version,master=job.assigned_to_id)
+
+@prepare_required
+def reassign(request,pk):
+    job=get_object_or_404(visible_jobs(request.user),pk=pk)
+    form=ReassignmentForm(request.POST or None,job=job);status=200
+    if request.method=='POST' and form.is_valid():
+        with transaction.atomic():
+            current=Job.objects.select_for_update().get(pk=job.pk)
+            if current.version!=form.cleaned_data['expected_version']:
+                form.add_error(None,'Работа изменилась. Обновите страницу перед передачей.');status=409
+            elif current.state=='confirmed':
+                form.add_error(None,'Этот ремонт уже проверен и завершён. Передавайте новому мастеру оставшиеся неустранённые дефекты.');status=409
+            else:
+                master=form.cleaned_data['master']
+                if current.assigned_to_id!=getattr(master,'pk',None):
+                    before=current.assigned_to
+                    Report.objects.create(job=current,author=request.user,kind='assignment',performed_date=timezone.localdate(),note='Ответственный мастер: '+(before.full_name if before else 'не назначен')+' → '+(master.full_name if master else 'не назначен')+'. Прежние результаты и авторы сохранены.',context={'from_master':str(current.assigned_to_id or ''),'to_master':str(getattr(master,'pk',''))})
+                    current.assigned_to=master;current.version+=1;current.save(update_fields=['assigned_to','version'])
+                    audit(request.user,'repair_prepared',entity_id=str(current.pk),kind='reassignment',previous_master=str(before.pk) if before else '',master=str(master.pk) if master else '')
+                messages.success(request,'Ответственный мастер сохранён. Прежние записи остались в истории.')
+                return redirect('repair_detail',pk=current.pk)
+    return render(request,'repairs/reassign.html',{'job':job,'form':form},status=status)

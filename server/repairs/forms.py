@@ -8,6 +8,7 @@ from accounts.models import User
 from projects.access import visible_objects
 from documents.storage import validate_upload
 from .access import visible_sections, selectable_couplings
+from .values import kilometre,identifier,matching_defects
 from .models import Section, Job, Defect, Coupling, METHODS, PROBLEMS
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
@@ -23,7 +24,7 @@ class SectionForm(forms.ModelForm):
 
 class JobForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,initial=0)
-    kilometre=forms.DecimalField(label='Километр',max_digits=12,decimal_places=6,min_value=0)
+    kilometre=forms.CharField(label='Километр',max_length=512,help_text='Округляется до трёх знаков после запятой.',widget=forms.TextInput(attrs={'inputmode':'decimal'}))
     defect_numbers=forms.CharField(label='Номер дефекта',max_length=1000,help_text='Если одна конструкция устраняет несколько дефектов, разделите номера знаком ;')
     pipe_section=forms.CharField(label='Номер секции трубы',max_length=80,required=False)
     class Meta:
@@ -40,12 +41,15 @@ class JobForm(forms.ModelForm):
         self.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=s.project_object if s else None)).distinct().order_by('full_name') if s else User.objects.none()
         self.fields['assigned_to'].label_from_instance=lambda u:u.full_name
         self.fields['length_m'].min_value=Decimal('.001')
-        self.fields['wall_mm'].min_value=Decimal('.01')
+        self.fields['wall_mm']=forms.DecimalField(label='Толщина стенки муфты, мм',max_digits=4,decimal_places=0,min_value=1,required=False,widget=forms.NumberInput(attrs={'step':1}),error_messages={'max_decimal_places':'Толщина стенки муфты — целое число, например 8, 10 или 12.'})
         if self.instance.pk and self.instance.section_id:
+            if self.instance.wall_mm is not None and self.instance.wall_mm==self.instance.wall_mm.to_integral_value():self.initial['wall_mm']=int(self.instance.wall_mm)
             self.initial['section']=self.instance.section_id
             defects=sorted(self.instance.active_defects,key=lambda d:d.number)
-            self.initial.update(expected_version=self.instance.version,defect_numbers='; '.join(d.number for d in defects),kilometre=defects[0].kilometre if defects else None,pipe_section=defects[0].pipe_section if defects else '')
+            self.initial.update(expected_version=self.instance.version,defect_numbers='; '.join(d.number for d in defects),kilometre=defects[0].km if defects else None,pipe_section=defects[0].pipe_section if defects else '')
             self.fields['section'].disabled=True
+    def clean_kilometre(self):return kilometre(self.cleaned_data['kilometre'])
+    def clean_pipe_section(self):return identifier(self.cleaned_data.get('pipe_section',''),'№ секции',optional=True)
     def clean_wall_mm(self):
         value=self.cleaned_data.get('wall_mm')
         if value is not None and value<=0:
@@ -53,14 +57,18 @@ class JobForm(forms.ModelForm):
         return value
     def clean_defect_numbers(self):
         values=[s.strip() for s in self.cleaned_data['defect_numbers'].split(';') if s.strip()]
-        if not values or len(values)>30 or any(len(s)>80 for s in values):raise forms.ValidationError('Укажите от 1 до 30 номеров, каждый не длиннее 80 символов.')
+        if not values or len(values)>30:raise forms.ValidationError('Укажите от 1 до 30 номеров дефектов.')
+        values=[identifier(v,'№ дефекта') for v in values]
         return list(dict.fromkeys(values))
     def clean(self):
         c=super().clean()
         if c.get('method') in ['p1','p2','p3','p4','p5u'] and not c.get('length_m'):self.add_error('length_m','Укажите необходимую длину конструкции.')
         if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
-            if Defect.objects.filter(section=c['section'],kilometre=c['kilometre'],number__in=c['defect_numbers'],archived_at__isnull=False).exists():
+            if any(matching_defects(c['section'],c['kilometre'],number).filter(archived_at__isnull=False).exists() for number in c['defect_numbers']):
                 self.add_error('defect_numbers','Этот дефект удалён из списка. Восстановите его в разделе «Удалённые», чтобы сохранить прежнюю историю.')
+        if c.get('method') not in ('p1','p2','p3','p4','p5u') and c.get('wall_mm') is not None:self.add_error('wall_mm','Стенка муфты указывается только для ремонта муфтой.')
+        if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
+            if any(matching_defects(c['section'],c['kilometre'],number).count()>1 for number in c['defect_numbers']):self.add_error('defect_numbers','После округления есть дубли существующих дефектов. Сначала проверьте их.')
         return c
 
 class CouplingForm(forms.ModelForm):
@@ -68,7 +76,7 @@ class CouplingForm(forms.ModelForm):
         model=Coupling
         fields=['method','serial','length_mm','wall_mm','warehouse']
     def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['length_mm'].min_value=1;self.fields['wall_mm'].min_value=Decimal('.01')
+        super().__init__(*args,**kwargs);self.fields['length_mm'].min_value=1;self.fields['wall_mm']=forms.DecimalField(label='Толщина стенки муфты, мм',max_digits=4,decimal_places=0,min_value=1,required=False,widget=forms.NumberInput(attrs={'step':1}),error_messages={'max_decimal_places':'Толщина стенки муфты — целое число, например 8, 10 или 12.'})
 
 class MultipleInput(forms.ClearableFileInput):allow_multiple_selected=True
 class MultipleFiles(forms.FileField):
@@ -84,11 +92,11 @@ class ReportForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     performed_date=forms.DateField(label='Дата',widget=DATE)
     outcome=forms.ChoiceField(label='Результат',choices=[('partial','Выполнено частично'),('complete','Работа выполнена')],initial='complete',widget=forms.RadioSelect)
-    method=forms.ChoiceField(label='Фактический способ ремонта',choices=METHODS,required=False)
+    method=forms.ChoiceField(label='Фактический метод ремонта',choices=METHODS,required=False)
     length_m=forms.DecimalField(label='Фактическая длина, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False)
     composition=forms.CharField(label='Фактический состав, м',max_length=200,required=False)
     couplings=forms.ModelMultipleChoiceField(label='Все муфты, установленные на этой работе',queryset=Coupling.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
-    problem=forms.ChoiceField(label='Что мешает',choices=PROBLEMS,required=False)
+    problem=forms.ChoiceField(label='Почему дефект не устранён',choices=PROBLEMS,required=False)
     note=forms.CharField(label='Пояснение',max_length=3000,required=False,widget=forms.Textarea(attrs={'rows':3,'placeholder':'Можно надиктовать текст с клавиатуры телефона'}))
     files=MultipleFiles(label='Фотографии и документы',required=False,widget=MultipleInput())
     latitude=forms.DecimalField(max_digits=9,decimal_places=6,min_value=-90,max_value=90,required=False,widget=forms.HiddenInput)
@@ -110,7 +118,7 @@ class ReportForm(forms.Form):
             for name in ['outcome','method','length_m','composition','couplings']:
                 self.fields.pop(name,None)
             if action=='problem':
-                self.fields['problem'].choices=[('', 'Выберите причину'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала'),('other','Другая причина')]
+                self.fields['problem'].choices=[('', 'Выберите причину'),('not_started','Ещё не выполняли'),('access','Нет проезда'),('winter','Нет проезда — доступ зимой'),('existing_coupling','Обнаружена ранее установленная муфта'),('oversize_p1','Нет муфты П1 увеличенного диаметра'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала'),('other','Другая причина')]
             if action in ('result','problem'):
                 self.fields.pop('latitude');self.fields.pop('longitude')
                 self.fields['coordinates']=forms.CharField(label='Координаты точки ремонта',max_length=100,required=action=='result',
@@ -138,11 +146,11 @@ class ReportForm(forms.Form):
         if self.simple and c.get('coordinates'):
             c['latitude'],c['longitude']=c['coordinates']
         if self.simple and self.action=='result':
-            if len({d.kilometre for d in self.job.active_defects})>1:
+            if len({kilometre(d.kilometre) for d in self.job.active_defects})>1:
                 self.add_error(None,'В группе дефекты на разных километрах. Техник должен разделить задание на отдельные ремонты с отдельными координатами.')
             c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(Coupling.objects.filter(installation__job=self.job)))
-        if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other') and not c.get('note','').strip():
-            self.add_error('note','Поясните, какого материала не хватает или укажите другую причину.')
+        if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other','existing_coupling','oversize_p1') and not c.get('note','').strip():
+            self.add_error('note',{'existing_coupling':'Опишите найденную муфту: тип, состояние и другие известные сведения.','oversize_p1':'Опишите обнаруженную муфту и требуемую П1 увеличенного диаметра; укажите размер, если известен.'}.get(c.get('problem'),'Поясните, какого материала не хватает или укажите другую причину.'))
         if c.get('performed_date') and c['performed_date']>timezone.localdate():self.add_error('performed_date','Фактическая дата не может быть в будущем.')
         if self.action=='problem' and not c.get('problem'):self.add_error('problem','Выберите причину.')
         if self.action in ('result','correction'):

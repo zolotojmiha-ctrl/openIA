@@ -11,6 +11,7 @@ from accounts.views import leader_required,audit
 from .access import visible_sections,prepare_required
 from .models import Section,ImportBatch,Job,Defect,JobDefect,Coupling,Report,METHODS
 from .importer import parse_work
+from .values import kilometre,matching_defects,get_or_create_defect
 from documents.storage import validate_upload,store_file,private_path,verified_file
 
 class UploadForm(forms.Form):
@@ -23,7 +24,7 @@ class UploadForm(forms.Form):
 def matches(section,item):
     query=Q(pk__in=[])
     for d in item['defects']:
-        query|=Q(defects__number=d['number'],defects__kilometre=Decimal(d['km'])) if item.get('code') else Q(defects__number=d['number'])
+        query|=Q(defects__number=d['number'],defects__kilometre__gte=max(Decimal(0),kilometre(d['km'])-Decimal('.0005')),defects__kilometre__lt=kilometre(d['km'])+Decimal('.0005'))
     return Job.objects.filter(query,section=section).prefetch_related('defects').distinct()
 
 class ReviewForm(forms.Form):
@@ -47,18 +48,19 @@ class ReviewForm(forms.Form):
             if c.get(f'row_{index}')=='new' and item.get('assigned_to') and item['assigned_to'] not in eligible:
                 self.add_error(None,'Доступ выбранного мастера изменился. Загрузите ведомость заново после проверки доступа.')
             selected=c.get(f'row_{index}')
-            if selected=='new' and any(Defect.objects.filter(section=self.batch.section,kilometre=Decimal(d['km']),number=d['number'],archived_at__isnull=False).exists() for d in item['defects']):
+            if selected not in ('skip',None) and any(matching_defects(self.batch.section,d['km'],d['number']).count()>1 for d in item['defects']):self.add_error(f'row_{index}','После округления есть дубли существующих дефектов. Проверьте их перед импортом.')
+            if selected=='new' and any(matching_defects(self.batch.section,d['km'],d['number']).filter(archived_at__isnull=False).exists() for d in item['defects']):
                 self.add_error(f'row_{index}','Этот дефект удалён из списка. Сначала восстановите его в разделе «Удалённые».')
             if self.batch.payload.get('format')=='openia-v1' and selected=='new':
-                overlap=any(Job.objects.filter(section=self.batch.section,defects__kilometre=Decimal(d['km']),defects__number=d['number']).exists() for d in item['defects'])
+                overlap=any(matching_defects(self.batch.section,d['km'],d['number']).filter(jobs__isnull=False).exists() for d in item['defects'])
                 if overlap:
                     self.add_error(f'row_{index}','Дефект уже внесён. Пропустите строку или дополните историю существующей группы; повторный ремонт не создаётся автоматически.')
                 if Job.objects.filter(section=self.batch.section,source__repair_code=item['code']).exists():
                     self.add_error(f'row_{index}','Код ремонта уже используется на участке. Для нового ремонта укажите другой код.')
             if self.batch.payload.get('format')=='openia-v1' and selected not in ('new','skip',None):
                 job=matches(self.batch.section,item).filter(pk=selected).first()
-                desired={(Decimal(d['km']),d['number'],d['pipe_section']) for d in item['defects']}
-                if not job or {(d.kilometre,d.number,d.pipe_section) for d in job.defects.all()}!=desired:
+                desired={(kilometre(d['km']),d['number'],d['pipe_section']) for d in item['defects']}
+                if not job or {(kilometre(d.kilometre),d.number,d.pipe_section) for d in job.defects.all()}!=desired:
                     self.add_error(f'row_{index}','Состав группы отличается. Импорт не объединяет и не заменяет дефекты существующего ремонта.')
         return c
 
@@ -132,7 +134,7 @@ def review(request,pk):
                             job=Job.objects.select_for_update().get(pk=action,section=batch.section);job.version+=1;job.save(update_fields=['version']);linked+=1
                             Report.objects.create(job=job,author=request.user,kind='imported',performed_date=timezone.localdate(),note=f'Сведения из ведомости «{batch.filename}», лист «{batch.sheet}», строки '+', '.join(map(str,item['rows']))+'. План и подтверждённое выполнение не изменены.',context={'source':source,'proposed_method':item['method'],'proposed_length':item['length_m'],'proposed_composition':item['composition']})
                         for d in item['defects']:
-                            defect,_=Defect.objects.get_or_create(section=batch.section,kilometre=Decimal(d['km']),number=d['number'],defaults={'pipe_section':d['pipe_section'],'source':source})
+                            defect,_=get_or_create_defect(section=batch.section,kilometre=Decimal(d['km']),number=d['number'],defaults={'pipe_section':d['pipe_section'],'source':source})
                             JobDefect.objects.get_or_create(job=job,defect=defect)
                     inventory=0
                     if form.cleaned_data['include_couplings']:

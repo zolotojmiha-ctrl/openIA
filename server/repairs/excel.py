@@ -7,8 +7,9 @@ from xml.etree import ElementTree as ET
 from django.core.exceptions import ValidationError
 from accounts.models import normalize_phone
 from .importer import numeric, method
+from .values import kilometre,identifier
 
-HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Тип конструкции','Длина, м','Толщина стенки, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение']
+HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
 def workbook(rows):
@@ -46,6 +47,8 @@ def fixed_decimal(value,places,upper,allow_zero=False):
 
 def parse_standard(book):
     cells=book['cells'];header={str(v).strip():c for (r,c),v in cells.items() if r==1}
+    for old,new in [('Тип конструкции','Метод ремонта'),('Толщина стенки, мм','Толщина стенки муфты, мм')]:
+        if new not in header and old in header:header[new]=header[old]
     if not set(HEADERS[:8]).issubset(header):
         raise ValidationError('Не найдены обязательные столбцы шаблона openIA. Скачайте шаблон Excel.')
     if book['formulas']:
@@ -55,26 +58,29 @@ def parse_standard(book):
     for row in sorted({r for r,c in cells if r>1}):
         if not any(value(row,h) for h in HEADERS[:8]):continue
         code=value(row,'Код ремонта');number=value(row,'№ дефекта');pipe=value(row,'№ секции')
-        km=fixed_decimal(value(row,'Км'),6,Decimal('1000000'),allow_zero=True);m=method(value(row,'Тип конструкции'))
-        if value(row,'Тип конструкции').lower() in ('другой способ','other'):m='other'
+        try:
+            km=kilometre(value(row,'Км'))
+            number=identifier(number,'№ дефекта');pipe=identifier(pipe,'№ секции',optional=True)
+        except ValidationError as e:raise ValidationError(f'Строка {row}: '+e.messages[0])
+        m=method(value(row,'Метод ремонта'))
+        if value(row,'Метод ремонта').lower() in ('другой способ','other'):m='other'
         if not code:raise ValidationError(f'Строка {row}: не заполнен «Код ремонта». Для отдельных ремонтов укажите разные номера, например 1, 2, 3.')
         if len(code)>80:raise ValidationError(f'Строка {row}: код ремонта должен быть не длиннее 80 символов.')
         if not number:raise ValidationError(f'Строка {row}: не заполнен «№ дефекта».')
         if len(number)>80:raise ValidationError(f'Строка {row}: номер дефекта должен быть не длиннее 80 символов.')
         if len(pipe)>80:raise ValidationError(f'Строка {row}: номер секции должен быть не длиннее 80 символов.')
-        if km is None:
-            raise ValidationError(f'Строка {row}: некорректный километр. Укажите число от 0 до 999999.999999, например 153.569. Допустима точность до 6 знаков после запятой.')
         if not m:
-            raise ValidationError(f'Строка {row}: неизвестный тип конструкции «{value(row,"Тип конструкции")[:80]}». Допустимы П1, П2, П3, П4, П5У, шлифовка, вырезка или другой способ.')
+            raise ValidationError(f'Строка {row}: неизвестный метод ремонта «{value(row,"Метод ремонта")[:80]}». Допустимы П1, П2, П3, П4, П5У, шлифовка, вырезка или другой способ.')
         identity=(km,number)
         if identity in seen:raise ValidationError(f'Строка {row}: дефект на этом километре повторяется. Один дефект не может входить в две группы.')
         seen.add(identity)
         specs=[]
-        for name,places,upper in [('Длина, м',3,Decimal('1000000')),('Толщина стенки, мм',2,Decimal('10000'))]:
+        for name,places,upper in [('Длина, м',3,Decimal('1000000')),('Толщина стенки муфты, мм',0,Decimal('10000'))]:
             text=value(row,name);v=fixed_decimal(text,places,upper) if text else None
             if text and v is None:
                 raise ValidationError(f'Строка {row}: некорректное поле «{name}».')
             specs.append(str(v) if v is not None else '')
+        if m not in ('p1','p2','p3','p4','p5u') and specs[1]:raise ValidationError(f'Строка {row}: стенку муфты укажите только для метода ремонта муфтой.')
         if m.startswith('p') and not specs[0]:raise ValidationError(f'Строка {row}: укажите длину конструкции.')
         phone=value(row,'Мастер (телефон)')
         if phone:phone=normalize_phone(phone)

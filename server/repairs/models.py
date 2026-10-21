@@ -3,10 +3,11 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from .values import kilometre
 
 METHODS = [('p1','П1'),('p2','П2'),('p3','П3'),('p4','П4'),('p5u','П5У'),('grind','Шлифовка'),('cut','Вырезка'),('other','Другой способ')]
-STATES = [('planned','Запланировано'),('progress','В работе'),('partial','Выполнено частично'),('reported','Результат на проверке'),('confirmed','Выполнение подтверждено')]
-PROBLEMS = [('','Нет открытой проблемы'),('materials','Нет материалов'),('access','Нет доступа'),('water','Котлован затоплен'),('other','Другая причина'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала')]
+STATES = [('planned','Не устранён'),('progress','Не устранён — в работе'),('partial','Не устранён — частично выполнено'),('reported','Устранён — на проверке'),('confirmed','Устранён')]
+PROBLEMS = [('','Нет открытой проблемы'),('materials','Нет материалов'),('access','Нет проезда / доступа'),('water','Котлован затоплен'),('other','Другая причина'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала'),('not_started','Ещё не выполняли'),('winter','Нет проезда — доступ зимой'),('existing_coupling','Обнаружена ранее установленная муфта'),('oversize_p1','Нет муфты П1 увеличенного диаметра')]
 
 class Section(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
@@ -35,16 +36,16 @@ class Defect(models.Model):
         constraints=[models.UniqueConstraint(fields=['section','kilometre','number'],name='repair_defect_identity'),models.CheckConstraint(condition=models.Q(kilometre__gte=0),name='repair_km_positive')]
     def __str__(self):return f'км {self.km} · № {self.number}'
     @property
-    def km(self):return format(self.kilometre,'f').rstrip('0').rstrip('.') if self.kilometre else '0'
+    def km(self):return format(kilometre(self.kilometre),'.3f')
 
 class Job(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='jobs')
     defects=models.ManyToManyField(Defect,through='JobDefect',related_name='jobs')
     assigned_to=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
-    method=models.CharField('Способ ремонта',max_length=20,choices=METHODS)
+    method=models.CharField('Метод ремонта',max_length=20,choices=METHODS)
     length_m=models.DecimalField('Длина конструкции, м',max_digits=9,decimal_places=3,null=True,blank=True)
-    wall_mm=models.DecimalField('Толщина стенки конструкции, мм',max_digits=6,decimal_places=2,null=True,blank=True)
+    wall_mm=models.DecimalField('Толщина стенки муфты, мм',max_digits=6,decimal_places=2,null=True,blank=True)
     composition=models.CharField('Состав конструкции, м',max_length=200,blank=True)
     planned_date=models.DateField('Плановая дата',null=True,blank=True)
     notes=models.TextField('Задание и условия работ',max_length=3000,blank=True)
@@ -61,6 +62,18 @@ class Job(models.Model):
     source=models.JSONField(default=dict,blank=True)
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(length_m__isnull=True)|models.Q(length_m__gt=0),name='repair_length_positive')]
+    @property
+    def defect_status(self):return 'Устранён' if self.state in ('reported','confirmed') else 'Не устранён'
+    @property
+    def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем'}.get(self.state,'')
+    @property
+    def reason_display(self):
+        if self.problem:return self.get_problem_display()
+        return {'planned':'Ещё не выполняли','progress':'Работы продолжаются','partial':'Выполнено частично'}.get(self.state,'')
+    @property
+    def wall_display(self):
+        if self.method not in ('p1','p2','p3','p4','p5u') or self.wall_mm is None:return '—'
+        return str(int(self.wall_mm)) if self.wall_mm==self.wall_mm.to_integral_value() else 'Требует уточнения'
     @property
     def active_defects(self):return [d for d in self.defects.all() if d.archived_at is None]
     @property
@@ -85,7 +98,7 @@ class Coupling(models.Model):
     method=models.CharField('Тип муфты',max_length=20,choices=METHODS[:5])
     serial=models.CharField('Заводской номер',max_length=100,blank=True)
     length_mm=models.PositiveIntegerField('Длина, мм')
-    wall_mm=models.DecimalField('Толщина стенки, мм',max_digits=6,decimal_places=2,null=True,blank=True)
+    wall_mm=models.DecimalField('Толщина стенки муфты, мм',max_digits=6,decimal_places=2,null=True,blank=True)
     warehouse=models.CharField('Место хранения',max_length=200,blank=True)
     source=models.JSONField(default=dict,blank=True)
     class Meta:
@@ -98,7 +111,7 @@ class Report(models.Model):
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     token=models.UUIDField(default=uuid.uuid4,unique=True)
     request_digest=models.CharField(max_length=64,blank=True)
-    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости')])
+    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера')])
     performed_date=models.DateField('Дата')
     method=models.CharField('Фактический способ',max_length=20,choices=METHODS,blank=True)
     length_m=models.DecimalField('Фактическая длина, м',max_digits=9,decimal_places=3,null=True,blank=True)

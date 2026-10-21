@@ -8,6 +8,7 @@ from datetime import date,timedelta
 from decimal import Decimal,InvalidOperation
 from xml.etree import ElementTree as ET
 from django.core.exceptions import ValidationError
+from .values import kilometre,identifier
 
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -101,15 +102,18 @@ def parse_work(upload,sheet_name=''):
     if not mc or mc>15:raise ValidationError('Не найден столбец назначенного способа ремонта.')
     lc=mc+1;cc=mc+2;pc=next((c for c,v in headers.items() if 'дата' in v and 'план' in v and c<20),None)
     note_cols=[c for c,v in headers.items() if ('примечан' in v or 'перенос' in v) and c<26]
-    groups={};warnings=[]
+    groups={};warnings=[];seen=set()
     if book['external_formulas']:warnings.append('Есть формулы со ссылками на другие книги. Использованы сохранённые значения Excel, формулы не пересчитывались.')
     for r in range(hr+1,max(rr for rr,c in cells)+1):
         km=numeric(value(r,kc,True));number=str(value(r,dc)).strip();m=method(value(r,mc,True))
         if km is None or not 0<=km<1000000 or not number or not m:continue
-        if len(number)>80 or km.as_tuple().exponent < -6:
-            # Floating Excel representations such as 832.5151099999999 retain six meaningful km places.
-            if len(number)>80:raise ValidationError('Слишком длинный номер дефекта.')
-            km=km.quantize(Decimal('.000001'))
+        try:
+            km=kilometre(km);number=identifier(number,'№ дефекта')
+            pipe=identifier(str(value(r,sc,True)).strip() if sc else '','№ секции',optional=True)
+        except ValidationError as e:raise ValidationError(f'Строка {r}: '+e.messages[0])
+        identity=(km,number)
+        if identity in seen:raise ValidationError(f'Строка {r}: после округления повторяется дефект № {number} на км {km}.')
+        seen.add(identity)
         length=numeric(value(r,lc,True));comp=str(value(r,cc,True)).strip()
         if length is not None and (length<=0 or length>=1000000):length=None
         datevalue=numeric(value(r,pc,True)) if pc else None
@@ -117,7 +121,7 @@ def parse_work(upload,sheet_name=''):
         note='; '.join(str(value(r,c,True)).strip() for c in note_cols if value(r,c,True))
         key=origin(r,mc)[0]
         item=groups.setdefault(key,{'rows':[],'defects':[],'method':m,'length_m':str(length) if length is not None else '', 'composition':comp[:200],'planned_date':planned,'note':note[:3000], 'raw':[]})
-        item['rows'].append(r);item['defects'].append({'km':str(km),'number':number,'pipe_section':str(value(r,sc,True)).strip()[:80] if sc else ''})
+        item['rows'].append(r);item['defects'].append({'km':str(km),'number':number,'pipe_section':pipe})
         item['raw'].append({'row':r,'cells':{str(c):v for (rr,c),v in cells.items() if rr==r and c<26}})
         if length is not None and comp and re.fullmatch(r'[\d.,+\s]+',comp):
             parts=[numeric(v) for v in comp.split('+')]
@@ -135,6 +139,7 @@ def parse_work(upload,sheet_name=''):
             m=method(value(r,right));length=numeric(value(r,length_col));serial=str(value(r,serial_col)).strip()
             if m not in ('p1','p2','p3','p4','p5u') or length is None or not 0<length<100000 or not serial:continue
             wall=numeric(value(r,wall_col))
+            if wall is not None and (wall!=wall.to_integral_value() or not 0<wall<10000):raise ValidationError(f'Строка {r}: толщина стенки муфты должна быть целым положительным числом.')
             fact=numeric(value(r,fact_col)) if fact_col else None
             installed=(book['epoch']+timedelta(days=int(fact))).isoformat() if fact is not None and 0<fact<200000 else ''
             couplings.append({'row':r,'method':m,'length_mm':int(length),'wall_mm':str(wall) if wall is not None and 0<wall<10000 else None,'serial':serial[:100],'warehouse':str(value(r,warehouse_col))[:200] if warehouse_col else '', 'historical_installation':bool(value(r,fact_col)) if fact_col else False,'mount_km':str(value(r,right-1)),'installation_date':installed,'raw':{str(c):v for (rr,c),v in cells.items() if rr==r and c>=right-1}})
