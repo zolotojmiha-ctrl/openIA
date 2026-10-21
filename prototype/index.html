@@ -20,7 +20,7 @@ function review(){onlyReview=true;selected.clear();ci=0;go('defects')}
 function openContract(i){ci=i;go('contract')}
 function tone(j){return ['reported','confirmed'].includes(j.state)?'resolved':j.state}
 function status(j){return j.state==='reported'?'Устранён · На проверке':j.state==='confirmed'?'Устранён · Проверен':'Не устранён'+(j.reason?' · '+j.reason:' · Ещё не выполняли')}
-function action(j){return $('#role').value==='Мастер'?btn('Внести результат',`report(${j.id})`,'primary'):(j.state==='reported'?btn('Посмотреть',`detail(${j.id})`)+ ' '+btn('Подтвердить',`confirmJobs([${j.id}])`,'primary'):btn('Открыть',`detail(${j.id})`))}
+function action(j){return $('#role').value==='Мастер'?(['reported','confirmed'].includes(j.state)?btn('Посмотреть результат',`detail(${j.id})`):btn('Внести результат',`report(${j.id})`,'primary')):(j.state==='reported'?btn('Посмотреть',`detail(${j.id})`)+ ' '+btn('Подтвердить',`confirmJobs([${j.id}])`,'primary'):btn('Открыть',`detail(${j.id})`))}
 function picked(id,on){on?selected.add(id):selected.delete(id);render()}
 function confirmJobs(ids){let chosen=jobs.filter(j=>ids.includes(j.id)&&j.state==='reported');if(!chosen.length)return toast('Выберите результаты на проверке');modal('Подтвердить устранение',`<p>Работ: ${chosen.length}. Подтвердить результаты проверки?</p>`,btn('Подтвердить',`accept(${JSON.stringify(chosen.map(j=>j.id))})`,'primary'))}
 function accept(ids){jobs.forEach(j=>{if(ids.includes(j.id)&&j.state==='reported')j.state='confirmed'});selected.clear();$('#dialog').close();render();toast('Результат подтверждён — в прототипе')}
