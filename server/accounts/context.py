@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.0.6-repairs'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.0.7-repairs'}
     if request.user.is_authenticated:
         from repairs.access import visible_jobs,can_prepare
         jobs=visible_jobs(request.user)

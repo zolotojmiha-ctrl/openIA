@@ -42,6 +42,19 @@ def source_rows():
         15:{'AA':'П1','AB':1000,'AD':99}}
 
 class RepairsTests(TestCase):
+    def test_review_notice_for_leaders_only_and_until_review_completed(self):
+        self.job.state='reported';self.job.save()
+        for leader in (self.leader,self.second):
+            self.client.force_login(leader)
+            response=self.client.get(reverse('dashboard'))
+            self.assertContains(response,'На проверку устранения: 1')
+            self.assertContains(response,'href="'+reverse('repairs')+'?state=reported"')
+        self.client.force_login(self.worker)
+        self.assertNotContains(self.client.get(reverse('dashboard')),'repair-review-notice')
+        self.job.state='confirmed';self.job.save()
+        self.client.force_login(self.leader)
+        self.assertNotContains(self.client.get(reverse('dashboard')),'repair-review-notice')
+
     def test_register_colors_follow_result_and_reason(self):
         self.client.force_login(self.leader)
         cases=[('reported','swamp','resolved'),('confirmed','','resolved'),
