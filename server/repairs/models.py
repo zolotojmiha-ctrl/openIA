@@ -65,6 +65,12 @@ class Job(models.Model):
     @property
     def defect_status(self):return 'Устранён' if self.state in ('reported','confirmed') else 'Не устранён'
     @property
+    def status_tone(self):
+        if self.state in ('reported','confirmed'):return 'resolved'
+        if self.problem in ('materials','coupling','material_other','oversize_p1'):return 'materials'
+        if self.problem in ('access','water','swamp','winter'):return 'blocked'
+        return 'neutral'
+    @property
     def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем'}.get(self.state,'')
     @property
     def reason_display(self):

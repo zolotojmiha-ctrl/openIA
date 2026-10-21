@@ -42,6 +42,23 @@ def source_rows():
         15:{'AA':'П1','AB':1000,'AD':99}}
 
 class RepairsTests(TestCase):
+    def test_register_colors_follow_result_and_reason(self):
+        self.client.force_login(self.leader)
+        cases=[('reported','swamp','resolved'),('confirmed','','resolved'),
+            ('planned','access','blocked'),('planned','water','blocked'),
+            ('planned','swamp','blocked'),('planned','winter','blocked'),
+            ('planned','materials','materials'),('planned','coupling','materials'),
+            ('planned','material_other','materials'),('planned','oversize_p1','materials'),
+            ('planned','','neutral'),('planned','not_started','neutral'),
+            ('planned','existing_coupling','neutral'),('planned','other','neutral')]
+        for state,problem,tone in cases:
+            with self.subTest(state=state,problem=problem):
+                self.job.state=state;self.job.problem=problem;self.job.save()
+                self.assertEqual(self.job.status_tone,tone)
+                response=self.client.get(reverse('repairs'))
+                self.assertContains(response,'class="repair-tone-'+tone+'"')
+                self.assertContains(response,'class="repair-status-label"')
+
     @classmethod
     def setUpTestData(cls):
         password=secrets.token_urlsafe(24)

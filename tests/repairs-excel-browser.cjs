@@ -7,6 +7,8 @@ const fs=require('node:fs');
  const technician=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];technician.on('pageerror',e=>errors.push(e.message));
  async function login(page,phone){await page.goto(base+'/cabinet/login/');await page.locator('[name=phone]').fill(phone);await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');}
  await login(technician,'+70000000004');await technician.goto(base+'/cabinet/repairs/');
+ const resolved=technician.locator('tbody.repair-tone-resolved').first();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(227, 243, 232)');await resolved.hover();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(213, 235, 220)');
+
  const template=technician.waitForEvent('download');await technician.getByRole('link',{name:'Шаблон Excel',exact:true}).click();assert.equal((await template).suggestedFilename(),'openIA-defects-template.xlsx');
  await technician.goto(base+'/cabinet/repairs/import/');await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('[name=file]').setInputFiles(process.env.ARMADA_SAMPLE_FILE);
  await technician.getByRole('button',{name:'Посмотреть перед переносом'}).click();await technician.waitForURL(/\/repairs\/import\/[a-f0-9-]+\/$/);

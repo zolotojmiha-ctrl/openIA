@@ -4,3 +4,11 @@
 .repair-defects{overflow-x:auto;margin:16px 0}.repair-defects table{width:100%;border-collapse:collapse}.repair-defects th,.repair-defects td{text-align:left;padding:10px;border-bottom:1px solid #ddd;vertical-align:top}
 
 .repair-register{max-width:100%;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px}.repair-register table{width:100%;min-width:1080px;border-collapse:collapse;font-size:12px;line-height:1.4}.repair-register th{background:#f5f3f9;text-align:left;font-weight:600;white-space:nowrap}.repair-register th,.repair-register td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}.repair-register tbody+tbody tr:first-child td{border-top:2px solid #dcd6e8}.repair-register tbody:hover{background:#fbfaff}.repair-register small{display:block;font-size:11px;color:var(--muted);max-width:180px}.repair-register .button{font-size:12px;min-height:30px;padding:5px 9px;white-space:nowrap}.repair-row-actions{display:flex;gap:5px;flex-wrap:wrap}.repair-delete{color:#a13636}.repair-table-hint,.repair-archive-nav{font-size:12px;margin:10px 0}.repair-register td:nth-child(-n+7){white-space:nowrap}
+
+/* Цвет относится к результату работы, включая все дефекты одной муфты. */
+.repair-register tbody.repair-tone-resolved{background:#e3f3e8}.repair-register tbody.repair-tone-resolved:hover{background:#d5ebdc}
+.repair-register tbody.repair-tone-blocked{background:#fce4e4}.repair-register tbody.repair-tone-blocked:hover{background:#f8d6d6}
+.repair-register tbody.repair-tone-materials{background:#fff2c7}.repair-register tbody.repair-tone-materials:hover{background:#ffe9a5}
+.repair-tone-resolved .repair-status-label{color:#14532d}.repair-tone-blocked .repair-status-label{color:#8f2020}.repair-tone-materials .repair-status-label{color:#694600}
+.repair-register .repair-tone-resolved small,.repair-register .repair-tone-blocked small,.repair-register .repair-tone-materials small{color:#484352}
+.repair-color-key{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;align-items:center}.repair-color-key span{padding:5px 9px;border-radius:5px}.repair-key-resolved{background:#e3f3e8;color:#14532d}.repair-key-blocked{background:#fce4e4;color:#8f2020}.repair-key-materials{background:#fff2c7;color:#694600}
