@@ -22,6 +22,8 @@ class ContractForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         self.fields['linked_objects'].queryset=ProjectObject.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID).order_by('name')
         self.fields['amount'].min_value=0
+        self.fields['status'].choices=[v for v in self.fields['status'].choices if v[0]!='archived']
+        if self.instance.status=='archived':self.fields.pop('status')
         if user:
             self.fields['linked_objects'].queryset=visible_objects(user).order_by('name')
             if not user.is_leader:

@@ -386,3 +386,14 @@ class SubcontractDecision(models.Model):
 class SubcontractImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+
+
+class ContractClosureEvent(models.Model):
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='closure_events')
+    action=models.CharField(max_length=20,choices=[('request','Заявка на закрытие'),('return','Возвращено на доработку'),('archive','Закрыт и отправлен в архив'),('restore','Восстановлен из архива')])
+    note=models.TextField(max_length=5000)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    previous_status=models.CharField(max_length=20)
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering=['-created_at','-pk']

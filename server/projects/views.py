@@ -107,7 +107,13 @@ def contracts(request):
                 Q(access_rules__show_subject=True,subject__icontains=q)|
                 Q(access_rules__show_counterparty=True,counterparty__icontains=q)))
     page=Paginator(qs.order_by('id').prefetch_related('access_rules'),25).get_page(request.GET.get('page'))
-    return render(request,'projects/contracts.html',{'cards':[contract_card(c,request.user) for c in page],'page':page,'q':q})
+    pending=[]
+    if request.user.is_leader:
+        from django.db.models import OuterRef,Subquery
+        from .models import ContractClosureEvent
+        pending_qs=visible_contracts(request.user).annotate(last_closure=Subquery(ContractClosureEvent.objects.filter(contract_id=OuterRef('pk')).values('action')[:1])).filter(last_closure='request')
+        pending=[contract_card(c,request.user) for c in pending_qs]
+    return render(request,'projects/contracts.html',{'pending_closures':pending,'cards':[contract_card(c,request.user) for c in page],'page':page,'q':q})
 
 @login_required
 def contract_detail(request,pk):
@@ -122,7 +128,7 @@ def contract_detail(request,pk):
         finance_context=dashboard_data(request.user)
         finance_context['finance_cards']=[c for c in finance_context['finance_cards'] if c['scope'].contract_id==contract.pk]
         finance_context.pop('finance_totals',None)
-    return render(request,'projects/contract.html',{'documents':visible_documents(request.user).filter(contracts_linked=contract,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(contracts_linked=contract,archived=False)),'card':contract_card(contract,request.user),'linked':linked,'shares':shares,**finance_context})
+    return render(request,'projects/contract.html',{'documents':visible_documents(request.user).filter(contracts_linked=contract,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(contracts_linked=contract,archived=False)),'card':contract_card(contract,request.user),'linked':linked,'shares':shares,'closure_events':contract.closure_events.select_related('actor'),'closure_pending':contract.closure_events.first() and contract.closure_events.first().action=='request','contract_status':contract.status,'contract_version':contract.version,**finance_context})
 
 @permission_required('projects.manage')
 def contract_edit(request,pk=None):

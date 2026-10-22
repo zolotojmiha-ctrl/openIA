@@ -1,3 +1,4 @@
+from projects.closure import closure
 from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
@@ -113,6 +114,7 @@ urlpatterns=[
  path('cabinet/contracts/',projects.contracts,name='contracts'),
  path('cabinet/contracts/new/',projects.contract_edit,name='contract_new'),
  path('cabinet/contracts/<uuid:pk>/',projects.contract_detail,name='contract_detail'),
+ path('cabinet/contracts/<uuid:pk>/closure/',closure,name='contract_closure'),
  path('cabinet/contracts/<uuid:pk>/edit/',projects.contract_edit,name='contract_edit'),
  path('cabinet/contracts/<uuid:pk>/access/',projects.share_contract,name='contract_share'),
  path('cabinet/documents/',documents.documents,name='documents'),
