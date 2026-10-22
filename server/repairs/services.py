@@ -18,7 +18,10 @@ def report_work(user,job_id,action,data):
         with transaction.atomic():
             current=User.objects.select_for_update().get(pk=user.pk)
             if not current.is_active or current.session_version!=user.session_version:raise ValidationError('Доступ изменился. Войдите заново.')
-            job=reportable_jobs(current).select_for_update(of=('self',)).get(pk=job_id)
+            if action in ('result','correction') or data.get('couplings'):
+                from projects.stock import lock as stock_lock
+                stock_lock()
+            job=reportable_jobs(current).select_for_update(no_key=True,of=('self',)).get(pk=job_id)
             digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
             previous=Report.objects.filter(token=data['token']).first()
             if previous:
@@ -32,7 +35,9 @@ def report_work(user,job_id,action,data):
             if action=='resolve' and not job.problem:raise ValidationError('Открытого препятствия уже нет. Обновите карточку.')
             if action=='start' and job.state not in ('planned','progress'):raise ValidationError('Результат уже внесён. Откройте карточку.')
             selected=list(data.get('couplings',[]))
-            couplings=list(Coupling.objects.select_for_update().filter(pk__in=[c.pk for c in selected],project_object=job.section.project_object).order_by('pk'))
+            old_ids=list(CouplingUse.objects.filter(job=job).values_list('coupling_id',flat=True)) if action in ('result','correction') else []
+            locked=list(Coupling.objects.select_for_update().filter(pk__in=set([c.pk for c in selected]+old_ids)).order_by('pk'))
+            couplings=[c for c in locked if c.pk in {s.pk for s in selected} and c.project_object_id==job.section.project_object_id]
             if len(couplings)!=len(selected):raise ValidationError('Состав муфт изменился. Обновите страницу.')
             if CouplingUse.objects.filter(coupling__in=couplings).exclude(job=job).exists():raise ValidationError('Одна из муфт уже установлена на другой работе. Выберите актуальные изделия.')
             if not current.is_leader and Coupling.objects.filter(pk__in=[c.pk for c in couplings],source__historical_installation=True).exclude(installation__job=job).exists():raise ValidationError('В ведомости указан прежний монтаж одной из муфт. Руководитель должен проверить её связь с этой работой.')
@@ -48,6 +53,8 @@ def report_work(user,job_id,action,data):
                 Attachment.objects.create(report=report,storage_key=key,**{k:datafile[k] for k in ['name','content_type','size','sha256']})
             if result or not_repaired:job.review_note=''
             if result:
+                from projects.stock import reconcile_installation
+                if couplings or old_ids:reconcile_installation(current,job,report,couplings)
                 # Current installation can be corrected; old report snapshots remain immutable.
                 CouplingUse.objects.filter(job=job).exclude(coupling__in=couplings).delete()
                 for coupling in couplings:CouplingUse.objects.update_or_create(coupling=coupling,defaults={'job':job,'report':report})
@@ -71,7 +78,7 @@ def report_work(user,job_id,action,data):
 @transaction.atomic
 def confirm_work(user,job_id,version):
     if not user.is_leader:raise ValidationError('Подтверждение доступно руководителю.')
-    job=visible_jobs(user).select_for_update(of=('self',)).get(pk=job_id)
+    job=visible_jobs(user).select_for_update(no_key=True,of=('self',)).get(pk=job_id)
     if job.version!=version:raise ValidationError('Карточка изменилась. Проверьте актуальный результат.')
     report=job.reports.filter(kind__in=['complete','partial','correction']).first()
     if job.state!='reported' or not report or report.outcome!='complete':raise ValidationError('Нет завершённого результата для подтверждения.')

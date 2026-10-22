@@ -2,7 +2,7 @@ from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
-from projects import workspace,crew_views,crew_excel,equipment_views,equipment_excel
+from projects import workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
@@ -10,6 +10,18 @@ from repairs import views as repairs
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/stock/',stock_views.home,name='stock'),
+ path('cabinet/stock/new/',stock_views.warehouse_edit,name='stock_new'),
+ path('cabinet/stock/items/',stock_views.item_list,name='stock_items'),
+ path('cabinet/stock/items/new/',stock_views.item_edit,name='stock_item_new'),
+ path('cabinet/stock/items/<uuid:pk>/',stock_views.item_edit,name='stock_item_edit'),
+ path('cabinet/stock/move/',stock_views.movement,name='stock_move'),
+ path('cabinet/stock/movements/<uuid:pk>/reverse/',stock_views.reversal,name='stock_reverse'),
+ path('cabinet/stock/excel/<str:kind>/export/',stock_excel.export,name='stock_export'),
+ path('cabinet/stock/excel/<str:kind>/import/',stock_excel.upload,name='stock_import'),
+ path('cabinet/stock/<uuid:pk>/',stock_views.detail,name='stock_detail'),
+ path('cabinet/stock/<uuid:pk>/edit/',stock_views.warehouse_edit,name='stock_edit'),
+ path('cabinet/stock/<uuid:pk>/access/',stock_views.access,name='stock_access'),
  path('cabinet/equipment/',equipment_views.listing,name='equipment'),
  path('cabinet/equipment/new/',equipment_views.edit,name='equipment_new'),
  path('cabinet/equipment/excel/<str:kind>/export/',equipment_excel.export,name='equipment_export'),

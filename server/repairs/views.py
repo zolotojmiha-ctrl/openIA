@@ -75,7 +75,7 @@ def job_edit(request,pk=None,section_id=None):
                     form.add_error('contract',e)
                     return render(request,'repairs/edit.html',{'form':form,'title':'Новая работа','kind':'job','job':job})
             Section.objects.select_for_update().get(pk=form.cleaned_data['section'].pk)
-            locked=Job.objects.select_for_update().get(pk=job.pk) if job else None
+            locked=Job.objects.select_for_update(no_key=True).get(pk=job.pk) if job else None
             if locked and locked.version!=form.cleaned_data['expected_version']:form.add_error(None,'Работу уже изменили. Обновите страницу.')
             elif locked and locked.defects.filter(archived_at__isnull=False).exists():form.add_error(None,'В работе есть удалённые из списка дефекты. Сначала восстановите их; история и привязки сохраняются.')
             elif locked and locked.state=='confirmed':form.add_error(None,'Подтверждённая история сохранена. Для изменения результата используйте «Внести исправление».')
@@ -145,7 +145,7 @@ def accept(request,pk):
     form=AcceptanceForm(request.POST)
     if form.is_valid():
         with transaction.atomic():
-            job=Job.objects.select_for_update().get(pk=pk)
+            job=Job.objects.select_for_update(no_key=True).get(pk=pk)
             latest=job.reports.filter(kind__in=['complete','partial','correction']).first()
             if job.version!=form.cleaned_data['expected_version'] or job.state!='confirmed' or job.accepted_date:messages.error(request,'Карточка изменилась или выполнение ещё не подтверждено.')
             elif latest and form.cleaned_data['date']<latest.performed_date:messages.error(request,'Приёмка не может быть раньше выполнения.')
@@ -227,7 +227,7 @@ def assign_many(request,pk):
     form=BatchAssignment(request.POST or None,section=section,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            selected=list(form.cleaned_data['jobs'].select_for_update(of=('self',)).order_by('pk'))
+            selected=list(form.cleaned_data['jobs'].select_for_update(no_key=True,of=('self',)).order_by('pk'))
             snapshot=form.cleaned_data['snapshot']
             if any(snapshot.get(str(j.pk))!=j.version or j.state=='confirmed' for j in selected):form.add_error(None,'Одна из работ изменилась. Назначения не сохранены; обновите список и проверьте результаты мастеров.')
             else:
@@ -256,7 +256,7 @@ def defect_visibility(request,pk,restore=False):
         try:expected=signing.loads(request.POST.get('snapshot',''),salt='repair-defect-visibility',max_age=8*60*60)
         except signing.BadSignature:expected=None
         with transaction.atomic():
-            jobs=list(Job.objects.select_for_update().filter(defects=defect).order_by('pk'))
+            jobs=list(Job.objects.select_for_update(no_key=True).filter(defects=defect).order_by('pk'))
             defect=Defect.objects.select_for_update().get(pk=defect.pk)
             if expected!=snapshot(defect,jobs):
                 error='Запись изменилась. Проверьте данные и подтвердите действие заново.';status=409
@@ -288,7 +288,7 @@ def reassign(request,pk):
     form=ReassignmentForm(request.POST or None,job=job);status=200
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            current=Job.objects.select_for_update().get(pk=job.pk)
+            current=Job.objects.select_for_update(no_key=True).get(pk=job.pk)
             if current.version!=form.cleaned_data['expected_version']:
                 form.add_error(None,'Работа изменилась. Обновите страницу перед передачей.');status=409
             elif current.state=='confirmed':

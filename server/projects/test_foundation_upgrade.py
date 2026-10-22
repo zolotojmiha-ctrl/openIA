@@ -30,7 +30,7 @@ class FoundationUpgradeTests(TransactionTestCase):
             attachment=old.get_model('repairs','Attachment').objects.create(report=report,storage_key='test-no-real-file',name='original.jpg',content_type='image/jpeg',size=123,sha256='a'*64)
             executor=MigrationExecutor(connection);executor.migrate(latest);new=executor.loader.project_state(latest).apps
             restored=new.get_model('repairs','Job').objects.get(pk=job.pk)
-            self.assertIsNone(restored.crew_assignment_id);self.assertEqual(restored.review_note,'');self.assertEqual(new.get_model('projects','Brigade').objects.count(),0);self.assertEqual(new.get_model('projects','Equipment').objects.count(),0)
+            self.assertIsNone(restored.crew_assignment_id);self.assertEqual(restored.review_note,'');self.assertEqual(new.get_model('projects','Brigade').objects.count(),0);self.assertEqual(new.get_model('projects','Equipment').objects.count(),0);self.assertEqual(new.get_model('projects','StockBalance').objects.count(),0)
             self.assertIsNone(restored.contract_id);self.assertEqual(restored.version,9);self.assertEqual(restored.state,'confirmed');self.assertEqual(restored.accepted_date,job.accepted_date)
             d=new.get_model('repairs','Defect').objects.get(pk=defect.pk);self.assertIsNone(d.contract_id);self.assertEqual(str(d.kilometre),'153.546500');self.assertEqual(d.number,'0001')
             self.assertEqual(new.get_model('repairs','Attachment').objects.get(pk=attachment.pk).sha256,'a'*64)

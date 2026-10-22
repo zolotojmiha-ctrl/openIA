@@ -130,6 +130,12 @@ class ReportForm(forms.Form):
             for name in ['outcome','method','length_m','composition','couplings']:self.fields.pop(name)
         if action!='problem':self.fields.pop('problem')
         if action=='correction' and not user.is_leader:raise forms.ValidationError('Исправлять подтверждённый результат может руководитель.')
+        if self.simple and action=='result':
+            from projects.stock import prepared_couplings
+            from django.core import signing
+            self.prepared_stock_couplings=prepared_couplings(job)
+            self.fields['stock_prepared']=forms.CharField(required=False,widget=forms.HiddenInput)
+            self.initial['stock_prepared']=signing.dumps({'job':str(job.pk),'actor':str(user.pk),'ids':sorted(str(c.pk) for c in self.prepared_stock_couplings)},salt='stock-prepared')
         if self.simple:
             for name in ['outcome','method','length_m','composition','couplings']:
                 self.fields.pop(name,None)
@@ -164,7 +170,16 @@ class ReportForm(forms.Form):
         if self.simple and self.action=='result':
             if len({kilometre(d.kilometre) for d in self.job.active_defects})>1:
                 self.add_error(None,'В группе дефекты на разных километрах. Техник должен разделить задание на отдельные ремонты с отдельными координатами.')
-            c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(Coupling.objects.filter(installation__job=self.job)))
+            from projects.stock import prepared_couplings
+            from django.core import signing
+            issued=prepared_couplings(self.job)
+            token=c.get('stock_prepared','')
+            try:
+                payload=signing.loads(token,salt='stock-prepared') if token else {'job':str(self.job.pk),'ids':[]}
+                if payload['job']!=str(self.job.pk) or payload['ids']!=sorted(str(c.pk) for c in issued):raise ValueError
+            except (signing.BadSignature,ValueError,KeyError,TypeError):self.add_error(None,'Состав выданных муфт изменился. Откройте актуальную форму и проверьте изделия.')
+            prepared={coupling.pk:coupling for coupling in [*Coupling.objects.filter(installation__job=self.job),*issued]}
+            c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(prepared.values()))
         if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other','existing_coupling','oversize_p1') and not c.get('note','').strip():
             self.add_error('note',{'existing_coupling':'Опишите найденную муфту: тип, состояние и другие известные сведения.','oversize_p1':'Опишите обнаруженную муфту и требуемую П1 увеличенного диаметра; укажите размер, если известен.'}.get(c.get('problem'),'Поясните, какого материала не хватает или укажите другую причину.'))
         if c.get('performed_date') and c['performed_date']>timezone.localdate():self.add_error('performed_date','Фактическая дата не может быть в будущем.')

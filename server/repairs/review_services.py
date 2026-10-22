@@ -21,7 +21,7 @@ def confirm_many(user,snapshot):
     actor=leader(user)
     if not snapshot or len(snapshot)>10000:raise ValidationError('Выберите от 1 до 10000 ремонтов. Для большего списка уточните фильтр.')
     ids=list(snapshot)
-    jobs=list(visible_jobs(actor).select_for_update(of=('self',)).filter(pk__in=ids).order_by('pk'))
+    jobs=list(visible_jobs(actor).select_for_update(no_key=True,of=('self',)).filter(pk__in=ids).order_by('pk'))
     if len(jobs)!=len(ids):raise ValidationError('Состав работ или доступ изменился. Проверьте список заново.')
     for job in jobs:
         if job.version!=snapshot[str(job.pk)] or job.state!='reported':raise ValidationError('Одна из работ уже изменена или проверена. Ничего не подтверждено; обновите выбор.')
@@ -35,7 +35,7 @@ def confirm_many(user,snapshot):
 def return_for_revision(user,job_id,version,note):
     actor=leader(user);note=note.strip()
     if not note or len(note)>3000:raise ValidationError('Укажите пояснение до 3000 символов.')
-    job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job_id)
+    job=visible_jobs(actor).select_for_update(no_key=True,of=('self',)).get(pk=job_id)
     result=latest_result(job)
     if job.version!=version or job.state!='reported' or not result or result.outcome!='complete':raise ValidationError('Результат уже изменён. Проверьте актуальную карточку.')
     Report.objects.create(job=job,author=actor,kind='revision',performed_date=timezone.localdate(),note=note,context={'returned_report':str(result.pk),'previous_version':job.version})
@@ -48,9 +48,11 @@ def correct_and_accept(user,job_id,data):
     try:
         with transaction.atomic():
             actor=leader(user)
+            from projects.stock import lock as stock_lock
+            stock_lock()
             # report_work validates retry token/digest, version, scope and physical couplings.
             existed=Report.objects.filter(token=data['token']).exists()
-            job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job_id)
+            job=visible_jobs(actor).select_for_update(no_key=True,of=('self',)).get(pk=job_id)
             previous=latest_result(job)
             if not existed and job.state!='reported':raise ValidationError('Исправить и принять можно только результат на проверке.')
             if data.get('outcome')!='complete':raise ValidationError('Для принятия нужен завершённый результат.')

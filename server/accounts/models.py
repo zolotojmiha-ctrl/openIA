@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'stock.manage':'Вести склады, остатки и движение материалов',
  'equipment.manage':'Вести технику, документы и назначения на объекты',
  'users.manage':'Управлять учётными записями сотрудников',
  'projects.manage':'Создавать и изменять объекты и контракты',
@@ -80,6 +81,7 @@ class AuditEvent(models.Model):
     ACTIONS += [('document_responsibility_changed','Передана ответственность за документ'),('document_bundle_primary','Выбран основной файл комплекта'),('finance_corrected','Исправлена финансовая запись'),('finance_offset_reversed','Отменён зачёт аванса'),('finance_allocation_reversed','Отменено распределение выплаты'),('finance_scope_updated','Изменены параметры финансового направления')]
     ACTIONS += [('repair_prepared','Подготовлены ремонтные работы'),('repair_reported','Внесены сведения с участка'),('repair_confirmed','Подтверждено выполнение ремонта'),('repair_corrected','Исправлен результат ремонта'),('repair_accepted','Отмечена приёмка ремонта'),('repair_imported','Перенесена ведомость дефектов'),('repair_exported','Экспортирована ведомость дефектов'),('repair_defect_archived','Дефект удалён из списка'),('repair_defect_restored','Дефект восстановлен')]
     ACTIONS += [('equipment_updated','Изменена техника'),('equipment_assigned','Назначение техники'),('equipment_document_updated','Документ техники'),('equipment_imported','Импорт техники')]
+    ACTIONS += [('stock_updated','Изменены складские справочники'),('stock_access_changed','Доступ к складу'),('stock_moved','Складская операция'),('stock_imported','Импорт складских данных')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

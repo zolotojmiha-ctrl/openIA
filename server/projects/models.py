@@ -192,3 +192,93 @@ class EquipmentImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     created_at=models.DateTimeField(auto_now_add=True)
+
+class StockLock(models.Model):
+    legal_entity=models.OneToOneField(LegalEntity,on_delete=models.PROTECT)
+
+class Warehouse(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
+    name=models.CharField('Название склада',max_length=160)
+    location=models.CharField('Место хранения / адрес',max_length=250,blank=True)
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Объект (необязательно)')
+    brigade_assignment=models.OneToOneField(BrigadeAssignment,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Выдано бригаде (назначение)')
+    archived=models.BooleanField('В архиве',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['legal_entity','name'],name='warehouse_name_unique')]
+    def __str__(self):return self.name
+
+class WarehouseAccess(models.Model):
+    warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT,related_name='access_rules')
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    granted_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['warehouse','user'],name='warehouse_user_unique')]
+
+class StockItem(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
+    sku=models.CharField('Код номенклатуры',max_length=80)
+    name=models.CharField('Наименование',max_length=200)
+    kind=models.CharField('Вид',max_length=20,choices=[('material','Материал'),('coupling','Муфта')],default='material')
+    unit=models.CharField('Единица',max_length=10,choices=[('pcs','шт.'),('m','м'),('kg','кг'),('l','л')],default='pcs')
+    method=models.CharField('Метод ремонта / тип муфты',max_length=20,blank=True)
+    diameter_mm=models.PositiveIntegerField('Диаметр, мм',null=True,blank=True)
+    length_mm=models.PositiveIntegerField('Длина, мм',null=True,blank=True)
+    wall_mm=models.PositiveIntegerField('Толщина стенки, мм',null=True,blank=True)
+    coupling=models.OneToOneField('repairs.Coupling',on_delete=models.PROTECT,null=True,blank=True,related_name='stock_item',verbose_name='Конкретная муфта из реестра ремонтов')
+    archived=models.BooleanField('В архиве',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['legal_entity','sku'],name='stock_sku_unique')]
+    @property
+    def method_label(self):
+        return {'p1':'П1','p2':'П2','p3':'П3','p4':'П4','p5u':'П5У'}.get(self.method,self.method)
+    def __str__(self):return f'{self.sku} · {self.name}'
+
+class StockBalance(models.Model):
+    warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT,related_name='balances')
+    item=models.ForeignKey(StockItem,on_delete=models.PROTECT,related_name='balances')
+    quantity=models.DecimalField(max_digits=18,decimal_places=3,default=0)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['warehouse','item'],name='stock_balance_unique'),models.CheckConstraint(condition=models.Q(quantity__gte=0),name='stock_nonnegative')]
+
+STOCK_KINDS=[('receipt','Поступление'),('transfer','Перемещение'),('issue','Выдача бригаде'),('return','Возврат от бригады'),('consume','Списание на работу'),('loss','Списание / недостача'),('reversal','Отмена операции')]
+class StockMovement(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    token=models.UUIDField(unique=True,default=uuid.uuid4)
+    digest=models.CharField(max_length=64)
+    item=models.ForeignKey(StockItem,on_delete=models.PROTECT,related_name='movements')
+    kind=models.CharField(max_length=20,choices=STOCK_KINDS)
+    quantity=models.DecimalField(max_digits=18,decimal_places=3)
+    source=models.ForeignKey(Warehouse,on_delete=models.PROTECT,null=True,blank=True,related_name='outgoing')
+    destination=models.ForeignKey(Warehouse,on_delete=models.PROTECT,null=True,blank=True,related_name='incoming')
+    job=models.ForeignKey('repairs.Job',on_delete=models.PROTECT,null=True,blank=True,related_name='stock_movements')
+    report=models.ForeignKey('repairs.Report',on_delete=models.PROTECT,null=True,blank=True,related_name='stock_movements')
+    date=models.DateField('Дата операции')
+    note=models.CharField('Основание / пояснение',max_length=1500)
+    reverses=models.OneToOneField('self',on_delete=models.PROTECT,null=True,blank=True,related_name='reversal')
+    automatic=models.BooleanField(default=False)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering=['-created_at','-pk']
+        constraints=[models.CheckConstraint(condition=models.Q(quantity__gt=0),name='stock_movement_positive')]
+    def save(self,*args,**kwargs):
+        if not self._state.adding:raise ValueError('Складские операции не переписываются. Используйте отмену.')
+        return super().save(*args,**kwargs)
+
+class StockEntry(models.Model):
+    movement=models.ForeignKey(StockMovement,on_delete=models.PROTECT,related_name='entries')
+    warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT)
+    quantity=models.DecimalField(max_digits=18,decimal_places=3)
+    def save(self,*args,**kwargs):
+        if not self._state.adding:raise ValueError('Проводки не переписываются.')
+        return super().save(*args,**kwargs)
+
+class StockImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)

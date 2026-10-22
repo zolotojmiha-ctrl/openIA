@@ -73,7 +73,7 @@ def allocate_legacy(user,contract,ids,snapshot):
         target=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=repair_contracts(actor).values('pk')),pk=contract.pk)
         section_ids=visible_jobs(actor,include_archived=True).filter(pk__in=ids).values('section_id')
         list(Section.objects.select_for_update().filter(pk__in=section_ids).order_by('pk'))
-        jobs=list(visible_jobs(actor,include_archived=True).select_for_update(of=('self',)).filter(pk__in=ids).order_by('pk'))
+        jobs=list(visible_jobs(actor,include_archived=True).select_for_update(no_key=True,of=('self',)).filter(pk__in=ids).order_by('pk'))
         if len(jobs)!=len(ids):raise ValidationError('Доступ или состав работ изменился.')
         for job in jobs:
             if job.contract_id or snapshot.get(str(job.pk))!=job.version:raise ValidationError('Работа изменилась. Обновите список.')

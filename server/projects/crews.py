@@ -118,7 +118,7 @@ def assign_jobs_to_crew(user,assignment_id,versions):
     assignment=visible_assignments(actor).select_for_update(of=('self',)).get(pk=assignment_id)
     if assignment.end_date and assignment.end_date<timezone.localdate():raise ValidationError('Назначение бригады уже завершено.')
     if not assignment.master.is_active or (not assignment.master.is_leader and (not assignment.master.object_assignments.filter(project_object=assignment.project_object).exists() or not assignment.master.contract_access.filter(contract=assignment.contract).exists())):raise ValidationError('Доступ мастера изменился. Проверьте учётную запись и разрешения.')
-    jobs=list(visible_jobs(actor).select_for_update(of=('self',)).filter(pk__in=versions).order_by('pk'))
+    jobs=list(visible_jobs(actor).select_for_update(no_key=True,of=('self',)).filter(pk__in=versions).order_by('pk'))
     if not jobs or len(jobs)!=len(versions):raise ValidationError('Выбор работ изменился.')
     for j in jobs:
         if j.contract_id!=assignment.contract_id or j.section.project_object_id!=assignment.project_object_id or j.state=='confirmed' or j.version!=versions[str(j.pk)] or j.archived_defects:raise ValidationError('Одна из работ изменилась, завершена или относится к другому месту. Назначения не сохранены.')

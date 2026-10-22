@@ -129,6 +129,8 @@ def review(request,pk):
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             actor=User.objects.select_for_update().get(pk=request.user.pk)
+            from projects.stock import lock as stock_lock
+            stock_lock()
             if not can_prepare(actor):raise Http404
             if batch.contract_id:
                 current_contract=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=repair_contracts(actor).values('pk')),pk=batch.contract_id)
@@ -162,7 +164,7 @@ def review(request,pk):
                             job=Job.objects.create(contract=batch.contract,section=batch.section,created_by=request.user,method=item['method'],assigned_to_id=item.get('assigned_to'),wall_mm=Decimal(item['wall_mm']) if item.get('wall_mm') else None,length_m=Decimal(item['length_m']) if item['length_m'] else None,composition=item['composition'],planned_date=item['planned_date'] or None,notes=item['note'],materials='missing' if 'нет муфт' in item['note'].lower() else 'unknown',source=source)
                             created+=1
                         else:
-                            job=Job.objects.select_for_update().get(pk=action,section=batch.section,contract=batch.contract);job.version+=1;job.save(update_fields=['version']);linked+=1
+                            job=Job.objects.select_for_update(no_key=True).get(pk=action,section=batch.section,contract=batch.contract);job.version+=1;job.save(update_fields=['version']);linked+=1
                             Report.objects.create(job=job,author=request.user,kind='imported',performed_date=timezone.localdate(),note=f'Сведения из ведомости «{batch.filename}», лист «{batch.sheet}», строки '+', '.join(map(str,item['rows']))+'. План и подтверждённое выполнение не изменены.',context={'source':source,'proposed_method':item['method'],'proposed_length':item['length_m'],'proposed_composition':item['composition']})
                         for d in item['defects']:
                             defect,_=get_or_create_defect(contract=batch.contract,section=batch.section,kilometre=Decimal(d['km']),number=d['number'],defaults={'pipe_section':d['pipe_section'],'source':source})
