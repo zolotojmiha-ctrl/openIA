@@ -88,6 +88,16 @@ def upload(request):
         equipment_target=get_object_or_404(visible_equipment(request.user),pk=equipment_id)
         from django.urls import reverse
         destination=str(equipment_target);back_url=reverse('equipment_detail',args=[equipment_target.pk])
+    subcontract_target=None
+    if request.GET.get('subcontractor'):
+        from projects.subcontracts import companies
+        from accounts.permissions import permitted
+        if not permitted(request.user,'subcontract.manage'):raise PermissionDenied
+        try:company_id=UUID(request.GET['subcontractor'])
+        except ValueError:raise Http404
+        subcontract_target=get_object_or_404(companies(request.user),pk=company_id)
+        from django.urls import reverse
+        destination=subcontract_target.name;back_url=reverse('subcontract_company',args=[subcontract_target.pk])
     form=UploadForm(request.POST or None,request.FILES or None,user=request.user,initial=initial)
     if request.method=='POST':
         if form.is_valid():
@@ -101,7 +111,15 @@ def upload(request):
                         from projects.models import EquipmentDocument
                         manager(request.user)
                         equipment_target=visible_equipment(user).select_for_update().get(pk=equipment_target.pk)
+                    if subcontract_target:
+                        from projects.subcontracts import manager,companies
+                        from projects.models import SubcontractDocument
+                        manager(request.user)
+                        subcontract_target=companies(user).select_for_update().get(pk=subcontract_target.pk)
                     doc=upload_one(user,checked)
+                    if subcontract_target:
+                        link,created=SubcontractDocument.objects.get_or_create(company=subcontract_target,order=None,document=doc,defaults={'label':doc.title[:160],'created_by':user})
+                        if created:audit(user,'subcontract_document_linked',company=str(subcontract_target.pk),link=str(link.pk),document=str(doc.pk),kind='upload_link')
                     if equipment_target:
                         link,created=EquipmentDocument.objects.get_or_create(equipment=equipment_target,document=doc,defaults={'label':doc.title[:120],'created_by':user})
                         if created:audit(user,'equipment_document_updated',equipment=str(equipment_target.pk),link=str(link.pk),document=str(doc.pk),kind='upload_link',remind=False)
@@ -110,6 +128,7 @@ def upload(request):
             else:
                 if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'id':str(doc.pk),'url':doc_url(doc),'name':doc.current_version.original_name,'bundle':str(doc.bundle_id or '')})
                 messages.success(request,'Документ загружен. Утверждение не требуется.')
+                if subcontract_target:return redirect('subcontract_company',pk=subcontract_target.pk)
                 if equipment_target:return redirect('equipment_detail',pk=equipment_target.pk)
                 return redirect('document_detail',pk=doc.pk)
         if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'errors':form.errors.get_json_data()},status=409 if form.non_field_errors() else 400)
@@ -129,6 +148,8 @@ def detail(request,pk):
     contracts=[contract_card(c,request.user) for c in visible_contracts(request.user).filter(documents=doc)]
     from projects.equipment import visible_equipment
     equipment_cards=visible_equipment(request.user).filter(file_links__document=doc,file_links__active=True).distinct()
+    from projects.subcontracts import files as subcontract_files
+    subcontract_back=subcontract_files(request.user).filter(document=doc,active=True)
     text=None
     if doc.current_version_id and doc.current_version.content_type=='text/plain':
         try:
@@ -137,7 +158,7 @@ def detail(request,pk):
     versions=[{'version':v,'download':True} for v in doc.versions.select_related('uploaded_by')]
     direct=doc.access_rules.select_related('user') if can_manage(request.user,doc) else []
     inherited=doc.bundle.access_rules.select_related('user').filter(enabled=True) if doc.bundle_id and can_manage(request.user,doc) else []
-    return render(request,'documents/detail.html',{'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
+    return render(request,'documents/detail.html',{'subcontract_back':subcontract_back,'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
 
 @login_required
 def replace(request,pk):
@@ -212,10 +233,13 @@ def share(request,pk,bundle=False):
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             actor=User.objects.select_for_update(no_key=True).get(pk=request.user.pk)
-            if not actor.is_active:raise PermissionDenied
+            if not actor.is_active or actor.session_version!=request.user.session_version:raise PermissionDenied
             user=User.objects.get(pk=form.cleaned_data['employee'].pk)
             locked=(Bundle if bundle else Document).objects.select_for_update().get(pk=pk)
-            if not (can_manage_bundle(request.user,locked) if bundle else can_manage(request.user,locked)):raise PermissionDenied
+            if actor.role=='subcontractor' or not (can_manage_bundle(actor,locked) if bundle else can_share(actor,locked)):raise PermissionDenied
+            checked=ShareForm(request.POST,document=locked,actor=actor)
+            if not checked.is_valid():raise PermissionDenied
+            form=checked
             if locked.revision!=form.cleaned_data['expected_revision']:form.add_error(None,'Доступ уже изменён. Обновите страницу.')
             else:
                 flags={k:form.cleaned_data[k] for k in ['enabled','can_replace']}

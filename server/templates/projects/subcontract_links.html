@@ -1,0 +1,1 @@
+{% if can_manage_subcontracts %}<div class="equipment-excel"><a class="button secondary small" href="{% url 'subcontract_export' kind %}">↓ Скачать Excel</a><a class="button secondary small" href="{% url 'subcontract_import' kind %}">↑ Загрузить Excel</a><a class="button secondary small" href="{% url 'subcontract_export' kind %}?template=1">Шаблон Excel</a></div>{% endif %}

@@ -67,7 +67,8 @@ class ShareForm(forms.Form):
     def __init__(self,*args,document=None,actor=None,**kwargs):
         super().__init__(*args,**kwargs)
         from django.db.models import Q
-        qs=sharing_users(actor) if actor is not None else User.objects.none()
+        self.actor=actor;self.document=document
+        qs=sharing_users(actor,document) if actor is not None else User.objects.none()
         if document is not None:
             qs=qs.filter(Q(is_active=True)|Q(pk__in=document.access_rules.values('user_id'))).exclude(pk__in=[value for value in [document.created_by_id,getattr(document,'responsible_id',None)] if value])
         else:qs=qs.filter(is_active=True)
@@ -81,6 +82,10 @@ class ShareForm(forms.Form):
             if not permission:self.add_error('permission','Выберите разрешение.')
             data['enabled']=permission!='closed'
             data['can_replace']=permission=='versions'
+        employee=data.get('employee')
+        if employee and employee.role=='subcontractor' and self.actor and not self.actor.is_leader and data.get('enabled'):
+            from .access import eligible_subcontract_users
+            if not isinstance(self.document,Document) or not eligible_subcontract_users(self.actor,self.document).filter(pk=employee.pk).exists():self.add_error('employee','Нет действующей связи представителя с этим документом субподрядчика. Можно только закрыть прежний доступ.')
         return data
 
 class PersonForm(forms.ModelForm):

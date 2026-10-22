@@ -282,3 +282,107 @@ class StockEntry(models.Model):
 class StockImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+
+class Subcontractor(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
+    name=models.CharField('Компания',max_length=200)
+    tax_id=models.CharField('ИНН',max_length=12)
+    contact=models.CharField('Контактное лицо и связь',max_length=250,blank=True)
+    notes=models.TextField('Примечание',max_length=3000,blank=True)
+    archived=models.BooleanField('В архиве',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['legal_entity','tax_id'],name='subcontractor_tax_unique')]
+    def __str__(self):return self.name
+
+class SubcontractRepresentative(models.Model):
+    company=models.ForeignKey(Subcontractor,on_delete=models.PROTECT,related_name='representatives')
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='subcontract_memberships')
+    active=models.BooleanField('Действует',default=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['company','user'],name='subcontract_rep_unique')]
+    def __str__(self):return self.user.full_name
+
+class SubcontractOrder(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    company=models.ForeignKey(Subcontractor,on_delete=models.PROTECT,related_name='orders')
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='subcontract_orders')
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='subcontract_orders')
+    kind=models.CharField('Вид работ',max_length=20,choices=WORK_KINDS)
+    title=models.CharField('Порученные работы',max_length=250)
+    scope=models.TextField('Состав / границы поручения',max_length=3000,blank=True)
+    planned_quantity=models.DecimalField('Плановое количество',max_digits=12,decimal_places=3,null=True,blank=True)
+    unit=models.CharField('Единица измерения',max_length=30,blank=True)
+    responsible=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='subcontract_orders',verbose_name='Ответственный от нашей компании')
+    state=models.CharField(max_length=20,choices=[('planned','Ещё не выполняли'),('progress','В работе / на доработке'),('problem','Есть препятствие'),('reported','Выполнено — на проверке'),('confirmed','Выполнено — проверено')],default='planned')
+    archived=models.BooleanField('В архиве',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    @property
+    def work_status(self):
+        if self.kind!='repairs':return self.get_state_display()
+        states=list(self.repair_jobs.filter(defects__archived_at__isnull=True).values_list('state',flat=True).distinct())
+        if not states:return 'Дефекты ещё не выбраны'
+        if all(s=='confirmed' for s in states):return 'Устранены — проверены'
+        if 'reported' in states:return 'Есть устранённые — на проверке'
+        if self.repair_jobs.filter(defects__archived_at__isnull=True).exclude(problem='').exists():return 'Есть препятствия'
+        return 'В работе' if any(s!='planned' for s in states) else 'Ещё не выполняли'
+    def __str__(self):return self.title
+
+class SubcontractOrderAccess(models.Model):
+    order=models.ForeignKey(SubcontractOrder,on_delete=models.PROTECT,related_name='access_rules')
+    representative=models.ForeignKey(SubcontractRepresentative,on_delete=models.PROTECT,related_name='order_grants')
+    active=models.BooleanField('Просмотр поручения',default=True)
+    can_report=models.BooleanField('Вносить результат',default=False)
+    version=models.PositiveIntegerField(default=1)
+    granted_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['order','representative'],name='subcontract_order_rep_unique')]
+
+class SubcontractDocument(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    company=models.ForeignKey(Subcontractor,on_delete=models.PROTECT,related_name='file_links')
+    order=models.ForeignKey(SubcontractOrder,on_delete=models.PROTECT,null=True,blank=True,related_name='file_links')
+    document=models.ForeignKey('documents.Document',on_delete=models.PROTECT,related_name='subcontract_links')
+    label=models.CharField('Назначение документа',max_length=160)
+    active=models.BooleanField('Показывать связь',default=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+
+class SubcontractResult(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    order=models.ForeignKey(SubcontractOrder,on_delete=models.PROTECT,related_name='results')
+    token=models.UUIDField(default=uuid.uuid4,unique=True)
+    digest=models.CharField(max_length=64)
+    outcome=models.CharField(max_length=20,choices=[('complete','Выполнено'),('partial','Выполнено частично'),('problem','Есть препятствие')])
+    quantity=models.DecimalField('Выполнено с начала работ',max_digits=12,decimal_places=3,null=True,blank=True)
+    date=models.DateField('Дата')
+    note=models.TextField('Что выполнено / причина препятствия',max_length=3000)
+    correction=models.BooleanField(default=False)
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:ordering=['-created_at','-pk']
+
+class SubcontractAttachment(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    result=models.ForeignKey(SubcontractResult,on_delete=models.PROTECT,related_name='attachments')
+    storage_key=models.CharField(max_length=40)
+    name=models.CharField(max_length=200)
+    content_type=models.CharField(max_length=100)
+    size=models.PositiveIntegerField()
+    sha256=models.CharField(max_length=64)
+
+class SubcontractDecision(models.Model):
+    result=models.OneToOneField(SubcontractResult,on_delete=models.PROTECT,related_name='decision')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    decision=models.CharField(max_length=20,choices=[('confirmed','Подтверждено'),('revision','Вернули на доработку')])
+    note=models.CharField(max_length=3000,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+class SubcontractImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)

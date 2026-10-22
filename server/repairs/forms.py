@@ -125,6 +125,9 @@ class ReportForm(forms.Form):
             self.action=action
         self.initial.update(token=uuid.uuid4(),expected_version=job.version,performed_date=timezone.localdate(),method=job.method,length_m=job.length_m,composition=job.composition,couplings=list(job.installed_couplings.values_list('coupling_id',flat=True)))
         self.fields['couplings'].queryset=selectable_couplings(job,include_historical=user.is_leader)
+        if user.role=='subcontractor':
+            from projects.stock import prepared_couplings
+            self.fields['couplings'].queryset=self.fields['couplings'].queryset.filter(Q(installation__job=job)|Q(pk__in=[c.pk for c in prepared_couplings(job)]))
         self.fields['couplings'].label_from_instance=lambda c:str(c)+(' · в ведомости указан монтаж'+(' на км '+c.source.get('mount_km','') if c.source.get('mount_km') else '')+(' от '+c.source.get('installation_date','') if c.source.get('installation_date') else '') if c.source.get('historical_installation') else '')
         if action not in ('result','correction'):
             for name in ['outcome','method','length_m','composition','couplings']:self.fields.pop(name)

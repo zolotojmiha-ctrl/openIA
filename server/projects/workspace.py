@@ -18,6 +18,7 @@ from repairs.models import Job,Defect,Section
 
 @login_required
 def home(request):
+    if request.user.role=='subcontractor':return redirect('subcontracts')
     q=request.GET.get('q','').strip()[:200]
     contracts=visible_contracts(request.user).order_by('pk')
     if request.GET.get('object'):

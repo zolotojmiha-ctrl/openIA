@@ -64,12 +64,28 @@ def visible_people(user):
     return qs.filter(Q(created_by=user)|Q(assignments__project_object__assignments__user=user)).distinct()
 
 
-def sharing_users(user):
+def sharing_users(user,document=None):
     from accounts.models import User
     qs=User.objects.filter(leader_slot__isnull=True)
     if user.is_leader:return qs
     if user.role=='subcontractor':return qs.none()
-    return qs.exclude(role='subcontractor')
+    base=qs.exclude(role='subcontractor')
+    if isinstance(document,Document) and has_permission(user,'subcontract.manage') and can_manage(user,document):
+        eligible=eligible_subcontract_users(user,document)
+        prior=document.access_rules.values('user_id')
+        return qs.filter(~Q(role='subcontractor')|Q(pk__in=eligible.values('pk'))|Q(pk__in=prior)).distinct()
+    return base
+
+def eligible_subcontract_users(user,document):
+    from accounts.models import User
+    from projects.subcontracts import files
+    if not has_permission(user,'subcontract.manage') or not can_manage(user,document):return User.objects.none()
+    ids=set()
+    for link in files(user).filter(document=document,active=True,company__archived=False):
+        reps=link.company.representatives.filter(active=True,user__is_active=True,user__role='subcontractor')
+        if link.order_id:reps=reps.filter(order_grants__order_id=link.order_id,order_grants__active=True)
+        ids.update(reps.values_list('user_id',flat=True))
+    return User.objects.filter(pk__in=ids)
 
 def can_share(user,document):
     return user.role!='subcontractor' and can_manage(user,document)

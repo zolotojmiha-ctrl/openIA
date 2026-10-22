@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'subcontract.manage':'Вести субподрядчиков, поручения и доступ представителей',
  'stock.manage':'Вести склады, остатки и движение материалов',
  'equipment.manage':'Вести технику, документы и назначения на объекты',
  'users.manage':'Управлять учётными записями сотрудников',
@@ -82,6 +83,7 @@ class AuditEvent(models.Model):
     ACTIONS += [('repair_prepared','Подготовлены ремонтные работы'),('repair_reported','Внесены сведения с участка'),('repair_confirmed','Подтверждено выполнение ремонта'),('repair_corrected','Исправлен результат ремонта'),('repair_accepted','Отмечена приёмка ремонта'),('repair_imported','Перенесена ведомость дефектов'),('repair_exported','Экспортирована ведомость дефектов'),('repair_defect_archived','Дефект удалён из списка'),('repair_defect_restored','Дефект восстановлен')]
     ACTIONS += [('equipment_updated','Изменена техника'),('equipment_assigned','Назначение техники'),('equipment_document_updated','Документ техники'),('equipment_imported','Импорт техники')]
     ACTIONS += [('stock_updated','Изменены складские справочники'),('stock_access_changed','Доступ к складу'),('stock_moved','Складская операция'),('stock_imported','Импорт складских данных')]
+    ACTIONS += [('subcontract_updated','Изменён субподряд'),('subcontract_access_changed','Доступ к субподряду'),('subcontract_reported','Результат субподрядчика'),('subcontract_decided','Проверка субподряда'),('subcontract_document_linked','Документ субподрядчика'),('subcontract_imported','Импорт субподряда')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

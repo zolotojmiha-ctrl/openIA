@@ -2,7 +2,7 @@ from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
-from projects import workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel
+from projects import workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
@@ -10,6 +10,26 @@ from repairs import views as repairs
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/subcontracts/',subcontract_views.home,name='subcontracts'),
+ path('cabinet/subcontracts/companies/new/',subcontract_views.company_edit,name='subcontract_company_new'),
+ path('cabinet/subcontracts/companies/<uuid:pk>/',subcontract_views.company_detail,name='subcontract_company'),
+ path('cabinet/subcontracts/companies/<uuid:pk>/edit/',subcontract_views.company_edit,name='subcontract_company_edit'),
+ path('cabinet/subcontracts/companies/<uuid:company_id>/representatives/new/',subcontract_views.representative,name='subcontract_representative_new'),
+ path('cabinet/subcontracts/companies/<uuid:company_id>/representatives/<int:pk>/',subcontract_views.representative,name='subcontract_representative_edit'),
+ path('cabinet/subcontracts/companies/<uuid:company_id>/documents/new/',subcontract_views.document_link,name='subcontract_document_new'),
+ path('cabinet/subcontracts/companies/<uuid:company_id>/documents/<uuid:pk>/',subcontract_views.document_link,name='subcontract_document_edit'),
+ path('cabinet/subcontracts/orders/new/',subcontract_views.order_edit,name='subcontract_order_new'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/',subcontract_views.order_detail,name='subcontract_order'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/edit/',subcontract_views.order_edit,name='subcontract_order_edit'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/access/',subcontract_views.order_access,name='subcontract_order_access'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/repairs/<uuid:job_id>/unlink/',subcontract_views.repair_unlink,name='subcontract_repair_unlink'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/repairs/',subcontract_views.repair_links,name='subcontract_repair_links'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/result/',subcontract_views.result,name='subcontract_result'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/correct-accept/',subcontract_views.result,{'accept':True},name='subcontract_correct_accept'),
+ path('cabinet/subcontracts/orders/<uuid:pk>/decision/',subcontract_views.decision,name='subcontract_decision'),
+ path('cabinet/subcontracts/files/<uuid:pk>/',subcontract_views.attachment,name='subcontract_attachment'),
+ path('cabinet/subcontracts/excel/<str:kind>/export/',subcontract_excel.export,name='subcontract_export'),
+ path('cabinet/subcontracts/excel/<str:kind>/import/',subcontract_excel.upload,name='subcontract_import'),
  path('cabinet/stock/',stock_views.home,name='stock'),
  path('cabinet/stock/new/',stock_views.warehouse_edit,name='stock_new'),
  path('cabinet/stock/items/',stock_views.item_list,name='stock_items'),

@@ -40,6 +40,7 @@ class Defect(models.Model):
     def km(self):return format(kilometre(self.kilometre),'.3f')
 
 class Job(models.Model):
+    subcontract_order=models.ForeignKey('projects.SubcontractOrder',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='jobs')

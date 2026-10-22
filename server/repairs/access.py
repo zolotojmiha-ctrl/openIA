@@ -27,8 +27,13 @@ def visible_jobs(user,include_archived=False):
     if not include_archived:
         # Keep outer queries DISTINCT-free: PostgreSQL must be able to lock jobs.
         qs=qs.filter(pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk'))
-    if not can_prepare(user):qs=qs.filter(assigned_to=user)
-    return qs.select_related('crew_assignment','crew_assignment__brigade','contract','section','section__project_object','assigned_to').prefetch_related('defects')
+    if user.role=='subcontractor':
+        from projects.models import SubcontractOrder
+        from projects.subcontracts import own_order_filter
+        own=SubcontractOrder.objects.filter(own_order_filter(user)).values('pk')
+        qs=qs.filter(Q(subcontract_order__in=own)|Q(subcontract_order__isnull=True,assigned_to=user))
+    elif not can_prepare(user):qs=qs.filter(assigned_to=user)
+    return qs.select_related('subcontract_order__company','crew_assignment','crew_assignment__brigade','contract','section','section__project_object','assigned_to').prefetch_related('defects')
 
 def selectable_couplings(job,include_historical=False):
     available=Q(installation__isnull=True)
@@ -41,6 +46,10 @@ def reportable_jobs(user):
     if user.is_leader:return qs
     from django.utils import timezone
     today=timezone.localdate()
+    if user.role=='subcontractor':
+        from projects.models import SubcontractOrder
+        from projects.subcontracts import own_order_filter
+        return qs.filter(Q(subcontract_order__in=SubcontractOrder.objects.filter(own_order_filter(user,report=True)).exclude(contract__status='archived').exclude(project_object__status='archived').values('pk'))|Q(subcontract_order__isnull=True,assigned_to=user))
     return qs.filter(assigned_to=user).filter(Q(crew_assignment__isnull=True)|Q(crew_assignment__start_date__lte=today)&(Q(crew_assignment__end_date__isnull=True)|Q(crew_assignment__end_date__gte=today)))
 
 

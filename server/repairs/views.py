@@ -36,13 +36,14 @@ def jobs(request):
     offset=max(0,page.start_index()-1)
     previous_ids=list(ordered.values_list('pk',flat=True)[:offset]) if offset else []
     number=Defect.objects.filter(jobs__pk__in=previous_ids,archived_at__isnull=not archived).count()
+    reportable=set(reportable_jobs(request.user).filter(pk__in=[j.pk for j in page]).values_list('pk',flat=True))
     groups=[]
     for job in page:
         defects=job.archived_defects if archived else job.active_defects
         rows=[]
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
-        if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows)})
+        if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows),'can_report':job.pk in reportable})
     return render(request,'repairs/list.html',{'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
 @prepare_required
@@ -105,7 +106,9 @@ def detail(request,pk):
     reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
     result=reports.filter(kind__in=['partial','complete','correction']).first()
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
-    return render(request,'repairs/detail.html',{'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    from projects.subcontracts import orders as subcontract_orders
+    subcontract_open=bool(job.subcontract_order_id and subcontract_orders(request.user,True).filter(pk=job.subcontract_order_id).exists())
+    return render(request,'repairs/detail.html',{'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):
