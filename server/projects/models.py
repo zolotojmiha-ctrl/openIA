@@ -5,6 +5,8 @@ from django.db import models
 
 COMPANY_TAX_ID = '8604073687'
 STATUSES = [('planned','Подготовка'),('active','В работе'),('completed','Завершён'),('archived','В архиве')]
+WORK_KINDS=[('repairs','Устранение дефектов'),('valves','Замена запорной арматуры'),('diagnostics','Подготовка к диагностике'),('construction','Другие СМР')]
+
 SHARED_FIELDS = {
     'show_number':'Номер договора',
     'show_date':'Дата договора',
@@ -44,6 +46,7 @@ class Contract(models.Model):
     number = models.CharField('Номер договора', max_length=100)
     date = models.DateField('Дата', null=True, blank=True)
     subject = models.CharField('Предмет договора', max_length=300)
+    work_kinds = models.JSONField('Виды работ', default=list, blank=True)
     counterparty = models.CharField('Контрагент', max_length=200, blank=True)
     deadline = models.DateField('Срок окончания', null=True, blank=True)
     amount = models.DecimalField('Сумма по карточке, ₽', max_digits=18, decimal_places=2, null=True, blank=True)
@@ -53,9 +56,14 @@ class Contract(models.Model):
     version = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    @property
+    def work_kinds_display(self):
+        return ', '.join(dict(WORK_KINDS)[k] for k in self.work_kinds if k in dict(WORK_KINDS)) or 'Виды работ не выбраны'
     def __str__(self):
         return self.number
     def clean(self):
+        if not isinstance(self.work_kinds,list) or any(k not in dict(WORK_KINDS) for k in self.work_kinds) or len(set(self.work_kinds))!=len(self.work_kinds):
+            raise ValidationError({'work_kinds':'Выберите виды работ из списка.'})
         if self.amount is not None and self.amount < 0:
             raise ValidationError({'amount':'Сумма не может быть отрицательной.'})
         if self.date and self.deadline and self.deadline < self.date:

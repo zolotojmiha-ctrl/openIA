@@ -9,7 +9,7 @@ let phase='login';
  const objectUrls=[];
  for(const name of ['Учебный объект А','Закрытый объект Б']){await leader.goto(base+'/cabinet/objects/new/');await leader.locator('[name=name]').fill(name);await leader.locator('[name=kind]').fill('Учебный участок');await leader.locator('main button[type=submit]').click();objectUrls.push(leader.url());}
  console.log('PASS create objects');phase='create contract';
- await leader.goto(base+'/cabinet/contracts/new/');await leader.locator('[name=number]').fill('ДЕМО-ОБЩИЙ-001');await leader.locator('[name=subject]').fill('Закрытый предмет договора');await leader.locator('[name=counterparty]').fill('Закрытый контрагент');await leader.locator('[name=amount]').fill('125000');await leader.locator('[name=private_notes]').fill('Закрытое внутреннее примечание');
+ await leader.goto(base+'/cabinet/contracts/new/');await leader.locator('[name=number]').fill('ДЕМО-ОБЩИЙ-001');await leader.locator('[name=subject]').fill('Закрытый предмет договора');await leader.locator('[name=work_kinds][value=repairs]').check();await leader.locator('[name=counterparty]').fill('Закрытый контрагент');await leader.locator('[name=amount]').fill('125000');await leader.locator('[name=private_notes]').fill('Закрытое внутреннее примечание');
  for(const el of await leader.locator('[name=linked_objects]').all())await el.check();await leader.locator('main button[type=submit]').click();const contractUrl=leader.url();assert.equal(await leader.locator('main a[href*="/objects/"]').count(),2);
  console.log('PASS create many-to-many contract');phase='assign employee';
  await leader.goto(objectUrls[0]+'access/');await leader.locator('[name=employees]').first().check();await leader.locator('main button[type=submit]').click();

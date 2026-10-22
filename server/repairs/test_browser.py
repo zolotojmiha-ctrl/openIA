@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import override_settings
 from accounts.models import User,AccessGrant
-from projects.models import LegalEntity,ProjectObject,ObjectAccess,COMPANY_TAX_ID
+from projects.models import LegalEntity,ProjectObject,ObjectAccess,COMPANY_TAX_ID,Contract,ContractObject,ContractAccess
 from .models import Section,Job,Defect,JobDefect,Coupling,Report,Attachment
 
 class RepairBrowserAcceptance(StaticLiveServerTestCase):
@@ -19,14 +19,18 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
         obj=ProjectObject.objects.create(legal_entity=company,name='Учебный объект')
         ObjectAccess.objects.create(project_object=obj,user=worker,granted_by=leader)
         section=Section.objects.create(project_object=obj,rnu='Учебное РНУ',pipeline='Учебный трубопровод',name='Учебный участок')
-        job=Job.objects.create(section=section,method='p1',length_m=3,wall_mm=Decimal('10'),source={'repair_code':'Р-01'},composition='1,5+1,5',assigned_to=worker,created_by=leader)
+        contract=Contract.objects.create(legal_entity=company,number='ТЕСТ-КОНТРАКТ',subject='Устранение дефектов',work_kinds=['repairs'])
+        ContractObject.objects.create(contract=contract,project_object=obj)
+        ContractAccess.objects.create(user=worker,contract=contract,granted_by=leader,show_number=True)
+        job=Job.objects.create(contract=contract,section=section,method='p1',length_m=3,wall_mm=Decimal('10'),source={'repair_code':'Р-01'},composition='1,5+1,5',assigned_to=worker,created_by=leader)
         for number in ['5001','5002']:
-            d=Defect.objects.create(section=section,number=number,kilometre=Decimal('101.123'),pipe_section='1001');JobDefect.objects.create(job=job,defect=d)
+            d=Defect.objects.create(contract=contract,section=section,number=number,kilometre=Decimal('101.123'),pipe_section='1001');JobDefect.objects.create(job=job,defect=d)
         for serial in ['УЧЕБНАЯ-001','УЧЕБНАЯ-002']:Coupling.objects.create(project_object=obj,method='p1',serial=serial,length_mm=1500,warehouse='Учебный склад')
         technician=User.objects.create_user('+70000000004',password,full_name='ТЕСТ Техник',role='as_built',must_change_password=False)
         ObjectAccess.objects.create(project_object=obj,user=technician,granted_by=leader)
+        ContractAccess.objects.create(user=technician,contract=contract,granted_by=leader,show_number=True)
         AccessGrant.objects.create(user=technician,permission='repairs.prepare',granted_by=leader)
-        env=os.environ.copy();env.update(ARMADA_TEST_URL=self.live_server_url,ARMADA_TEST_PASSWORD=password,ARMADA_REPAIR_ID=str(job.pk),ARMADA_SECTION_ID=str(section.pk))
+        env=os.environ.copy();env.update(ARMADA_TEST_URL=self.live_server_url,ARMADA_TEST_PASSWORD=password,ARMADA_REPAIR_ID=str(job.pk),ARMADA_SECTION_ID=str(section.pk),ARMADA_CONTRACT_ID=str(contract.pk))
         with tempfile.TemporaryDirectory(prefix='armada-field-files-') as root,override_settings(PRIVATE_DOCUMENT_ROOT=root):
             result=subprocess.run(['node',str(settings.BASE_DIR/'tests/repairs-browser.cjs')],env=env,capture_output=True,text=True,timeout=180)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

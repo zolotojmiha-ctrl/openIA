@@ -6,6 +6,8 @@ from django.db.models import Q
 from uuid import UUID
 from django.shortcuts import get_object_or_404, redirect, render
 from accounts.models import User
+from accounts.permissions import permission_required,permitted
+from django.core.exceptions import PermissionDenied
 from documents.access import visible_documents,visible_people
 from documents.presentation import file_groups
 from accounts.views import leader_required, audit
@@ -26,14 +28,16 @@ def object_detail(request,pk):
     obj=get_object_or_404(visible_objects(request.user),pk=pk)
     contracts=visible_contracts(request.user).filter(objects_linked=obj).prefetch_related('access_rules')
     return render(request,'projects/object.html',{'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
-        'assignments':obj.assignments.select_related('user').order_by('user__full_name') if request.user.is_leader else None})
+        'assignments':obj.assignments.select_related('user').order_by('user__full_name') if permitted(request.user,'projects.access') else None})
 
-@leader_required
+@permission_required('projects.manage')
 def object_edit(request,pk=None):
     obj=get_object_or_404(visible_objects(request.user),pk=pk) if pk else None
     form=ObjectForm(request.POST or None,instance=obj,initial={'expected_version':obj.version} if obj else None)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            actor=User.objects.select_for_update().get(pk=request.user.pk)
+            if not permitted(actor,'projects.manage'):raise PermissionDenied
             if obj:
                 locked=ProjectObject.objects.select_for_update().get(pk=obj.pk)
                 if locked.version!=form.cleaned_data['expected_version']:
@@ -46,17 +50,20 @@ def object_edit(request,pk=None):
                 saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)
             if not form.errors:
                 saved.save()
+                if not obj and not request.user.is_leader:ObjectAccess.objects.create(user=request.user,project_object=saved,granted_by=request.user)
                 audit(request.user,'object_updated' if obj else 'object_created',entity_id=str(saved.pk),summary=saved.name)
                 messages.success(request,'Объект сохранён.')
                 return redirect('object_detail',pk=saved.pk)
     return render(request,'projects/edit.html',{'form':form,'title':'Редактирование объекта' if obj else 'Новый объект','back':'objects'})
 
-@leader_required
+@permission_required('projects.access')
 def assignments(request,pk):
     obj=get_object_or_404(visible_objects(request.user),pk=pk)
     form=AssignmentForm(request.POST or None,initial={'expected_version':obj.version,'employees':list(obj.assignments.values_list('user_id',flat=True))})
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            actor=User.objects.get(pk=request.user.pk)
+            if not permitted(actor,'projects.access') or not visible_objects(actor).filter(pk=obj.pk).exists():raise PermissionDenied
             locked=ProjectObject.objects.select_for_update().get(pk=obj.pk)
             if locked.version!=form.cleaned_data['expected_version']:
                 form.add_error(None,'Назначения или объект уже изменились. Обновите страницу.')
@@ -111,39 +118,41 @@ def contract_detail(request,pk):
         finance_context.pop('finance_totals',None)
     return render(request,'projects/contract.html',{'documents':visible_documents(request.user).filter(contracts_linked=contract,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(contracts_linked=contract,archived=False)),'card':contract_card(contract,request.user),'linked':linked,'shares':shares,**finance_context})
 
-@leader_required
+@permission_required('projects.manage')
 def contract_edit(request,pk=None):
     obj=get_object_or_404(visible_contracts(request.user),pk=pk) if pk else None
+    if obj and not request.user.is_leader and obj.objects_linked.exclude(pk__in=visible_objects(request.user)).exists():raise PermissionDenied
     initial={'expected_version':obj.version,'linked_objects':obj.objects_linked.all()} if obj else None
-    form=ContractForm(request.POST or None,instance=obj,initial=initial)
+    form=ContractForm(request.POST or None,instance=obj,initial=initial,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            if obj:
-                locked=Contract.objects.select_for_update().get(pk=obj.pk)
-                if locked.version!=form.cleaned_data['expected_version']:
-                    form.add_error(None,'Договор уже изменён. Обновите страницу и проверьте изменения.')
-                else:
-                    saved=form.save(commit=False)
-                    saved.version=locked.version+1
-            else:
-                saved=form.save(commit=False)
-                saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)
+            actor=User.objects.select_for_update().get(pk=request.user.pk)
+            if not permitted(actor,'projects.manage'):raise PermissionDenied
+            locked=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=visible_contracts(actor).values('pk')),pk=obj.pk) if obj else None
+            if locked and locked.version!=form.cleaned_data['expected_version']:
+                form.add_error(None,'Договор уже изменён. Обновите страницу и проверьте изменения.')
+            desired={o.pk for o in form.cleaned_data['linked_objects']}
+            if desired-set(visible_objects(actor).values_list('pk',flat=True)):raise PermissionDenied
+            saved=form.instance
+            from repairs.models import Job
+            if locked and (Job.objects.filter(contract=locked).exclude(section__project_object_id__in=desired).exists() or (Job.objects.filter(contract=locked).exists() and 'repairs' not in saved.work_kinds)):
+                form.add_error(None,'Нельзя убрать место или вид работ, пока с ними связаны ремонтные задания.')
             if not form.errors:
+                saved.version=locked.version+1 if locked else 1
+                if not obj:saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)
                 saved.save()
-                desired={o.pk for o in form.cleaned_data['linked_objects']}
                 previous=set(saved.objects_linked.values_list('pk',flat=True))
                 ContractObject.objects.filter(contract=saved).exclude(project_object_id__in=desired).delete()
-                for oid in desired-previous:
-                    ContractObject.objects.create(contract=saved,project_object_id=oid)
+                for oid in desired-previous:ContractObject.objects.create(contract=saved,project_object_id=oid)
                 for rule in saved.access_rules.select_related('user'):
-                    if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists():
-                        rule.delete()
-                audit(request.user,'contract_updated' if obj else 'contract_created',entity_id=str(saved.pk),summary=saved.number,linked=[str(oid) for oid in desired],unlinked=[str(oid) for oid in previous-desired])
+                    if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists():rule.delete()
+                if not obj and not actor.is_leader:ContractAccess.objects.create(user=actor,contract=saved,granted_by=actor,**{f:True for f in SHARED_FIELDS})
+                audit(actor,'contract_updated' if obj else 'contract_created',entity_id=str(saved.pk),summary=saved.number,linked=[str(oid) for oid in desired],unlinked=[str(oid) for oid in previous-desired])
                 messages.success(request,'Договор сохранён.')
                 return redirect('contract_detail',pk=saved.pk)
     return render(request,'projects/edit.html',{'form':form,'title':'Редактирование договора' if obj else 'Новый договор','back':'contracts'})
 
-@leader_required
+@permission_required('projects.access')
 def share_contract(request,pk):
     contract=get_object_or_404(visible_contracts(request.user),pk=pk)
     initial={'expected_version':contract.version}
@@ -158,9 +167,14 @@ def share_contract(request,pk):
             initial['employee']=selected
         if rule:
             initial.update(employee=rule.user_id,enabled=True,fields=[k for k in SHARED_FIELDS if getattr(rule,k)])
-    form=ContractShareForm(request.POST or None,contract=contract,initial=initial)
+    form=ContractShareForm(request.POST or None,contract=contract,initial=initial,actor=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            actor=User.objects.get(pk=request.user.pk)
+            if not permitted(actor,'projects.access') or not visible_contracts(actor).filter(pk=contract.pk).exists():raise PermissionDenied
+            if not actor.is_leader:
+                own=contract.access_rules.filter(user=actor).first()
+                if any(not own or not getattr(own,f) for f in form.cleaned_data['fields']):raise PermissionDenied
             locked=Contract.objects.select_for_update().get(pk=contract.pk)
             if locked.version!=form.cleaned_data['expected_version']:
                 form.add_error(None,'Договор или доступ уже изменились. Обновите страницу.')

@@ -9,6 +9,9 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'users.manage':'Управлять учётными записями сотрудников',
+ 'projects.manage':'Создавать и изменять объекты и контракты',
+ 'projects.access':'Настраивать доступ к назначенным объектам и контрактам',
  'repairs.prepare':'Вести ведомости дефектов и назначать работы мастерам',
  'document.upload':'Загружать документы',
  'document.export':'Экспортировать список документов в CSV',
@@ -17,7 +20,7 @@ PERMISSIONS = {
  'finance.write':'Вносить финансовые записи и распределять выплаты',
 }
 
-ROLES = [('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Охрана труда и безопасность'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик')]
+ROLES = [('technician','Техник'),('pto','Инженер ПТО'),('other','Другая должность'),('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Охрана труда и безопасность'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик')]
 
 def normalize_phone(value):
     value = str(value).strip()

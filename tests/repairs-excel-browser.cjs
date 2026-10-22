@@ -10,7 +10,7 @@ const fs=require('node:fs');
  const resolved=technician.locator('tbody.repair-tone-resolved').first();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(227, 243, 232)');await resolved.hover();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(213, 235, 220)');
 
  const template=technician.waitForEvent('download');await technician.getByRole('link',{name:'Шаблон Excel',exact:true}).click();assert.equal((await template).suggestedFilename(),'openIA-defects-template.xlsx');
- await technician.goto(base+'/cabinet/repairs/import/');await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('[name=file]').setInputFiles(process.env.ARMADA_SAMPLE_FILE);
+ await technician.goto(base+'/cabinet/repairs/import/');await technician.locator('[name=contract]').selectOption(process.env.ARMADA_CONTRACT_ID);await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('[name=file]').setInputFiles(process.env.ARMADA_SAMPLE_FILE);
  await technician.getByRole('button',{name:'Посмотреть перед переносом'}).click();await technician.waitForURL(/\/repairs\/import\/[a-f0-9-]+\/$/);
  for(const text of ['Р-02','Р-03','ТЕСТ Мастер','55003','55004','55005'])assert.ok((await technician.locator('main').textContent()).includes(text));
  await technician.screenshot({path:out+'/06-excel-review.png',fullPage:true});
@@ -34,7 +34,7 @@ const fs=require('node:fs');
  await worker.locator('[name=coordinates]').fill('56.900001, 73.900001');await worker.screenshot({path:out+'/08-single-coordinate-field.png',fullPage:true});
  await worker.locator('[data-send-report]').click();await worker.waitForURL(/\/repairs\/[a-f0-9-]+\/$/);
  await worker.goto(base+'/cabinet/repairs/?q=550');assert.ok((await worker.locator('[data-repair-code="Р-03"]').textContent()).includes('Не устранён'));
- await technician.goto(base+'/cabinet/repairs/new/');await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('summary').filter({hasText:'Назначение, состав'}).click();
+ await technician.goto(base+'/cabinet/repairs/new/');await technician.locator('[name=contract]').selectOption(process.env.ARMADA_CONTRACT_ID);await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('summary').filter({hasText:'Назначение, состав'}).click();
  await technician.waitForFunction(()=>[...document.querySelector('[name=assigned_to]').options].some(o=>o.textContent==='ТЕСТ Мастер'));
  await technician.locator('[name=assigned_to]').selectOption({label:'ТЕСТ Мастер'});await technician.locator('[name=kilometre]').fill('444.4445');await technician.locator('[name=defect_numbers]').fill('55006');await technician.locator('[name=pipe_section]').fill('1004');await technician.locator('[name=method]').selectOption('p1');await technician.locator('[name=length_m]').fill('1');await technician.locator('[name=wall_mm]').fill('8');await technician.getByRole('button',{name:'Сохранить',exact:true}).click();await technician.waitForURL(/\/repairs\/[a-f0-9-]+\/$/);
  const transferJob=technician.url();assert.ok((await technician.locator('main').textContent()).includes('444.445'));

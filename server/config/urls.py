@@ -1,13 +1,20 @@
 from django.urls import path
 from accounts import views
-from accounts import personal
+from accounts import personal,person_accounts
 from projects import views as projects
+from projects import workspace
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
 from repairs import import_views as repair_import
 urlpatterns=[
+ path('cabinet/work/contracts/<uuid:pk>/sections/',workspace.sections_options,name='work_sections_options'),
+ path('cabinet/work/',workspace.home,name='work_home'),
+ path('cabinet/work/legacy/',workspace.legacy,name='work_legacy'),
+ path('cabinet/work/contracts/<uuid:pk>/',workspace.contract,name='work_contract'),
+ path('cabinet/work/contracts/<uuid:pk>/objects/<uuid:object_id>/',workspace.place,name='work_place'),
+ path('cabinet/personnel/<uuid:pk>/account/',person_accounts.person_account,name='person_account'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
  path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),

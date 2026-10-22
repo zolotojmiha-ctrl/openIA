@@ -11,7 +11,7 @@ from django.test import TestCase,override_settings
 from django.urls import reverse
 from django.utils import timezone
 from accounts.models import User
-from projects.models import LegalEntity,ProjectObject,ObjectAccess,COMPANY_TAX_ID
+from projects.models import LegalEntity,ProjectObject,ObjectAccess,COMPANY_TAX_ID,Contract,ContractObject,ContractAccess
 from .models import Section,Defect,Job,JobDefect,Coupling,CouplingUse,Report,Attachment,ImportBatch
 from .importer import parse_work
 from .access import selectable_couplings
@@ -85,9 +85,12 @@ class RepairsTests(TestCase):
         cls.section=Section.objects.create(project_object=cls.obj,rnu='Учебное РНУ',pipeline='Учебный трубопровод',name='Учебный участок')
         cls.section2=Section.objects.create(project_object=cls.obj2,rnu='ЗАКРЫТОЕ РНУ',pipeline='ЗАКРЫТАЯ МАГИСТРАЛЬ',name='ЗАКРЫТЫЙ УЧАСТОК')
         ObjectAccess.objects.create(user=cls.worker,project_object=cls.obj,granted_by=cls.leader)
-        cls.job=Job.objects.create(section=cls.section,assigned_to=cls.worker,method='p1',length_m=3,composition='1,5+1,5',created_by=cls.leader)
-        cls.d1=Defect.objects.create(section=cls.section,kilometre=Decimal('101.123'),number='001',pipe_section='1001')
-        cls.d2=Defect.objects.create(section=cls.section,kilometre=Decimal('101.123'),number='002',pipe_section='1001')
+        cls.contract=Contract.objects.create(legal_entity=company,number='КОНТРАКТ-ТЕСТ',subject='Устранение дефектов',work_kinds=['repairs'])
+        ContractObject.objects.create(contract=cls.contract,project_object=cls.obj)
+        for user in (cls.worker,cls.other):ContractAccess.objects.create(user=user,contract=cls.contract,granted_by=cls.leader,show_number=True)
+        cls.job=Job.objects.create(contract=cls.contract,section=cls.section,assigned_to=cls.worker,method='p1',length_m=3,composition='1,5+1,5',created_by=cls.leader)
+        cls.d1=Defect.objects.create(contract=cls.contract,section=cls.section,kilometre=Decimal('101.123'),number='001',pipe_section='1001')
+        cls.d2=Defect.objects.create(contract=cls.contract,section=cls.section,kilometre=Decimal('101.123'),number='002',pipe_section='1001')
         JobDefect.objects.create(job=cls.job,defect=cls.d1);JobDefect.objects.create(job=cls.job,defect=cls.d2)
         cls.hidden=Job.objects.create(section=cls.section2,assigned_to=cls.other,method='grind',created_by=cls.leader)
         d=Defect.objects.create(section=cls.section2,kilometre=999,number='999999');JobDefect.objects.create(job=cls.hidden,defect=d)
@@ -156,7 +159,7 @@ class RepairsTests(TestCase):
     def test_foreign_or_taken_coupling_cannot_be_used(self):
         for coupling in [self.foreign]:
             self.assertEqual(self.send(couplings=[str(coupling.pk)]).status_code,200);self.assertEqual(Report.objects.count(),0)
-        other_job=Job.objects.create(section=self.section,method='p1',created_by=self.leader)
+        other_job=Job.objects.create(contract=self.contract,section=self.section,method='p1',created_by=self.leader)
         r=Report.objects.create(job=other_job,author=self.leader,kind='complete',performed_date=timezone.localdate())
         CouplingUse.objects.create(job=other_job,coupling=self.c1,report=r)
         self.assertEqual(self.send().status_code,200);self.assertEqual(self.job.reports.count(),0)
@@ -194,13 +197,13 @@ class RepairsTests(TestCase):
         self.client.post(url,{'expected_version':3,'date':(timezone.localdate()-timedelta(days=1)).isoformat(),'basis':'Акт'});self.job.refresh_from_db();self.assertIsNone(self.job.accepted_date)
     def test_job_creation_combines_defects_without_new_access_to_other_objects(self):
         self.client.force_login(self.leader)
-        data={'section':str(self.section.pk),'expected_version':0,'kilometre':'202.222222','defect_numbers':'3001; 3002','method':'p1','length_m':'3','materials':'unknown','assigned_to':str(self.worker.pk)}
+        data={'contract':str(self.contract.pk),'section':str(self.section.pk),'expected_version':0,'kilometre':'202.222222','defect_numbers':'3001; 3002','method':'p1','length_m':'3','materials':'unknown','assigned_to':str(self.worker.pk)}
         r=self.client.post(reverse('repair_new'),data);self.assertEqual(r.status_code,302);self.assertEqual(Job.objects.get(defects__number='3001').defects.count(),2)
         data['assigned_to']=str(self.other.pk);data['defect_numbers']='3003';r=self.client.post(reverse('repair_new'),data);self.assertEqual(r.status_code,200);self.assertFalse(Defect.objects.filter(number='3003').exists())
     def test_job_edit_stale_and_started_binding_protected(self):
         self.send('start')
         self.client.force_login(self.leader)
-        data={'section':str(self.section.pk),'expected_version':1,'kilometre':'101.123','defect_numbers':'001;002','method':'p1','length_m':'3','materials':'unknown'}
+        data={'contract':str(self.contract.pk),'section':str(self.section.pk),'expected_version':1,'kilometre':'101.123','defect_numbers':'001;002','method':'p1','length_m':'3','materials':'unknown'}
         url=reverse('repair_edit',args=[self.job.pk]);self.assertContains(self.client.post(url,data),'Работу уже изменили')
         data.update(expected_version=2,defect_numbers='3004');self.assertContains(self.client.post(url,data),'нельзя заменить привязанные дефекты');self.assertEqual(self.job.defects.count(),2)
     def test_xlsx_separates_side_tables_preserves_merged_defects_and_precision(self):
@@ -231,7 +234,7 @@ class RepairsTests(TestCase):
         parsed=parse_work(SimpleUploadedFile('formatted.xlsx',result.getvalue()));self.assertEqual(parsed['couplings'][0]['serial'],'0007')
     def stage(self):
         self.client.force_login(self.leader)
-        r=self.client.post(reverse('repair_import'),{'section':str(self.section.pk),'file':workbook(source_rows(),merges=['C7:C8','E7:E8','F7:F8','G7:G8','H7:H8'])})
+        r=self.client.post(reverse('repair_import'),{'contract':str(self.contract.pk),'section':str(self.section.pk),'file':workbook(source_rows(),merges=['C7:C8','E7:E8','F7:F8','G7:G8','H7:H8'])})
         self.assertEqual(r.status_code,302);return ImportBatch.objects.latest('created_at')
     def test_import_preview_is_read_only_then_applies_once_without_completion(self):
         batch=self.stage();url=reverse('repair_import_review',args=[batch.pk]);self.assertEqual(Job.objects.count(),2)
@@ -246,12 +249,12 @@ class RepairsTests(TestCase):
         response=self.client.get(url);self.assertEqual(response.status_code,200);self.assertEqual(hashlib.sha256(b''.join(response.streaming_content)).hexdigest(),batch.sha256)
         self.client.force_login(self.worker);self.assertEqual(self.client.get(url).status_code,403)
     def test_import_new_concurrent_candidate_requires_review(self):
-        batch=self.stage();new=Job.objects.create(section=self.section,method='grind',created_by=self.leader)
-        d=Defect.objects.create(section=self.section,kilometre=Decimal('101.123'),number='2001');JobDefect.objects.create(job=new,defect=d)
+        batch=self.stage();new=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
+        d=Defect.objects.create(contract=self.contract,section=self.section,kilometre=Decimal('101.123'),number='2001');JobDefect.objects.create(job=new,defect=d)
         r=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'skip'})
         self.assertContains(r,'появились совпадения');batch.refresh_from_db();self.assertIsNone(batch.applied_at)
     def test_import_existing_match_does_not_overwrite_confirmed_repair(self):
-        d=Defect.objects.create(section=self.section,kilometre=Decimal('101.123'),number='2001');JobDefect.objects.create(job=self.job,defect=d)
+        d=Defect.objects.create(contract=self.contract,section=self.section,kilometre=Decimal('101.123'),number='2001');JobDefect.objects.create(job=self.job,defect=d)
         self.job.state='confirmed';self.job.save();batch=self.stage()
         r=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':str(self.job.pk),'row_1':'skip'})
         self.assertEqual(r.status_code,302);self.job.refresh_from_db();self.assertEqual(self.job.state,'confirmed');self.assertEqual(self.job.reports.get().kind,'imported');self.assertEqual(self.job.method,'p1')
@@ -261,8 +264,8 @@ class RepairsTests(TestCase):
     def test_filter_pagination_and_invalid_ids_do_not_crash(self):
         for params in [{'section':'broken'},{'object':'broken'},{'q':'NaN'},{'q':'99999999999999999999999'},{'year':'notyear'}]:self.assertEqual(self.client.get(reverse('repairs'),params).status_code,200)
     def test_batch_assignment_restricts_master_and_assigns_atomically(self):
-        first=Job.objects.create(section=self.section,method='grind',created_by=self.leader)
-        second=Job.objects.create(section=self.section,method='grind',created_by=self.leader)
+        first=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
+        second=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
         self.client.force_login(self.leader);url=reverse('repair_assign_many',args=[self.section.pk])
         form=self.client.get(url).context['form'];snapshot=form.initial['snapshot']
         data={'snapshot':snapshot,'master':str(self.other.pk),'jobs':[str(first.pk),str(second.pk)]}
@@ -270,8 +273,8 @@ class RepairsTests(TestCase):
         data['master']=str(self.worker.pk);self.assertEqual(self.client.post(url,data).status_code,302)
         for j in [first,second]:j.refresh_from_db();self.assertEqual(j.assigned_to,self.worker);self.assertEqual(j.version,2)
     def test_batch_stale_job_does_not_change_other_jobs(self):
-        first=Job.objects.create(section=self.section,method='grind',created_by=self.leader)
-        second=Job.objects.create(section=self.section,method='grind',created_by=self.leader)
+        first=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
+        second=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
         self.client.force_login(self.leader);url=reverse('repair_assign_many',args=[self.section.pk])
         snapshot=self.client.get(url).context['form'].initial['snapshot'];second.version+=1;second.save()
         r=self.client.post(url,{'snapshot':snapshot,'master':str(self.worker.pk),'jobs':[str(first.pk),str(second.pk)]})
@@ -338,7 +341,7 @@ class RepairsTests(TestCase):
 
     def test_job_wall_thickness_accepts_positive_or_unknown_only(self):
         from .forms import JobForm
-        data={'section':self.section.pk,'kilometre':'101.1','defect_numbers':'6001','method':'p1','length_m':'3','materials':'unknown','expected_version':0}
+        data={'contract':self.contract.pk,'section':self.section.pk,'kilometre':'101.1','defect_numbers':'6001','method':'p1','length_m':'3','materials':'unknown','expected_version':0}
         for value in ['0','-1','10.25']:
             form=JobForm(data={**data,'wall_mm':value},user=self.leader)
             self.assertFalse(form.is_valid());self.assertIn('wall_mm',form.errors)
@@ -368,7 +371,7 @@ class RepairsTests(TestCase):
         with self.assertRaisesMessage(Exception,'повторяется'):parse_work(self.standard_file(changed))
     def test_standard_import_assigns_two_separate_repairs_with_independent_results(self):
         self.client.force_login(self.leader)
-        response=self.client.post(reverse('repair_import'),{'section':str(self.section.pk),'file':self.standard_file(self.standard_rows())})
+        response=self.client.post(reverse('repair_import'),{'contract':str(self.contract.pk),'section':str(self.section.pk),'file':self.standard_file(self.standard_rows())})
         self.assertEqual(response.status_code,302)
         batch=ImportBatch.objects.latest('created_at')
         self.assertEqual(self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'}).status_code,302)
@@ -411,11 +414,11 @@ class RepairsTests(TestCase):
         self.assertEqual(self.client.get(reverse('repair_import')).status_code,403)
     def test_import_rejects_unknown_master_wrong_section_and_revoked_master_access(self):
         self.client.force_login(self.leader);rows=self.standard_rows();rows[0][7]=rows[1][7]=self.other.phone
-        self.assertContains(self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)}),'не имеет доступа')
+        self.assertContains(self.client.post(reverse('repair_import'),{'contract':self.contract.pk,'section':self.section.pk,'file':self.standard_file(rows)}),'не имеет доступа')
         rows=self.standard_rows()
         for row in rows:row.append(str(self.section2.pk))
-        self.assertContains(self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)}),'другого участка')
-        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(self.standard_rows())})
+        self.assertContains(self.client.post(reverse('repair_import'),{'contract':self.contract.pk,'section':self.section.pk,'file':self.standard_file(rows)}),'другого участка')
+        self.client.post(reverse('repair_import'),{'contract':self.contract.pk,'section':self.section.pk,'file':self.standard_file(self.standard_rows())})
         batch=ImportBatch.objects.latest('created_at');ObjectAccess.objects.filter(user=self.worker).delete()
         response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'})
         self.assertContains(response,'Доступ выбранного мастера изменился')
@@ -429,20 +432,20 @@ class RepairsTests(TestCase):
     def test_standard_import_matches_number_and_km_not_number_alone(self):
         from .import_views import matches
         item={'code':'Р-NEW','defects':[{'number':self.d1.number,'km':'202','pipe_section':'1002'}]}
-        self.assertEqual(matches(self.section,item).count(),0)
+        self.assertEqual(matches(self.section,item,self.contract).count(),0)
         item['defects'][0]['km']=self.d1.km
-        self.assertEqual(matches(self.section,item).get().pk,self.job.pk)
+        self.assertEqual(matches(self.section,item,self.contract).get().pk,self.job.pk)
     def test_technician_cannot_import_inventory_or_duplicate_existing_defects(self):
         from accounts.models import AccessGrant
         AccessGrant.objects.create(user=self.other,permission='repairs.prepare',granted_by=self.leader)
         ObjectAccess.objects.create(user=self.other,project_object=self.obj,granted_by=self.leader)
         self.client.force_login(self.other)
-        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':workbook(source_rows(),['C7:C8','F7:F8','G7:G8','H7:H8'])})
+        self.client.post(reverse('repair_import'),{'contract':self.contract.pk,'section':self.section.pk,'file':workbook(source_rows(),['C7:C8','F7:F8','G7:G8','H7:H8'])})
         batch=ImportBatch.objects.latest('created_at');count=Coupling.objects.count()
         response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new','include_couplings':'on'})
         self.assertEqual(response.status_code,302);self.assertEqual(Coupling.objects.count(),count)
         rows=self.standard_rows();rows[0][3]=self.d1.number
-        self.client.post(reverse('repair_import'),{'section':self.section.pk,'file':self.standard_file(rows)})
+        self.client.post(reverse('repair_import'),{'contract':self.contract.pk,'section':self.section.pk,'file':self.standard_file(rows)})
         batch=ImportBatch.objects.latest('created_at')
         response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','row_1':'new'})
         self.assertContains(response,'Дефект уже внесён')
@@ -542,7 +545,7 @@ class RepairsTests(TestCase):
         self.d1.archived_at=timezone.now();self.d1.save()
         self.client.force_login(self.leader)
         before=Job.objects.count()
-        response=self.client.post(reverse('repair_new'),{'section':self.section.pk,'kilometre':str(self.d1.kilometre),'defect_numbers':self.d1.number,'method':'p1','length_m':'3','materials':'unknown','expected_version':0})
+        response=self.client.post(reverse('repair_new'),{'contract':self.contract.pk,'section':self.section.pk,'kilometre':str(self.d1.kilometre),'defect_numbers':self.d1.number,'method':'p1','length_m':'3','materials':'unknown','expected_version':0})
         self.assertContains(response,'Восстановите его')
         self.assertEqual(Job.objects.count(),before)
     def test_kilometres_round_half_up_to_three_decimals_for_import_and_display(self):
@@ -567,8 +570,8 @@ class RepairsTests(TestCase):
         self.assertEqual(parse_work(self.standard_file(rows))['jobs'][0]['method'],'grind')
     def test_rounding_reuses_legacy_identity_without_rewriting_old_evidence(self):
         from .values import get_or_create_defect
-        old=Defect.objects.create(section=self.section,kilometre=Decimal('154.123456'),number='00012',pipe_section='0002')
-        found,created=get_or_create_defect(section=self.section,kilometre=Decimal('154.123'),number='00012',defaults={'pipe_section':'0002'})
+        old=Defect.objects.create(contract=self.contract,section=self.section,kilometre=Decimal('154.123456'),number='00012',pipe_section='0002')
+        found,created=get_or_create_defect(contract=self.contract,section=self.section,kilometre=Decimal('154.123'),number='00012',defaults={'pipe_section':'0002'})
         self.assertFalse(created);self.assertEqual(found.pk,old.pk)
         old.refresh_from_db();self.assertEqual(old.kilometre,Decimal('154.123456'));self.assertEqual(old.km,'154.123')
         rows=self.standard_rows();rows[0][1]='101.1231';rows[1][1]='101.1234';rows[1][3]=rows[0][3]

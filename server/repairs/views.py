@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError,PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError
 from django.db.models import Q, Count, Min, F
@@ -31,6 +31,10 @@ def jobs(request):
         if sid:qs=qs.filter(section_id=uuid.UUID(sid))
         if request.GET.get('object'):qs=qs.filter(section__project_object_id=uuid.UUID(request.GET['object']))
     except ValueError:qs=qs.none();sid=''
+    if request.GET.get('contract'):
+        try:qs=qs.filter(contract_id=uuid.UUID(request.GET['contract']))
+        except ValueError:qs=qs.none()
+    if request.GET.get('legacy')=='1':qs=qs.filter(contract__isnull=True)
     if q:
         search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
         try:
@@ -59,23 +63,37 @@ def jobs(request):
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
         if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows)})
-    return render(request,'repairs/list.html',{'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
+    return render(request,'repairs/list.html',{'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
 @prepare_required
 def section_new(request):
-    form=SectionForm(request.POST or None,user=request.user)
+    form=SectionForm(request.POST or None,user=request.user,initial={'project_object':request.GET.get('object')})
     if request.method=='POST' and form.is_valid():
         section=form.save();audit(request.user,'repair_prepared',entity_id=str(section.pk),kind='section')
-        return redirect('repair_new_section_job',section_id=section.pk)
+        from django.urls import reverse
+        from urllib.parse import urlencode
+        return redirect(reverse('repair_new_section_job',args=[section.pk])+'?'+urlencode({'contract':request.GET.get('contract','')}))
     return render(request,'repairs/edit.html',{'form':form,'title':'Добавить участок','kind':'section'})
 
 @prepare_required
 def job_edit(request,pk=None,section_id=None):
     job=get_object_or_404(visible_jobs(request.user),pk=pk) if pk else None
-    initial={'section':section_id or request.GET.get('section')}
+    initial={'section':section_id or request.GET.get('section'),'contract':request.GET.get('contract')}
     form=JobForm(request.POST or None,user=request.user,instance=job,initial=initial)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            actor=User.objects.select_for_update().get(pk=request.user.pk)
+            if not can_prepare(actor):raise PermissionDenied
+            if job and not visible_jobs(actor).filter(pk=job.pk).exists():raise Http404
+            target=form.cleaned_data.get('contract')
+            if target:
+                from projects.models import Contract
+                from .access import repair_contracts,validate_contract_place
+                target=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=repair_contracts(actor).values('pk')),pk=target.pk)
+                try:validate_contract_place(target,form.cleaned_data['section'])
+                except ValidationError as e:
+                    form.add_error('contract',e)
+                    return render(request,'repairs/edit.html',{'form':form,'title':'Новая работа','kind':'job','job':job})
             Section.objects.select_for_update().get(pk=form.cleaned_data['section'].pk)
             locked=Job.objects.select_for_update().get(pk=job.pk) if job else None
             if locked and locked.version!=form.cleaned_data['expected_version']:form.add_error(None,'Работу уже изменили. Обновите страницу.')
@@ -92,7 +110,7 @@ def job_edit(request,pk=None,section_id=None):
                     saved.created_by=job.created_by if job else request.user;saved.version=(locked.version+1) if locked else 1;saved.save()
                     desired=[]
                     for number in form.cleaned_data['defect_numbers']:
-                        defect,_=get_or_create_defect(section=saved.section,kilometre=form.cleaned_data['kilometre'],number=number,defaults={'pipe_section':form.cleaned_data['pipe_section']})
+                        defect,_=get_or_create_defect(section=saved.section,kilometre=form.cleaned_data['kilometre'],number=number,contract=saved.contract,defaults={'pipe_section':form.cleaned_data['pipe_section']})
                         desired.append(defect)
                     JobDefect.objects.filter(job=saved).exclude(defect__in=desired).delete()
                     for defect in desired:JobDefect.objects.get_or_create(job=saved,defect=defect)
@@ -179,23 +197,30 @@ def coupling_new(request,pk):
         except (ValidationError,IntegrityError):form.add_error(None,'Проверьте данные. Муфта с этим типом и заводским номером уже может быть добавлена.')
     return render(request,'repairs/edit.html',{'form':form,'title':'Добавить муфту','kind':'coupling'})
 
-def assignees(section):
-    return User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=section.project_object)).distinct().order_by('full_name')
+def assignees(section,contract=None):
+    qs=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=section.project_object))
+    if contract:qs=qs.filter(Q(leader_slot__isnull=False)|Q(contract_access__contract=contract))
+    return qs.distinct().order_by('full_name')
 
 @prepare_required
 def section_assignees(request,pk):
     section=get_object_or_404(visible_sections(request.user),pk=pk)
-    return JsonResponse({'users':[{'id':str(u.pk),'name':u.full_name} for u in assignees(section)]})
+    contract=None
+    if request.GET.get('contract'):
+        from .access import repair_contracts
+        contract=get_object_or_404(repair_contracts(request.user),pk=request.GET['contract'])
+        if not contract.objects_linked.filter(pk=section.project_object_id).exists():raise Http404
+    return JsonResponse({'users':[{'id':str(u.pk),'name':u.full_name} for u in assignees(section,contract)]})
 
 class BatchAssignment(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)
     master=forms.ModelChoiceField(label='Назначить мастера',queryset=User.objects.none())
     date=forms.DateField(label='Общая плановая дата — если нужна',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     jobs=forms.ModelMultipleChoiceField(label='Работы',queryset=Job.objects.none(),widget=forms.CheckboxSelectMultiple)
-    def __init__(self,*args,section,**kwargs):
+    def __init__(self,*args,section,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['master'].queryset=assignees(section);self.fields['master'].label_from_instance=lambda u:u.full_name
-        base=Job.objects.filter(section=section,assigned_to__isnull=True,pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk')).exclude(state='confirmed')
+        base=visible_jobs(user).filter(section=section,assigned_to__isnull=True,pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk')).exclude(state='confirmed')
         ids=list(base.order_by('planned_date','pk').values_list('pk',flat=True)[:300])
         qs=base.filter(pk__in=ids).prefetch_related('defects').order_by('planned_date','pk')
         self.fields['jobs'].queryset=qs
@@ -204,6 +229,12 @@ class BatchAssignment(forms.Form):
     def clean_snapshot(self):
         try:return signing.loads(self.cleaned_data['snapshot'],salt='repair-assignment',max_age=8*60*60)
         except signing.BadSignature:raise forms.ValidationError('Список устарел. Обновите страницу.')
+    def clean(self):
+        c=super().clean()
+        if c.get('master') and c.get('jobs'):
+            for job in c['jobs']:
+                if job.contract_id and not assignees(job.section,job.contract).filter(pk=c['master'].pk).exists():self.add_error('master','Мастер должен иметь доступ ко всем выбранным контрактам.')
+        return c
     def clean_jobs(self):
         qs=self.cleaned_data['jobs']
         if qs.count()>300:raise forms.ValidationError('За один раз можно назначить до 300 работ.')
@@ -212,10 +243,10 @@ class BatchAssignment(forms.Form):
 @prepare_required
 def assign_many(request,pk):
     section=get_object_or_404(visible_sections(request.user),pk=pk)
-    form=BatchAssignment(request.POST or None,section=section)
+    form=BatchAssignment(request.POST or None,section=section,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            selected=list(form.cleaned_data['jobs'].select_for_update().order_by('pk'))
+            selected=list(form.cleaned_data['jobs'].select_for_update(of=('self',)).order_by('pk'))
             snapshot=form.cleaned_data['snapshot']
             if any(snapshot.get(str(j.pk))!=j.version or j.state=='confirmed' for j in selected):form.add_error(None,'Одна из работ изменилась. Назначения не сохранены; обновите список и проверьте результаты мастеров.')
             else:
@@ -236,7 +267,10 @@ def defect_visibility(request,pk,restore=False):
     error='';status=200
     def snapshot(item,jobs):
         return {'defect':str(item.pk),'archived':str(item.archived_at or ''),'jobs':{str(j.pk):j.version for j in jobs}}
-    jobs=list(Job.objects.filter(defects=defect).order_by('pk'))
+    from django.core.exceptions import PermissionDenied
+    linked=Job.objects.filter(defects=defect)
+    if linked.exclude(pk__in=visible_jobs(request.user,include_archived=True)).exists():raise PermissionDenied
+    jobs=list(linked.order_by('pk'))
     if request.method=='POST':
         try:expected=signing.loads(request.POST.get('snapshot',''),salt='repair-defect-visibility',max_age=8*60*60)
         except signing.BadSignature:expected=None
@@ -263,7 +297,7 @@ class ReassignmentForm(forms.Form):
     master=forms.ModelChoiceField(label='Новый ответственный мастер',queryset=User.objects.none(),required=False,empty_label='Пока не назначен')
     def __init__(self,*args,job,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['master'].queryset=assignees(job.section)
+        self.fields['master'].queryset=assignees(job.section,job.contract)
         self.fields['master'].label_from_instance=lambda user:user.full_name
         self.initial.update(expected_version=job.version,master=job.assigned_to_id)
 

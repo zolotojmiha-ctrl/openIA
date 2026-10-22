@@ -9,7 +9,7 @@ from accounts.models import normalize_phone
 from .importer import numeric, method
 from .values import kilometre,identifier
 
-HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение']
+HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение','ID контракта']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
 def workbook(rows):
@@ -84,8 +84,8 @@ def parse_standard(book):
         if m.startswith('p') and not specs[0]:raise ValidationError(f'Строка {row}: укажите длину конструкции.')
         phone=value(row,'Мастер (телефон)')
         if phone:phone=normalize_phone(phone)
-        signature=(km,m,*specs,phone,value(row,'ID участка'))
-        item=groups.setdefault(code,{'signature':signature,'code':code,'rows':[],'defects':[],'method':m,'length_m':specs[0],'wall_mm':specs[1],'master_phone':phone,'section_id':value(row,'ID участка'),'composition':'','planned_date':'','note':'','raw':[]})
+        signature=(km,m,*specs,phone,value(row,'ID участка'),value(row,'ID контракта'))
+        item=groups.setdefault(code,{'signature':signature,'code':code,'rows':[],'defects':[],'method':m,'length_m':specs[0],'wall_mm':specs[1],'master_phone':phone,'section_id':value(row,'ID участка'),'contract_id':value(row,'ID контракта'),'composition':'','planned_date':'','note':'','raw':[]})
         if item['signature']!=signature:
             raise ValidationError(f'Строка {row}: в группе «{code}» различаются километр, конструкция, размеры, участок или мастер. Для другого ремонта укажите другой код.')
         if len(item['defects'])>=30:raise ValidationError('В одной группе допускается до 30 дефектов.')

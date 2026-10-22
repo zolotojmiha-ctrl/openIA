@@ -25,17 +25,17 @@ def identifier(value,label,optional=False):
     return text
 
 
-def matching_defects(section,km,number):
+def matching_defects(section,km,number,contract=None):
     from .models import Defect
     rounded=kilometre(km)
-    return Defect.objects.filter(section=section,number=number,kilometre__gte=max(Decimal(0),rounded-Decimal('.0005')),kilometre__lt=rounded+Decimal('.0005'))
+    return Defect.objects.filter(contract=contract,section=section,number=number,kilometre__gte=max(Decimal(0),rounded-Decimal('.0005')),kilometre__lt=rounded+Decimal('.0005'))
 
 
 _parse_kilometre=kilometre
 
-def get_or_create_defect(section,kilometre,number,defaults):
+def get_or_create_defect(section,kilometre,number,defaults,contract=None):
     from .models import Defect
-    found=list(matching_defects(section,kilometre,number).order_by('pk')[:2])
+    found=list(matching_defects(section,kilometre,number,contract).order_by('pk')[:2])
     if len(found)>1:raise ValidationError('После округления найдено несколько существующих записей этого дефекта. Проверьте дубли перед импортом.')
     if found:return found[0],False
-    return Defect.objects.get_or_create(section=section,kilometre=_parse_kilometre(kilometre),number=number,defaults=defaults)
+    return Defect.objects.get_or_create(contract=contract,section=section,kilometre=_parse_kilometre(kilometre),number=number,defaults=defaults)

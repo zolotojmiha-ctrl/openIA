@@ -35,7 +35,7 @@ class ProjectAccessTests(TestCase):
     def grant(self,**kwargs):
         return ContractAccess.objects.create(user=self.employee,contract=self.contract,granted_by=self.first,**kwargs)
     def contract_data(self,**kwargs):
-        return {'expected_version':'1','number':'ТЕСТ-001','subject':'Демонстрационные работы','linked_objects':[str(self.a.pk),str(self.b.pk)],'status':'planned',**kwargs}
+        return {'work_kinds':['repairs'],'expected_version':'1','number':'ТЕСТ-001','subject':'Демонстрационные работы','linked_objects':[str(self.a.pk),str(self.b.pk)],'status':'planned',**kwargs}
     def test_anonymous_denied(self):
         for name in ['objects','contracts','object_new','contract_new']:
             self.assertEqual(self.client.get(reverse(name)).status_code,302)

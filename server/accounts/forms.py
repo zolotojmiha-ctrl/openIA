@@ -15,9 +15,13 @@ class EmployeeForm(forms.Form):
     role=forms.ChoiceField(label='Рабочая роль',choices=ROLES)
     is_active=forms.BooleanField(label='Учётная запись активна',required=False,initial=True)
     permissions=forms.MultipleChoiceField(label='Индивидуальные разрешения',choices=list(PERMISSIONS.items()),required=False,widget=forms.CheckboxSelectMultiple)
-    def __init__(self,*args,user=None,**kwargs):
+    def __init__(self,*args,user=None,actor=None,**kwargs):
         self.edit_user=user
+        self.actor=actor
         super().__init__(*args,**kwargs)
+        if actor and not actor.is_leader:
+            allowed=set(actor.grants.values_list('permission',flat=True))
+            self.fields['permissions'].choices=[(k,v) for k,v in PERMISSIONS.items() if k in allowed]
     def clean_phone(self):
         phone=normalize_phone(self.cleaned_data['phone'])
         existing=User.objects.filter(phone=phone)

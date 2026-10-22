@@ -5,9 +5,9 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 from accounts.models import User
-from projects.access import visible_objects
+from projects.access import visible_objects,contract_card
 from documents.storage import validate_upload
-from .access import visible_sections, selectable_couplings
+from .access import visible_sections, selectable_couplings,repair_contracts,validate_contract_place
 from .values import kilometre,identifier,matching_defects
 from .models import Section, Job, Defect, Coupling, METHODS, PROBLEMS
 
@@ -29,16 +29,29 @@ class JobForm(forms.ModelForm):
     pipe_section=forms.CharField(label='Номер секции трубы',max_length=80,required=False)
     class Meta:
         model=Job
-        fields=['section','method','length_m','wall_mm','composition','planned_date','assigned_to','materials','notes']
+        fields=['contract','section','method','length_m','wall_mm','composition','planned_date','assigned_to','materials','notes']
         labels={'section':'Участок','assigned_to':'Ответственный мастер'}
         widgets={'planned_date':DATE,'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['contract'].queryset=repair_contracts(user)
+        self.fields['contract'].label_from_instance=lambda c:contract_card(c,user)['title']
+        self.fields['contract'].required=self.instance._state.adding or bool(self.instance.contract_id)
         self.fields['section'].queryset=visible_sections(user)
         sid=self.data.get('section') if self.is_bound else self.initial.get('section') or getattr(self.instance,'section_id',None)
         try:s=visible_sections(user).filter(pk=uuid.UUID(str(sid))).first()
         except (ValueError,TypeError):s=None
         self.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=s.project_object if s else None)).distinct().order_by('full_name') if s else User.objects.none()
+        cid=self.data.get('contract') if self.is_bound else self.initial.get('contract') or getattr(self.instance,'contract_id',None)
+        try:
+            contract=self.fields['contract'].queryset.filter(pk=uuid.UUID(str(cid))).first()
+        except (ValueError,TypeError):contract=None
+        if contract:
+            self.fields['section'].queryset=self.fields['section'].queryset.filter(project_object__in=contract.objects_linked.all())
+            if s:self.fields['assigned_to'].queryset=self.fields['assigned_to'].queryset.filter(Q(leader_slot__isnull=False)|Q(contract_access__contract=contract)).distinct()
+        if not self.instance._state.adding:
+            self.fields['contract'].disabled=True
+            self.initial['contract']=self.instance.contract_id
         self.fields['assigned_to'].label_from_instance=lambda u:u.full_name
         self.fields['length_m'].min_value=Decimal('.001')
         self.fields['wall_mm']=forms.DecimalField(label='Толщина стенки муфты, мм',max_digits=4,decimal_places=0,min_value=1,required=False,widget=forms.NumberInput(attrs={'step':1}),error_messages={'max_decimal_places':'Толщина стенки муфты — целое число, например 8, 10 или 12.'})
@@ -62,13 +75,16 @@ class JobForm(forms.ModelForm):
         return list(dict.fromkeys(values))
     def clean(self):
         c=super().clean()
+        if c.get('contract') and c.get('section'):
+            try:validate_contract_place(c['contract'],c['section'])
+            except forms.ValidationError as e:self.add_error('contract',e)
         if c.get('method') in ['p1','p2','p3','p4','p5u'] and not c.get('length_m'):self.add_error('length_m','Укажите необходимую длину конструкции.')
         if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
-            if any(matching_defects(c['section'],c['kilometre'],number).filter(archived_at__isnull=False).exists() for number in c['defect_numbers']):
+            if any(matching_defects(c['section'],c['kilometre'],number,c.get('contract')).filter(archived_at__isnull=False).exists() for number in c['defect_numbers']):
                 self.add_error('defect_numbers','Этот дефект удалён из списка. Восстановите его в разделе «Удалённые», чтобы сохранить прежнюю историю.')
         if c.get('method') not in ('p1','p2','p3','p4','p5u') and c.get('wall_mm') is not None:self.add_error('wall_mm','Стенка муфты указывается только для ремонта муфтой.')
         if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
-            if any(matching_defects(c['section'],c['kilometre'],number).count()>1 for number in c['defect_numbers']):self.add_error('defect_numbers','После округления есть дубли существующих дефектов. Сначала проверьте их.')
+            if any(matching_defects(c['section'],c['kilometre'],number,c.get('contract')).count()>1 for number in c['defect_numbers']):self.add_error('defect_numbers','После округления есть дубли существующих дефектов. Сначала проверьте их.')
         return c
 
 class CouplingForm(forms.ModelForm):

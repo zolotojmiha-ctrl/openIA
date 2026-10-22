@@ -21,6 +21,7 @@ class Section(models.Model):
     def __str__(self):return f'{self.rnu} · {self.pipeline} · {self.name}'
 
 class Defect(models.Model):
+    contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_defects')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='defects')
     kilometre=models.DecimalField('Километр',max_digits=12,decimal_places=6)
@@ -33,12 +34,13 @@ class Defect(models.Model):
     longitude=models.DecimalField('Долгота',max_digits=9,decimal_places=6,null=True,blank=True)
     source=models.JSONField(default=dict,blank=True)
     class Meta:
-        constraints=[models.UniqueConstraint(fields=['section','kilometre','number'],name='repair_defect_identity'),models.CheckConstraint(condition=models.Q(kilometre__gte=0),name='repair_km_positive')]
+        constraints=[models.UniqueConstraint(fields=['section','kilometre','number'],condition=models.Q(contract__isnull=True),name='repair_legacy_defect_identity'),models.UniqueConstraint(fields=['contract','section','kilometre','number'],condition=models.Q(contract__isnull=False),name='repair_contract_defect_identity'),models.CheckConstraint(condition=models.Q(kilometre__gte=0),name='repair_km_positive')]
     def __str__(self):return f'км {self.km} · № {self.number}'
     @property
     def km(self):return format(kilometre(self.kilometre),'.3f')
 
 class Job(models.Model):
+    contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='jobs')
     defects=models.ManyToManyField(Defect,through='JobDefect',related_name='jobs')
@@ -94,6 +96,7 @@ class JobDefect(models.Model):
     class Meta:
         constraints=[models.UniqueConstraint(fields=['job','defect'],name='repair_job_defect')]
     def clean(self):
+        if self.job.contract_id!=self.defect.contract_id:raise ValidationError('Дефект и работа должны относиться к одному контракту.')
         if self.job.section_id!=self.defect.section_id:raise ValidationError('Дефект должен относиться к тому же участку.')
     def save(self,*args,**kwargs):
         self.clean();return super().save(*args,**kwargs)
@@ -150,6 +153,7 @@ class Attachment(models.Model):
     sha256=models.CharField(max_length=64)
 
 class ImportBatch(models.Model):
+    contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_importbatchs')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT)
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)

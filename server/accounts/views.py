@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.utils.crypto import salted_hmac
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_POST
+from .permissions import permission_required,manageable_user
 from .forms import LoginForm, EmployeeForm, SecurePasswordChangeForm
 from .models import User, AccessGrant, AuditEvent, LoginAttempt, PERMISSIONS, temporary_deadline
 
@@ -110,23 +111,30 @@ def dashboard(request):
         context.update(dashboard_data(request.user))
     return render(request,'accounts/dashboard.html',context)
 
-@leader_required
+@permission_required('users.manage')
 def users(request):
-    return render(request,'accounts/users.html',{'employees':User.objects.filter(leader_slot__isnull=True).order_by('full_name'),'leaders':User.objects.filter(leader_slot__isnull=False).order_by('leader_slot')})
+    return render(request,'accounts/users.html',{'employees':[u for u in User.objects.filter(leader_slot__isnull=True).order_by('full_name') if manageable_user(request.user,u)],'leaders':User.objects.filter(leader_slot__isnull=False).order_by('leader_slot')})
 
-@leader_required
+@permission_required('users.manage')
 @sensitive_post_parameters()
 @sensitive_variables('temporary')
 def employee_edit(request,pk=None):
     employee=get_object_or_404(User,pk=pk,leader_slot__isnull=True) if pk else None
     initial={'expected_version':employee.session_version,'full_name':employee.full_name,'phone':employee.phone,'role':employee.role,'is_active':employee.is_active,'permissions':[p for p in employee.grants.values_list('permission',flat=True) if p in PERMISSIONS]} if employee else None
-    form=EmployeeForm(request.POST or None,initial=initial,user=employee)
+    if employee and not manageable_user(request.user,employee):raise PermissionDenied
+    form=EmployeeForm(request.POST or None,initial=initial,user=employee,actor=request.user)
     if request.method=='POST' and form.is_valid():
         temporary=None
         try:
             with transaction.atomic():
+                locked_users={u.pk:u for u in User.objects.select_for_update().filter(pk__in=[request.user.pk]+([employee.pk] if employee else [])).order_by('pk')}
+                actor=locked_users[request.user.pk]
+                from .permissions import permitted
+                if not permitted(actor,'users.manage'):raise PermissionDenied
+                if not actor.is_leader and not set(form.cleaned_data['permissions']).issubset(set(actor.grants.values_list('permission',flat=True))):raise PermissionDenied
                 if employee:
-                    employee=User.objects.select_for_update().get(pk=employee.pk,leader_slot__isnull=True)
+                    employee=locked_users[employee.pk]
+                    if not manageable_user(request.user,employee):raise PermissionDenied
                     if form.cleaned_data['expected_version'] != employee.session_version:
                         form.add_error(None,'Настройки уже изменил другой руководитель. Обновите страницу и проверьте изменения.')
                         return render(request,'accounts/employee.html',{'form':form,'employee':employee})
@@ -147,6 +155,10 @@ def employee_edit(request,pk=None):
                     Person.objects.filter(user=employee).update(archived=True)
                 employee.grants.all().delete()
                 AccessGrant.objects.bulk_create([AccessGrant(user=employee,permission=p,granted_by=request.user) for p in form.cleaned_data['permissions']])
+                if temporary:
+                    from documents.models import Person
+                    from projects.models import LegalEntity,COMPANY_TAX_ID
+                    Person.objects.create(user=employee,legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID),full_name=employee.full_name,position=employee.get_role_display(),created_by=request.user)
                 audit(request.user,'employee_created' if temporary else 'employee_updated',employee,previous_permissions=before,permissions=form.cleaned_data['permissions'],active=employee.is_active)
         except IntegrityError:
             form.add_error('phone','Телефон уже используется. Обновите страницу и повторите.')
@@ -157,12 +169,16 @@ def employee_edit(request,pk=None):
             return redirect('users')
     return render(request,'accounts/employee.html',{'form':form,'employee':employee})
 
-@leader_required
+@permission_required('users.manage')
 @require_POST
 @sensitive_variables('temporary')
 def reset_password(request,pk):
     with transaction.atomic():
-        user=get_object_or_404(User.objects.select_for_update(),pk=pk,leader_slot__isnull=True)
+        from .permissions import permitted
+        locked_users={u.pk:u for u in User.objects.select_for_update().filter(pk__in=[request.user.pk,pk]).order_by('pk')}
+        actor=locked_users[request.user.pk]
+        user=locked_users.get(pk)
+        if not user or not permitted(actor,'users.manage') or not manageable_user(actor,user):raise PermissionDenied
         temporary=secrets.token_urlsafe(20)
         user.set_password(temporary)
         user.must_change_password=True

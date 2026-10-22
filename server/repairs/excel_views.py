@@ -27,6 +27,10 @@ def export(request):
     archived=request.GET.get('archive')=='1' and can_prepare(request.user)
     qs=visible_jobs(request.user,include_archived=archived)
     if archived:qs=qs.filter(defects__archived_at__isnull=False).distinct()
+    if request.GET.get('contract'):
+        import uuid
+        try:qs=qs.filter(contract_id=uuid.UUID(request.GET['contract']))
+        except (ValueError,TypeError):return HttpResponse('Некорректный контракт.',status=400)
     if request.GET.get('section'):
         import uuid
         try:qs=qs.filter(section_id=uuid.UUID(request.GET['section']))
@@ -61,6 +65,6 @@ def export(request):
         result=next((r for r in job.export_reports if r.kind in ('complete','partial','correction')),None)
         coordinates=f'{result.latitude}, {result.longitude}' if result and result.latitude is not None and result.longitude is not None else ''
         for d in (job.archived_defects if archived else job.active_defects):
-            rows.append([job.repair_label,d.km,d.pipe_section,d.number,job.get_method_display(),job.length_m,job.wall_display if job.wall_display not in ('—','Требует уточнения') else '',job.assigned_to.phone if job.assigned_to_id else '',str(job.section_id),job.section.project_object.name,job.section.name,job.defect_status,coordinates,job.reason_display,job.problem_note])
+            rows.append([job.repair_label,d.km,d.pipe_section,d.number,job.get_method_display(),job.length_m,job.wall_display if job.wall_display not in ('—','Требует уточнения') else '',job.assigned_to.phone if job.assigned_to_id else '',str(job.section_id),job.section.project_object.name,job.section.name,job.defect_status,coordinates,job.reason_display,job.problem_note,str(job.contract_id or '')])
     audit(request.user,'repair_exported',jobs=len(selected),defects=len(rows))
     return download(rows,'openIA-archived-defects.xlsx' if archived else 'openIA-defects.xlsx')
