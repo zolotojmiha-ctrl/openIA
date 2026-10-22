@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'equipment.manage':'Вести технику, документы и назначения на объекты',
  'users.manage':'Управлять учётными записями сотрудников',
  'projects.manage':'Создавать и изменять объекты и контракты',
  'projects.access':'Настраивать доступ к назначенным объектам и контрактам',
@@ -78,6 +79,7 @@ class AuditEvent(models.Model):
     ACTIONS += [('document_links_changed','Изменены связи документа'),('document_commented','Комментарий к документу'),('document_bulk_changed','Массовое изменение документов'),('person_updated','Изменена карточка работника'),('person_assigned','Назначение работника'),('person_archived','Архив работника'),('sessions_ended','Завершены сеансы'),('support_updated','Обращение сотрудника'),('finance_created','Финансовая запись'),('finance_allocated','Распределена выплата'),('finance_accepted','Подтверждено принятое выполнение'),('finance_imported','Загружена финансовая справка')]
     ACTIONS += [('document_responsibility_changed','Передана ответственность за документ'),('document_bundle_primary','Выбран основной файл комплекта'),('finance_corrected','Исправлена финансовая запись'),('finance_offset_reversed','Отменён зачёт аванса'),('finance_allocation_reversed','Отменено распределение выплаты'),('finance_scope_updated','Изменены параметры финансового направления')]
     ACTIONS += [('repair_prepared','Подготовлены ремонтные работы'),('repair_reported','Внесены сведения с участка'),('repair_confirmed','Подтверждено выполнение ремонта'),('repair_corrected','Исправлен результат ремонта'),('repair_accepted','Отмечена приёмка ремонта'),('repair_imported','Перенесена ведомость дефектов'),('repair_exported','Экспортирована ведомость дефектов'),('repair_defect_archived','Дефект удалён из списка'),('repair_defect_restored','Дефект восстановлен')]
+    ACTIONS += [('equipment_updated','Изменена техника'),('equipment_assigned','Назначение техники'),('equipment_document_updated','Документ техники'),('equipment_imported','Импорт техники')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

@@ -2,7 +2,7 @@ from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
-from projects import workspace,crew_views,crew_excel
+from projects import workspace,crew_views,crew_excel,equipment_views,equipment_excel
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
@@ -10,6 +10,16 @@ from repairs import views as repairs
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/equipment/',equipment_views.listing,name='equipment'),
+ path('cabinet/equipment/new/',equipment_views.edit,name='equipment_new'),
+ path('cabinet/equipment/excel/<str:kind>/export/',equipment_excel.export,name='equipment_export'),
+ path('cabinet/equipment/excel/<str:kind>/import/',equipment_excel.upload,name='equipment_import'),
+ path('cabinet/equipment/assignments/<uuid:pk>/end/',equipment_views.end,name='equipment_assignment_end'),
+ path('cabinet/equipment/<uuid:pk>/',equipment_views.detail,name='equipment_detail'),
+ path('cabinet/equipment/<uuid:pk>/edit/',equipment_views.edit,name='equipment_edit'),
+ path('cabinet/equipment/<uuid:pk>/assign/',equipment_views.assign,name='equipment_assign'),
+ path('cabinet/equipment/<uuid:equipment_id>/documents/new/',equipment_views.file_edit,name='equipment_document_new'),
+ path('cabinet/equipment/<uuid:equipment_id>/documents/<uuid:pk>/',equipment_views.file_edit,name='equipment_document_edit'),
  path('cabinet/brigades/excel/<str:kind>/export/',crew_excel.export,name='crew_excel_export'),
  path('cabinet/brigades/excel/<str:kind>/import/',crew_excel.upload,name='crew_excel_import'),
  path('cabinet/brigades/<uuid:pk>/edit/',crew_views.crew_edit,name='brigade_edit'),

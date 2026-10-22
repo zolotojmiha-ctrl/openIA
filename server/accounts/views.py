@@ -106,6 +106,8 @@ def dashboard(request):
         'recent_objects':visible_objects(request.user).order_by('name')[:5],'recent_contracts':[contract_card(c,request.user) for c in visible_contracts(request.user).order_by('id')[:5]],'new_documents':unread_documents(request.user).select_related('current_version').order_by('-current_version__created_at')[:5],
         'favorites':favorite_items(request.user),'reminders':Reminder.objects.filter(user=request.user,done=False).filter(document__isnull=True).order_by('date')[:5],
         'support_count':SupportRequest.objects.filter(status='new').count() if request.user.is_leader else 0}
+    from projects.equipment import visible_equipment,due_documents
+    context.update(equipment_total=visible_equipment(request.user).exclude(status='archived').count(),equipment_due=due_documents(request.user))
     if request.user.is_leader:
         from finance.views import dashboard_data
         context.update(dashboard_data(request.user))

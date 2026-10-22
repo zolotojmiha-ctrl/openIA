@@ -141,3 +141,54 @@ class CrewImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     created_at=models.DateTimeField(auto_now_add=True)
+
+EQUIPMENT_STATES=[('ready','Готова к работе'),('working','В работе'),('repair','В ремонте'),('reserve','В резерве'),('archived','В архиве')]
+class Equipment(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
+    name=models.CharField('Название / модель',max_length=200)
+    category=models.CharField('Вид техники',max_length=100)
+    inventory_number=models.CharField('Инвентарный номер',max_length=80)
+    registration_number=models.CharField('Госномер',max_length=80,blank=True)
+    serial_number=models.CharField('Заводской номер / VIN',max_length=100,blank=True)
+    ownership=models.CharField('Собственность / аренда / субподряд',max_length=20,choices=[('own','Собственная'),('rent','Арендованная'),('subcontractor','Субподрядчика')],default='own')
+    owner=models.CharField('Собственник / арендодатель',max_length=200,blank=True)
+    status=models.CharField('Состояние',max_length=20,choices=EQUIPMENT_STATES,default='ready')
+    notes=models.TextField('Примечание',max_length=3000,blank=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['legal_entity','inventory_number'],name='equipment_inventory_unique')]
+    def __str__(self):return f'{self.name} · {self.inventory_number}'
+
+class EquipmentAssignment(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    equipment=models.ForeignKey(Equipment,on_delete=models.PROTECT,related_name='placements')
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='equipment_placements')
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,null=True,blank=True,related_name='equipment_placements')
+    start_date=models.DateField('Начало работы')
+    end_date=models.DateField('Окончание работы',null=True,blank=True)
+    note=models.CharField('Пояснение',max_length=1000,blank=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(end_date__isnull=True)|models.Q(end_date__gte=models.F('start_date')),name='equipment_placement_dates')]
+
+class EquipmentDocument(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    equipment=models.ForeignKey(Equipment,on_delete=models.PROTECT,related_name='file_links')
+    document=models.ForeignKey('documents.Document',on_delete=models.PROTECT,related_name='equipment_links')
+    label=models.CharField('Вид документа',max_length=120)
+    expires_on=models.DateField('Действует до',null=True,blank=True)
+    remind=models.BooleanField('Напоминать об окончании',default=False)
+    days_before=models.PositiveSmallIntegerField('За сколько дней',default=30)
+    active=models.BooleanField(default=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['equipment','document'],name='equipment_document_unique')]
+
+class EquipmentImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)

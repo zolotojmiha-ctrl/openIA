@@ -9,7 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
-from django.http import FileResponse,HttpResponse,JsonResponse
+from django.http import FileResponse,HttpResponse,JsonResponse,Http404
 from django.shortcuts import get_object_or_404,redirect,render
 from django.views.decorators.http import require_POST
 from accounts.models import User
@@ -78,6 +78,16 @@ def upload(request):
             else:
                 destination=obj.title;back_url=reverse('bundle_detail',args=[pk]);bundle_shared=obj.access_rules.filter(enabled=True).exists()
 
+    equipment_target=None
+    if request.GET.get('equipment'):
+        from projects.equipment import visible_equipment
+        from accounts.permissions import permitted
+        if not permitted(request.user,'equipment.manage'):raise PermissionDenied
+        try:equipment_id=UUID(request.GET['equipment'])
+        except ValueError:raise Http404
+        equipment_target=get_object_or_404(visible_equipment(request.user),pk=equipment_id)
+        from django.urls import reverse
+        destination=str(equipment_target);back_url=reverse('equipment_detail',args=[equipment_target.pk])
     form=UploadForm(request.POST or None,request.FILES or None,user=request.user,initial=initial)
     if request.method=='POST':
         if form.is_valid():
@@ -86,12 +96,21 @@ def upload(request):
                     user=User.objects.select_for_update(no_key=True).get(pk=request.user.pk)
                     checked=UploadForm(request.POST,request.FILES,user=user)
                     if not checked.is_valid():raise PermissionDenied
+                    if equipment_target:
+                        from projects.equipment import manager,visible_equipment
+                        from projects.models import EquipmentDocument
+                        manager(request.user)
+                        equipment_target=visible_equipment(user).select_for_update().get(pk=equipment_target.pk)
                     doc=upload_one(user,checked)
+                    if equipment_target:
+                        link,created=EquipmentDocument.objects.get_or_create(equipment=equipment_target,document=doc,defaults={'label':doc.title[:120],'created_by':user})
+                        if created:audit(user,'equipment_document_updated',equipment=str(equipment_target.pk),link=str(link.pk),document=str(doc.pk),kind='upload_link',remind=False)
             except Conflict as e:
                 form.add_error(None,str(e))
             else:
                 if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'id':str(doc.pk),'url':doc_url(doc),'name':doc.current_version.original_name,'bundle':str(doc.bundle_id or '')})
                 messages.success(request,'Документ загружен. Утверждение не требуется.')
+                if equipment_target:return redirect('equipment_detail',pk=equipment_target.pk)
                 return redirect('document_detail',pk=doc.pk)
         if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'errors':form.errors.get_json_data()},status=409 if form.non_field_errors() else 400)
     return render(request,'documents/upload.html',{'form':form,'destination':destination,'upload_back':back_url,'bundle_shared':bundle_shared})
@@ -108,6 +127,8 @@ def detail(request,pk):
         DocumentRead.objects.update_or_create(document=doc,user=request.user,defaults={'version_id':doc.current_version_id})
         Notice.objects.filter(user=request.user,document=doc,read=False).update(read=True)
     contracts=[contract_card(c,request.user) for c in visible_contracts(request.user).filter(documents=doc)]
+    from projects.equipment import visible_equipment
+    equipment_cards=visible_equipment(request.user).filter(file_links__document=doc,file_links__active=True).distinct()
     text=None
     if doc.current_version_id and doc.current_version.content_type=='text/plain':
         try:
@@ -116,7 +137,7 @@ def detail(request,pk):
     versions=[{'version':v,'download':True} for v in doc.versions.select_related('uploaded_by')]
     direct=doc.access_rules.select_related('user') if can_manage(request.user,doc) else []
     inherited=doc.bundle.access_rules.select_related('user').filter(enabled=True) if doc.bundle_id and can_manage(request.user,doc) else []
-    return render(request,'documents/detail.html',{'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
+    return render(request,'documents/detail.html',{'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
 
 @login_required
 def replace(request,pk):

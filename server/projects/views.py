@@ -27,7 +27,9 @@ def objects(request):
 def object_detail(request,pk):
     obj=get_object_or_404(visible_objects(request.user),pk=pk)
     contracts=visible_contracts(request.user).filter(objects_linked=obj).prefetch_related('access_rules')
-    return render(request,'projects/object.html',{'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
+    from .equipment import placements,current
+    equipment_here=current(placements(request.user)).filter(project_object=obj).order_by('equipment__name')
+    return render(request,'projects/object.html',{'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
         'assignments':obj.assignments.select_related('user').order_by('user__full_name') if permitted(request.user,'projects.access') else None})
 
 @permission_required('projects.manage')
