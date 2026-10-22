@@ -20,13 +20,13 @@ const fs=require('node:fs');
  await technician.goto(base+'/cabinet/repairs/');
  const original=technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]');
  assert.equal(await original.locator('.repair-delete').count(),2);
- await original.locator('.repair-delete').first().click();await technician.getByRole('button',{name:'Удалить из списка',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');
+ await original.locator('.repair-more summary').click();await original.locator('.repair-delete').first().click();await technician.getByRole('button',{name:'Удалить из списка',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),1);
  await technician.goto(base+'/cabinet/repairs/'+process.env.ARMADA_REPAIR_ID+'/');assert.equal(await technician.locator('.repair-photos img').count(),1);
  await technician.goto(base+'/cabinet/repairs/?archive=1');await technician.getByRole('link',{name:'Восстановить',exact:true}).click();await technician.getByRole('button',{name:'Восстановить',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),2);
  for(const width of [1440,768,390,320]){await technician.setViewportSize({width,height:900});assert.equal(await technician.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'register '+width);}
- const firstRow=technician.locator('.repair-register tbody tr').first();assert.ok((await firstRow.boundingBox()).height<100);await technician.setViewportSize({width:1440,height:900});await technician.screenshot({path:out+'/09-compact-register.png',fullPage:true});
+ await technician.setViewportSize({width:1440,height:900});const firstRow=technician.locator('.repair-register tbody tr').first();assert.ok((await firstRow.boundingBox()).height<100);await technician.setViewportSize({width:1440,height:900});await technician.screenshot({path:out+'/09-compact-register.png',fullPage:true});
  const worker=await browser.newPage({viewport:{width:1280,height:1000}});worker.on('pageerror',e=>errors.push(e.message));await login(worker,'+70000000003');await worker.goto(base+'/cabinet/repairs/?q=550');
  assert.equal(await worker.getByRole('link',{name:'Устранён',exact:true}).count(),2);
  await worker.screenshot({path:out+'/07-separate-repairs.png',fullPage:true});

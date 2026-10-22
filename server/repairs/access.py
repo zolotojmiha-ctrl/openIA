@@ -28,7 +28,7 @@ def visible_jobs(user,include_archived=False):
         # Keep outer queries DISTINCT-free: PostgreSQL must be able to lock jobs.
         qs=qs.filter(pk__in=Job.objects.filter(defects__archived_at__isnull=True).values('pk'))
     if not can_prepare(user):qs=qs.filter(assigned_to=user)
-    return qs.select_related('contract','section','section__project_object','assigned_to').prefetch_related('defects')
+    return qs.select_related('crew_assignment','crew_assignment__brigade','contract','section','section__project_object','assigned_to').prefetch_related('defects')
 
 def selectable_couplings(job,include_historical=False):
     available=Q(installation__isnull=True)
@@ -38,7 +38,10 @@ def selectable_couplings(job,include_historical=False):
 
 def reportable_jobs(user):
     qs=visible_jobs(user)
-    return qs if user.is_leader else qs.filter(assigned_to=user)
+    if user.is_leader:return qs
+    from django.utils import timezone
+    today=timezone.localdate()
+    return qs.filter(assigned_to=user).filter(Q(crew_assignment__isnull=True)|Q(crew_assignment__start_date__lte=today)&(Q(crew_assignment__end_date__isnull=True)|Q(crew_assignment__end_date__gte=today)))
 
 
 def repair_contracts(user):

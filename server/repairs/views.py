@@ -24,33 +24,13 @@ from .values import kilometre,get_or_create_defect
 @login_required
 def jobs(request):
     archived=request.GET.get('archive')=='1' and can_prepare(request.user)
-    qs=visible_jobs(request.user,include_archived=archived)
-    if archived:qs=qs.filter(defects__archived_at__isnull=False).distinct()
-    sid=request.GET.get('section','');q=request.GET.get('q','').strip()[:150];state=request.GET.get('state','');year=request.GET.get('year','')
-    try:
-        if sid:qs=qs.filter(section_id=uuid.UUID(sid))
-        if request.GET.get('object'):qs=qs.filter(section__project_object_id=uuid.UUID(request.GET['object']))
-    except ValueError:qs=qs.none();sid=''
-    if request.GET.get('contract'):
-        try:qs=qs.filter(contract_id=uuid.UUID(request.GET['contract']))
-        except ValueError:qs=qs.none()
-    if request.GET.get('legacy')=='1':qs=qs.filter(contract__isnull=True)
-    if q:
-        search=Q(defects__number__icontains=q,defects__archived_at__isnull=not archived)|Q(defects__pipe_section__icontains=q,defects__archived_at__isnull=not archived)|Q(section__name__icontains=q)|Q(section__pipeline__icontains=q)
-        try:
-            km=kilometre(q)
-            search|=Q(defects__kilometre__gte=max(Decimal(0),km-Decimal('.0005')),defects__kilometre__lt=km+Decimal('.0005'),defects__archived_at__isnull=not archived)
-        except (InvalidOperation,ValidationError):pass
-        qs=qs.filter(search).distinct()
-    master=request.GET.get('master','')
-    try:
-        if master:qs=qs.filter(assigned_to_id=uuid.UUID(master))
-    except ValueError:qs=qs.none()
-    if year.isdigit() and 1900<=int(year)<=2200:qs=qs.filter(planned_date__year=int(year))
-    counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').count()}
-    if state=='problems':qs=qs.exclude(problem='')
-    elif state in dict(Job._meta.get_field('state').choices):qs=qs.filter(state=state)
-    elif state=='materials':qs=qs.filter(materials='missing')
+    from .filters import filtered_jobs,filter_values
+    params=filter_values(request.GET)
+    qs=filtered_jobs(request.user,params,apply_state=False)
+    sid=params['section'];q=params['q'];state=params['state'];year=params['year'];master=params['master']
+    counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').count(),'revision':qs.exclude(review_note='').count()}
+    qs=filtered_jobs(request.user,params)
+    review_filter=signing.dumps({'actor':str(request.user.pk),'filters':params},salt='repair-review-filter',compress=True) if request.user.is_leader and not archived else ''
     ordered=qs.annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=not archived))).order_by('first_km','created_at','pk')
     page=Paginator(ordered,25).get_page(request.GET.get('page'))
     offset=max(0,page.start_index()-1)
@@ -63,7 +43,7 @@ def jobs(request):
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
         if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows)})
-    return render(request,'repairs/list.html',{'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
+    return render(request,'repairs/list.html',{'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
 @prepare_required
 def section_new(request):
@@ -107,6 +87,7 @@ def job_edit(request,pk=None,section_id=None):
                     if previous!=desired:form.add_error(None,'После начала работ нельзя заменить привязанные дефекты. Создайте отдельное задание; прежняя история сохранится.')
                 if not form.errors:
                     before={'method':locked.method,'length':str(locked.length_m or ''),'composition':locked.composition,'assigned_to':str(locked.assigned_to_id or ''),'date':str(locked.planned_date or '')} if locked else {}
+                    if locked and saved.assigned_to_id!=locked.assigned_to_id:saved.crew_assignment=None
                     saved.created_by=job.created_by if job else request.user;saved.version=(locked.version+1) if locked else 1;saved.save()
                     desired=[]
                     for number in form.cleaned_data['defect_numbers']:
@@ -252,9 +233,9 @@ def assign_many(request,pk):
             else:
                 before=[{'id':str(j.pk),'master':str(j.assigned_to_id or ''),'date':str(j.planned_date or '')} for j in selected]
                 for job in selected:
-                    job.assigned_to=form.cleaned_data['master'];job.version+=1
+                    job.assigned_to=form.cleaned_data['master'];job.crew_assignment=None;job.version+=1
                     if form.cleaned_data['date']:job.planned_date=form.cleaned_data['date']
-                    job.save(update_fields=['assigned_to','planned_date','version'])
+                    job.save(update_fields=['assigned_to','crew_assignment','planned_date','version'])
                 audit(request.user,'repair_prepared',kind='assignment',section=str(section.pk),previous=before,master=str(form.cleaned_data['master'].pk))
                 messages.success(request,f'Мастер назначен на {len(selected)} работ.');return redirect('repairs')
     return render(request,'repairs/assign.html',{'form':form,'section':section})
@@ -317,7 +298,7 @@ def reassign(request,pk):
                 if current.assigned_to_id!=getattr(master,'pk',None):
                     before=current.assigned_to
                     Report.objects.create(job=current,author=request.user,kind='assignment',performed_date=timezone.localdate(),note='Ответственный мастер: '+(before.full_name if before else 'не назначен')+' → '+(master.full_name if master else 'не назначен')+'. Прежние результаты и авторы сохранены.',context={'from_master':str(current.assigned_to_id or ''),'to_master':str(getattr(master,'pk',''))})
-                    current.assigned_to=master;current.version+=1;current.save(update_fields=['assigned_to','version'])
+                    current.assigned_to=master;current.crew_assignment=None;current.version+=1;current.save(update_fields=['assigned_to','crew_assignment','version'])
                     audit(request.user,'repair_prepared',entity_id=str(current.pk),kind='reassignment',previous_master=str(before.pk) if before else '',master=str(master.pk) if master else '')
                 messages.success(request,'Ответственный мастер сохранён. Прежние записи остались в истории.')
                 return redirect('repair_detail',pk=current.pk)

@@ -130,6 +130,7 @@ class Person(models.Model):
     def __str__(self):return self.full_name
 
 class PersonAssignment(models.Model):
+    brigade_assignment=models.ForeignKey('projects.BrigadeAssignment',on_delete=models.PROTECT,null=True,blank=True,related_name='person_assignments')
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='assignments')
     project_object=models.ForeignKey('projects.ProjectObject',on_delete=models.PROTECT,related_name='personnel')
     start_date=models.DateField('Начало',null=True,blank=True)

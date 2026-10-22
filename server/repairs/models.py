@@ -53,6 +53,8 @@ class Job(models.Model):
     notes=models.TextField('Задание и условия работ',max_length=3000,blank=True)
     materials=models.CharField('Материалы',max_length=20,choices=[('unknown','Не проверено'),('ready','Всё необходимое есть'),('missing','Есть нехватка')],default='unknown')
     state=models.CharField(max_length=20,choices=STATES,default='planned')
+    review_note=models.CharField('Возврат на доработку',max_length=3000,blank=True)
+    crew_assignment=models.ForeignKey('projects.BrigadeAssignment',on_delete=models.PROTECT,null=True,blank=True,related_name='jobs')
     problem=models.CharField(max_length=20,choices=PROBLEMS,blank=True)
     problem_note=models.CharField(max_length=1000,blank=True)
     version=models.PositiveIntegerField(default=1)
@@ -76,6 +78,7 @@ class Job(models.Model):
     def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем'}.get(self.state,'')
     @property
     def reason_display(self):
+        if self.review_note:return 'Возвращён на доработку: '+self.review_note
         if self.problem:return self.get_problem_display()
         return {'planned':'Ещё не выполняли','progress':'Работы продолжаются','partial':'Выполнено частично'}.get(self.state,'')
     @property
@@ -120,7 +123,7 @@ class Report(models.Model):
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     token=models.UUIDField(default=uuid.uuid4,unique=True)
     request_digest=models.CharField(max_length=64,blank=True)
-    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера')])
+    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера'),('revision','Возвращено на доработку')])
     performed_date=models.DateField('Дата')
     method=models.CharField('Фактический способ',max_length=20,choices=METHODS,blank=True)
     length_m=models.DecimalField('Фактическая длина, м',max_digits=9,decimal_places=3,null=True,blank=True)

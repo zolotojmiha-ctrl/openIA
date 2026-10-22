@@ -12,11 +12,11 @@ from .values import kilometre,identifier
 HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение','ID контракта']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-def workbook(rows):
+def workbook(rows,headers=None):
     ET.register_namespace('',NS)
     sheet=ET.Element('{'+NS+'}worksheet')
     data=ET.SubElement(sheet,'{'+NS+'}sheetData')
-    for r,values in enumerate([HEADERS,*rows],1):
+    for r,values in enumerate([HEADERS if headers is None else headers,*rows],1):
         row=ET.SubElement(data,'{'+NS+'}row',r=str(r))
         for c,value in enumerate(values,1):
             letters='';n=c

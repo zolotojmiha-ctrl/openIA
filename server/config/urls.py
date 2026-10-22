@@ -2,13 +2,28 @@ from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
-from projects import workspace
+from projects import workspace,crew_views,crew_excel
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
 from repairs import import_views as repair_import
+from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/brigades/excel/<str:kind>/export/',crew_excel.export,name='crew_excel_export'),
+ path('cabinet/brigades/excel/<str:kind>/import/',crew_excel.upload,name='crew_excel_import'),
+ path('cabinet/brigades/<uuid:pk>/edit/',crew_views.crew_edit,name='brigade_edit'),
+ path('cabinet/brigades/',crew_views.crews,name='brigades'),
+ path('cabinet/brigades/new/',crew_views.crew_new,name='brigade_new'),
+ path('cabinet/brigades/<uuid:pk>/',crew_views.crew_detail,name='brigade_detail'),
+ path('cabinet/brigade-members/<int:pk>/end/',crew_views.end_member,name='brigade_member_end'),
+ path('cabinet/work/contracts/<uuid:pk>/brigades/',crew_views.contract_crews,name='contract_crews'),
+ path('cabinet/crew-assignments/<uuid:pk>/end/',crew_views.end_assignment,name='crew_assignment_end'),
+ path('cabinet/crew-assignments/<uuid:pk>/jobs/',crew_views.crew_jobs,name='crew_assign_jobs'),
+ path('cabinet/repairs/<uuid:pk>/crew/',crew_views.job_crew,name='repair_assign_crew'),
+ path('cabinet/repairs/review-selected/',repair_review.bulk_review,name='repair_bulk_review'),
+ path('cabinet/repairs/<uuid:pk>/return/',repair_review.return_result,name='repair_return'),
+ path('cabinet/repairs/<uuid:pk>/correct-accept/',repair_review.correct_accept,name='repair_correct_accept'),
  path('cabinet/work/contracts/<uuid:pk>/sections/',workspace.sections_options,name='work_sections_options'),
  path('cabinet/work/',workspace.home,name='work_home'),
  path('cabinet/work/legacy/',workspace.legacy,name='work_legacy'),

@@ -101,3 +101,43 @@ class ContractAccess(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user','contract'],name='unique_user_contract')]
+
+class Brigade(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
+    name=models.CharField('Название бригады',max_length=160)
+    foreman=models.ForeignKey('documents.Person',on_delete=models.PROTECT,related_name='led_brigades',verbose_name='Мастер')
+    archived=models.BooleanField(default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    def __str__(self):return self.name
+
+class BrigadeMember(models.Model):
+    brigade=models.ForeignKey(Brigade,on_delete=models.PROTECT,related_name='memberships')
+    person=models.ForeignKey('documents.Person',on_delete=models.PROTECT,related_name='brigade_memberships')
+    start_date=models.DateField('Начало участия')
+    end_date=models.DateField('Окончание участия',null=True,blank=True)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(end_date__isnull=True)|models.Q(end_date__gte=models.F('start_date')),name='brigade_member_dates')]
+
+class BrigadeAssignment(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    brigade=models.ForeignKey(Brigade,on_delete=models.PROTECT,related_name='assignments')
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='brigade_assignments')
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='brigade_assignments')
+    master=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='crew_assignments')
+    start_date=models.DateField('Начало работы')
+    end_date=models.DateField('Окончание работы',null=True,blank=True)
+    roster=models.JSONField(default=list)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(end_date__isnull=True)|models.Q(end_date__gte=models.F('start_date')),name='brigade_assignment_dates')]
+    def __str__(self):return f'{self.brigade.name} · {self.project_object.name} · с {self.start_date:%d.%m.%Y}'
+
+class CrewImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
