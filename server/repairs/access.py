@@ -42,7 +42,7 @@ def selectable_couplings(job,include_historical=False):
 
 
 def reportable_jobs(user):
-    qs=visible_jobs(user)
+    qs=visible_jobs(user).exclude(contract__status='archived')
     if user.is_leader:return qs
     from django.utils import timezone
     today=timezone.localdate()

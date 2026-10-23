@@ -16,7 +16,7 @@ def contract_card(contract, user):
     """Allowlisted presentation data: never pass the full contract to employee templates."""
     if user.is_leader:
         return {
-            'id':contract.pk, 'title':contract.number, 'subject':contract.subject,
+            'archived':contract.status=='archived', 'id':contract.pk, 'title':contract.number, 'subject':contract.subject,
             'fields':[('Номер договора',contract.number),('Дата',contract.date),('Предмет',contract.subject),
                       ('Контрагент',contract.counterparty),('Срок окончания',contract.deadline),
                       ('Состояние',contract.get_status_display()),('Сумма по карточке, ₽',contract.amount),
@@ -29,5 +29,5 @@ def contract_card(contract, user):
                                   ('show_counterparty','Контрагент','counterparty')]:
         if getattr(rule,flag):
             fields.append((label,getattr(contract,attribute)))
-    return {'id':contract.pk,'title':contract.number if rule.show_number else 'Договор — ограниченный доступ',
+    return {'archived':contract.status=='archived','id':contract.pk,'title':contract.number if rule.show_number else 'Договор — ограниченный доступ',
             'subject':contract.subject if rule.show_subject else '', 'fields':fields}

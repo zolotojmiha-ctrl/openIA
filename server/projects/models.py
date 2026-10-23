@@ -1,3 +1,4 @@
+from projects.archive import ArchiveProtectedModel
 import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -40,7 +41,7 @@ class ProjectObject(models.Model):
         if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValidationError({'end_date':'Окончание не может быть раньше начала.'})
 
-class Contract(models.Model):
+class Contract(ArchiveProtectedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     legal_entity = models.ForeignKey(LegalEntity, on_delete=models.PROTECT)
     number = models.CharField('Номер договора', max_length=100)
@@ -69,7 +70,7 @@ class Contract(models.Model):
         if self.date and self.deadline and self.deadline < self.date:
             raise ValidationError({'deadline':'Срок окончания не может быть раньше даты договора.'})
 
-class ContractObject(models.Model):
+class ContractObject(ArchiveProtectedModel):
     contract = models.ForeignKey(Contract, on_delete=models.PROTECT)
     project_object = models.ForeignKey(ProjectObject, on_delete=models.PROTECT)
     class Meta:
@@ -122,7 +123,7 @@ class BrigadeMember(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(end_date__isnull=True)|models.Q(end_date__gte=models.F('start_date')),name='brigade_member_dates')]
 
-class BrigadeAssignment(models.Model):
+class BrigadeAssignment(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     brigade=models.ForeignKey(Brigade,on_delete=models.PROTECT,related_name='assignments')
     contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='brigade_assignments')
@@ -161,7 +162,7 @@ class Equipment(models.Model):
         constraints=[models.UniqueConstraint(fields=['legal_entity','inventory_number'],name='equipment_inventory_unique')]
     def __str__(self):return f'{self.name} · {self.inventory_number}'
 
-class EquipmentAssignment(models.Model):
+class EquipmentAssignment(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     equipment=models.ForeignKey(Equipment,on_delete=models.PROTECT,related_name='placements')
     project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='equipment_placements')
@@ -247,7 +248,7 @@ class StockBalance(models.Model):
         constraints=[models.UniqueConstraint(fields=['warehouse','item'],name='stock_balance_unique'),models.CheckConstraint(condition=models.Q(quantity__gte=0),name='stock_nonnegative')]
 
 STOCK_KINDS=[('receipt','Поступление'),('transfer','Перемещение'),('issue','Выдача бригаде'),('return','Возврат от бригады'),('consume','Списание на работу'),('loss','Списание / недостача'),('reversal','Отмена операции')]
-class StockMovement(models.Model):
+class StockMovement(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     token=models.UUIDField(unique=True,default=uuid.uuid4)
     digest=models.CharField(max_length=64)
@@ -271,7 +272,7 @@ class StockMovement(models.Model):
         if not self._state.adding:raise ValueError('Складские операции не переписываются. Используйте отмену.')
         return super().save(*args,**kwargs)
 
-class StockEntry(models.Model):
+class StockEntry(ArchiveProtectedModel):
     movement=models.ForeignKey(StockMovement,on_delete=models.PROTECT,related_name='entries')
     warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT)
     quantity=models.DecimalField(max_digits=18,decimal_places=3)
@@ -307,7 +308,7 @@ class SubcontractRepresentative(models.Model):
         constraints=[models.UniqueConstraint(fields=['company','user'],name='subcontract_rep_unique')]
     def __str__(self):return self.user.full_name
 
-class SubcontractOrder(models.Model):
+class SubcontractOrder(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     company=models.ForeignKey(Subcontractor,on_delete=models.PROTECT,related_name='orders')
     contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='subcontract_orders')
@@ -343,7 +344,7 @@ class SubcontractOrderAccess(models.Model):
     class Meta:
         constraints=[models.UniqueConstraint(fields=['order','representative'],name='subcontract_order_rep_unique')]
 
-class SubcontractDocument(models.Model):
+class SubcontractDocument(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     company=models.ForeignKey(Subcontractor,on_delete=models.PROTECT,related_name='file_links')
     order=models.ForeignKey(SubcontractOrder,on_delete=models.PROTECT,null=True,blank=True,related_name='file_links')
@@ -353,7 +354,7 @@ class SubcontractDocument(models.Model):
     version=models.PositiveIntegerField(default=1)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
 
-class SubcontractResult(models.Model):
+class SubcontractResult(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     order=models.ForeignKey(SubcontractOrder,on_delete=models.PROTECT,related_name='results')
     token=models.UUIDField(default=uuid.uuid4,unique=True)
@@ -367,7 +368,7 @@ class SubcontractResult(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     class Meta:ordering=['-created_at','-pk']
 
-class SubcontractAttachment(models.Model):
+class SubcontractAttachment(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     result=models.ForeignKey(SubcontractResult,on_delete=models.PROTECT,related_name='attachments')
     storage_key=models.CharField(max_length=40)
@@ -376,7 +377,7 @@ class SubcontractAttachment(models.Model):
     size=models.PositiveIntegerField()
     sha256=models.CharField(max_length=64)
 
-class SubcontractDecision(models.Model):
+class SubcontractDecision(ArchiveProtectedModel):
     result=models.OneToOneField(SubcontractResult,on_delete=models.PROTECT,related_name='decision')
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     decision=models.CharField(max_length=20,choices=[('confirmed','Подтверждено'),('revision','Вернули на доработку')])

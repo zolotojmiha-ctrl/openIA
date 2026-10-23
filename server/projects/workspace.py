@@ -21,6 +21,8 @@ def home(request):
     if request.user.role=='subcontractor':return redirect('subcontracts')
     q=request.GET.get('q','').strip()[:200]
     contracts=visible_contracts(request.user).order_by('pk')
+    archived=request.GET.get('archive')=='1'
+    contracts=contracts.filter(status='archived') if archived else contracts.exclude(status='archived')
     if request.GET.get('object'):
         try:contracts=contracts.filter(objects_linked=uuid.UUID(request.GET['object']))
         except ValueError:contracts=contracts.none()
@@ -31,7 +33,7 @@ def home(request):
         places=visible_objects(request.user).filter(contracts=contract)
         rows.append({'card':card,'kind':contract.work_kinds_display,'places':places,'status':contract.get_status_display() if request.user.is_leader else '—'})
     legacy=visible_jobs(request.user).filter(contract__isnull=True).count()
-    return render(request,'projects/work_home.html',{'rows':rows,'q':q,'legacy_count':legacy,'can_allocate':can_prepare(request.user) and permitted(request.user,'projects.manage')})
+    return render(request,'projects/work_home.html',{'archived_contracts':archived,'rows':rows,'q':q,'legacy_count':legacy,'can_allocate':can_prepare(request.user) and permitted(request.user,'projects.manage')})
 
 @login_required
 def contract(request,pk):

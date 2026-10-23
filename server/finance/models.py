@@ -1,9 +1,10 @@
+from projects.archive import ArchiveProtectedModel
 import uuid
 from django.conf import settings
 from django.db import models
 from django.core.serializers.json import DjangoJSONEncoder
 
-class FinancialScope(models.Model):
+class FinancialScope(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     legal_entity=models.ForeignKey('projects.LegalEntity',on_delete=models.PROTECT)
     title=models.CharField('Направление / договор',max_length=200)
@@ -22,7 +23,7 @@ class FinancialImport(models.Model):
     uploaded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     created_at=models.DateTimeField(auto_now_add=True)
 
-class OpeningSnapshot(models.Model):
+class OpeningSnapshot(ArchiveProtectedModel):
     scope=models.OneToOneField(FinancialScope,on_delete=models.PROTECT,related_name='opening')
     source=models.ForeignKey(FinancialImport,on_delete=models.PROTECT)
     total_defects=models.PositiveIntegerField()
@@ -34,7 +35,7 @@ class OpeningSnapshot(models.Model):
     declared_advance_balance=models.DecimalField(max_digits=18,decimal_places=2)
     declared_pending=models.DecimalField(max_digits=18,decimal_places=2)
 
-class PendingWork(models.Model):
+class PendingWork(ArchiveProtectedModel):
     scope=models.ForeignKey(FinancialScope,on_delete=models.PROTECT,related_name='pending_work')
     title=models.CharField('Выполнение / корректировка',max_length=250)
     amount=models.DecimalField('Сумма, ₽',max_digits=18,decimal_places=2)
@@ -55,7 +56,7 @@ class CashReceipt(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='amount_positive')]
 
-class PaymentAllocation(models.Model):
+class PaymentAllocation(ArchiveProtectedModel):
     reversed=models.BooleanField(default=False)
     reversal_reason=models.CharField(max_length=500,blank=True)
     receipt=models.ForeignKey(CashReceipt,on_delete=models.PROTECT,related_name='allocations')
@@ -69,7 +70,7 @@ class PaymentAllocation(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='allocation_positive')]
 
-class WorkExecution(models.Model):
+class WorkExecution(ArchiveProtectedModel):
     source_pending=models.OneToOneField(PendingWork,on_delete=models.PROTECT,null=True,blank=True,related_name='execution')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     scope=models.ForeignKey(FinancialScope,on_delete=models.PROTECT,related_name='executions')
@@ -88,7 +89,7 @@ class WorkExecution(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(factual_amount__gt=0,accepted_amount__gte=0,accepted_amount__lte=models.F('factual_amount')),name='work_amounts_valid')]
 
-class AdvanceOffset(models.Model):
+class AdvanceOffset(ArchiveProtectedModel):
     reversed=models.BooleanField(default=False)
     reversal_reason=models.CharField(max_length=500,blank=True)
     work=models.ForeignKey(WorkExecution,on_delete=models.PROTECT,related_name='offsets')
@@ -100,7 +101,7 @@ class AdvanceOffset(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='offset_positive')]
 
-class CostEntry(models.Model):
+class CostEntry(ArchiveProtectedModel):
     project_object=models.ForeignKey('projects.ProjectObject',on_delete=models.PROTECT,null=True,blank=True,related_name='financial_costs')
     legal_entity=models.ForeignKey('projects.LegalEntity',on_delete=models.PROTECT,null=True)
     scope=models.ForeignKey(FinancialScope,on_delete=models.PROTECT,null=True,blank=True,related_name='costs')
@@ -114,7 +115,7 @@ class CostEntry(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0,paid_amount__gte=0,paid_amount__lte=models.F('amount')),name='cost_valid')]
 
-class SubcontractObligation(models.Model):
+class SubcontractObligation(ArchiveProtectedModel):
     scope=models.ForeignKey(FinancialScope,on_delete=models.PROTECT,related_name='subcontracts')
     counterparty=models.CharField('Субподрядчик',max_length=200)
     basis=models.CharField('Договор / основание',max_length=300)
@@ -126,7 +127,7 @@ class SubcontractObligation(models.Model):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0,paid__gte=0,paid__lte=models.F('amount')),name='subcontract_valid')]
 
-class PriceChange(models.Model):
+class PriceChange(ArchiveProtectedModel):
     contract=models.ForeignKey('projects.Contract',on_delete=models.PROTECT,related_name='price_changes')
     date=models.DateField('Дата изменения')
     amount=models.DecimalField('Изменение цены, ₽ (может быть отрицательным)',max_digits=18,decimal_places=2)

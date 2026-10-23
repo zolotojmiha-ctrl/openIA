@@ -1,3 +1,4 @@
+from projects.archive import ArchiveProtectedModel
 """Engineering records. Plans, field reports and customer acceptance stay separate."""
 import uuid
 from django.conf import settings
@@ -20,7 +21,7 @@ class Section(models.Model):
         constraints=[models.UniqueConstraint(fields=['project_object','rnu','pipeline','name'],name='repair_section_identity')]
     def __str__(self):return f'{self.rnu} · {self.pipeline} · {self.name}'
 
-class Defect(models.Model):
+class Defect(ArchiveProtectedModel):
     contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_defects')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='defects')
@@ -39,7 +40,7 @@ class Defect(models.Model):
     @property
     def km(self):return format(kilometre(self.kilometre),'.3f')
 
-class Job(models.Model):
+class Job(ArchiveProtectedModel):
     subcontract_order=models.ForeignKey('projects.SubcontractOrder',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_jobs')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
@@ -94,7 +95,7 @@ class Job(models.Model):
     def repair_label(self):return self.source.get('repair_code') or str(self.pk)
     def __str__(self):return f'{self.section.name} · {self.get_method_display()}'
 
-class JobDefect(models.Model):
+class JobDefect(ArchiveProtectedModel):
     job=models.ForeignKey(Job,on_delete=models.PROTECT)
     defect=models.ForeignKey(Defect,on_delete=models.PROTECT)
     class Meta:
@@ -118,7 +119,7 @@ class Coupling(models.Model):
         constraints=[models.UniqueConstraint(fields=['project_object','method','serial'],condition=~models.Q(serial=''),name='repair_serial_identity'),models.CheckConstraint(condition=models.Q(length_mm__gt=0),name='repair_coupling_length_positive')]
     def __str__(self):return f'{self.get_method_display()} · {self.length_mm} мм · № {self.serial or "не указан"} · {self.warehouse or "место не указано"}'
 
-class Report(models.Model):
+class Report(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     job=models.ForeignKey(Job,on_delete=models.PROTECT,related_name='reports')
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
@@ -142,12 +143,12 @@ class Report(models.Model):
     class Meta:
         ordering=['-created_at','-pk']
 
-class CouplingUse(models.Model):
+class CouplingUse(ArchiveProtectedModel):
     coupling=models.OneToOneField(Coupling,on_delete=models.PROTECT,related_name='installation')
     job=models.ForeignKey(Job,on_delete=models.PROTECT,related_name='installed_couplings')
     report=models.ForeignKey(Report,on_delete=models.PROTECT)
 
-class Attachment(models.Model):
+class Attachment(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     report=models.ForeignKey(Report,on_delete=models.PROTECT,related_name='attachments')
     storage_key=models.CharField(max_length=40)
@@ -156,7 +157,7 @@ class Attachment(models.Model):
     size=models.PositiveIntegerField()
     sha256=models.CharField(max_length=64)
 
-class ImportBatch(models.Model):
+class ImportBatch(ArchiveProtectedModel):
     contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_importbatchs')
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     section=models.ForeignKey(Section,on_delete=models.PROTECT)

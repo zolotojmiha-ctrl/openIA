@@ -44,7 +44,12 @@ def jobs(request):
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
         if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows),'can_report':job.pk in reportable})
-    return render(request,'repairs/list.html',{'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user),'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
+    from projects.access import visible_contracts
+    try:
+        from uuid import UUID
+        contract_readonly=visible_contracts(request.user).filter(pk=UUID(request.GET.get('contract','')),status='archived').exists()
+    except (ValueError,TypeError):contract_readonly=False
+    return render(request,'repairs/list.html',{'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
 @prepare_required
 def section_new(request):

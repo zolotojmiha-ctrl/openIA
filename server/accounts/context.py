@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.5.0-subcontracts'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.6.0-contracts'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts
@@ -10,6 +10,9 @@ def local_testing(request):
         jobs=visible_jobs(request.user)
         context.update(can_repairs=can_prepare(request.user) or jobs.exists(),can_prepare_repairs=can_prepare(request.user),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
         context['can_work']=context['can_work'] or can_prepare(request.user) or jobs.exists() or context['can_manage_projects']
+        if request.user.is_leader:
+            from projects.closure import pending_contracts
+            context['contract_closure_count']=pending_contracts(request.user).count()
         context['repair_return_count']=jobs.filter(assigned_to=request.user).exclude(review_note='').count()
         from projects.subcontracts import companies,orders,returned_orders
         context.update(can_manage_subcontracts=permitted(request.user,'subcontract.manage'),can_subcontracts=permitted(request.user,'subcontract.manage') or companies(request.user).exists(),subcontract_review_count=orders(request.user).filter(state='reported').count() if request.user.is_leader else 0)

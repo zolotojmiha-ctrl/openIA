@@ -117,7 +117,7 @@ def order_edit(request,pk=None):
 def order_detail(request,pk):
     order=get_object_or_404(service.orders(request.user,True),pk=pk)
     repair_jobs=visible_jobs(request.user).filter(subcontract_order=order)
-    return render(request,'projects/subcontract_order.html',{'order':order,'card':contract_card(order.contract,request.user),'jobs':repair_jobs,'can_report_order':service.can_report(request.user,order),'can_link_repairs':permitted(request.user,'subcontract.manage') and can_prepare(request.user),'files':service.files(request.user).filter(company=order.company).filter(Q(order=order)|Q(order__isnull=True)),'latest_result':order.results.select_related('decision').first(),'results':order.results.select_related('author','decision__actor').prefetch_related('attachments'),'access_rules':order.access_rules.select_related('representative__user') if permitted(request.user,'subcontract.manage') else []})
+    return render(request,'projects/subcontract_order.html',{'order':order,'card':contract_card(order.contract,request.user),'jobs':repair_jobs,'can_report_order':service.can_report(request.user,order),'can_link_repairs':order.contract.status!='archived' and permitted(request.user,'subcontract.manage') and can_prepare(request.user),'files':service.files(request.user).filter(company=order.company).filter(Q(order=order)|Q(order__isnull=True)),'latest_result':order.results.select_related('decision').first(),'results':order.results.select_related('author','decision__actor').prefetch_related('attachments'),'access_rules':order.access_rules.select_related('representative__user') if permitted(request.user,'subcontract.manage') else []})
 
 @permission_required('subcontract.manage')
 def representative(request,company_id,pk=None):

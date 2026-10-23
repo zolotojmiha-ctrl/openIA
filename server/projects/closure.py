@@ -9,6 +9,10 @@ from accounts.models import User
 from accounts.permissions import permitted
 from .access import visible_contracts, contract_card
 from .models import Contract, ContractClosureEvent
+from .archive import lifecycle_write
+from .access import visible_objects
+from django.db.models import Q
+from django.utils import timezone
 
 class ClosureForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
@@ -19,6 +23,7 @@ class ClosureForm(forms.Form):
         self.fields['action'].choices=choices
 
 def choices(user,contract):
+    if not user.is_leader and contract.objects_linked.exclude(pk__in=visible_objects(user)).exists():return []
     latest=contract.closure_events.first()
     if contract.status=='archived':return [('restore','Восстановить из архива')] if user.is_leader else []
     if latest and latest.action=='request':
@@ -35,13 +40,18 @@ def transition(actor,pk,version,action,note):
     if contract.version!=version:raise ValidationError('Контракт или заявка уже изменились. Обновите страницу.')
     if not note.strip():raise ValidationError('Укажите пояснение.')
     old=contract.status
-    if action=='archive':contract.status='archived'
+    if action=='archive':
+        blockers=closing_checks(contract)
+        if blockers:raise ValidationError(['Закрытие невозможно: '+label+' — '+str(count)+'.' for label,count in blockers])
+        contract.status='archived'
     elif action=='restore':
         archived=contract.closure_events.filter(action='archive').first()
         contract.status=archived.previous_status if archived and archived.previous_status!='archived' else 'active'
     contract.version+=1
-    contract.save(update_fields=['status','version','updated_at'])
+    with lifecycle_write():contract.save(update_fields=['status','version','updated_at'])
     ContractClosureEvent.objects.create(contract=contract,actor=actor,action=action,note=note.strip(),previous_status=old)
+    from accounts.views import audit
+    audit(actor,'contract_updated',entity_id=str(contract.pk),kind='closure_'+action,reason=note.strip(),previous_status=old,status=contract.status)
     return contract
 
 @login_required
@@ -56,4 +66,33 @@ def closure(request,pk):
         else:
             messages.success(request,'Решение сохранено в истории контракта.')
             return redirect('contract_detail',pk=pk)
-    return render(request,'projects/closure.html',{'form':form,'card':contract_card(contract,request.user)})
+    return render(request,'projects/closure.html',{'form':form,'card':contract_card(contract,request.user),'blockers':closing_checks(contract),'archived':contract.status=='archived'})
+
+
+def closing_checks(contract):
+    """Operational prerequisites only; finance/doc completion remains an explicit review."""
+    from repairs.models import Job,Defect
+    from .models import BrigadeAssignment,EquipmentAssignment,SubcontractOrder
+    today=timezone.localdate()
+    jobs=Job.objects.filter(contract=contract,defects__archived_at__isnull=True).distinct()
+    orders=SubcontractOrder.objects.filter(contract=contract,archived=False)
+    unfinished_orders=0
+    for order in orders:
+        if order.kind=='repairs':
+            linked=order.repair_jobs.filter(defects__archived_at__isnull=True)
+            if not linked.exists() or linked.exclude(state='confirmed').exists():unfinished_orders+=1
+        elif order.state!='confirmed':unfinished_orders+=1
+    checks=[
+        ('Ремонты ожидают проверки',jobs.filter(state='reported').count()),
+        ('Ремонты не завершены',jobs.exclude(state__in=['reported','confirmed']).count()),
+        ('Дефекты без ремонтного задания',Defect.objects.filter(contract=contract,archived_at__isnull=True,jobs__isnull=True).count()),
+        ('Незавершённые поручения субподрядчикам',unfinished_orders),
+        ('Незакрытые или будущие назначения бригад',BrigadeAssignment.objects.filter(contract=contract).filter(Q(end_date__isnull=True)|Q(end_date__gt=today)).count()),
+        ('Незакрытые или будущие назначения техники',EquipmentAssignment.objects.filter(contract=contract).filter(Q(end_date__isnull=True)|Q(end_date__gt=today)).count()),
+    ]
+    return [(label,count) for label,count in checks if count]
+
+
+def pending_contracts(user):
+    from django.db.models import OuterRef,Subquery
+    return visible_contracts(user).annotate(last_closure=Subquery(ContractClosureEvent.objects.filter(contract_id=OuterRef('pk')).values('action')[:1])).filter(last_closure='request').exclude(status='archived')

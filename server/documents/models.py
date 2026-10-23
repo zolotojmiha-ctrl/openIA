@@ -1,3 +1,4 @@
+from projects.archive import ArchiveProtectedModel
 import uuid
 from django.conf import settings
 from django.db import models
@@ -6,7 +7,7 @@ from accounts.models import ROLES
 SECTIONS=[('contracts','Договоры и приложения'),('personnel','Документы персонала'),('journals','Журналы'),('as_built','Исполнительная документация'),('acts','Акты и сметы'),('drawings','Чертежи и схемы'),('media','Фото и видео'),('general','Прочие документы')]
 KINDS=[('work','Рабочий документ'),('personal','Персональный документ'),('subcontractor','Документ субподрядчика')]
 
-class Document(models.Model):
+class Document(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     legal_entity=models.ForeignKey('projects.LegalEntity',on_delete=models.PROTECT)
     title=models.CharField('Название',max_length=200)
@@ -29,7 +30,7 @@ class Document(models.Model):
     people_linked=models.ManyToManyField(settings.AUTH_USER_MODEL,through='DocumentPerson',related_name='personnel_documents')
     def __str__(self):return self.title
 
-class DocumentVersion(models.Model):
+class DocumentVersion(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     document=models.ForeignKey(Document,on_delete=models.PROTECT,related_name='versions')
     sequence=models.PositiveIntegerField()
@@ -54,7 +55,7 @@ class DocumentVersion(models.Model):
                 raise ValueError('Содержимое и сведения существующей версии неизменяемы.')
         return super().save(*args,**kwargs)
 
-class ApprovalEvent(models.Model):
+class ApprovalEvent(ArchiveProtectedModel):
     version=models.OneToOneField(DocumentVersion,on_delete=models.PROTECT,related_name='decision')
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     decision=models.CharField(max_length=20,choices=[('approved','Утверждена'),('revision','На доработку')])
@@ -79,7 +80,7 @@ class DocumentObject(models.Model):
     class Meta:
         constraints=[models.UniqueConstraint(fields=['document','project_object'],name='unique_document_object')]
 
-class DocumentContract(models.Model):
+class DocumentContract(ArchiveProtectedModel):
     document=models.ForeignKey(Document,on_delete=models.PROTECT)
     contract=models.ForeignKey('projects.Contract',on_delete=models.PROTECT)
     class Meta:
