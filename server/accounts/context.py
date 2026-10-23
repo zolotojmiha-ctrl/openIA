@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.6.0-contracts'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.7.0-documents'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts
@@ -21,6 +21,8 @@ def local_testing(request):
         context.update(can_manage_stock=permitted(request.user,'stock.manage'),can_stock=permitted(request.user,'stock.manage') or warehouses(request.user).exists())
         from projects.equipment import visible_equipment
         context.update(can_manage_equipment=permitted(request.user,'equipment.manage'),can_equipment=permitted(request.user,'equipment.manage') or visible_equipment(request.user).exists())
+        from documents.deadlines import due_documents as due_files
+        context['document_due_count']=len(due_files(request.user))
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

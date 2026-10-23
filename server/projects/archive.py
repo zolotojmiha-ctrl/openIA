@@ -28,6 +28,7 @@ PATHS={
  'finance.workexecution':('scope__contract_id',), 'finance.advanceoffset':('work__scope__contract_id',),
  'finance.costentry':('scope__contract_id',), 'finance.subcontractobligation':('scope__contract_id',),
  'finance.pricechange':('contract_id',),
+ 'documents.documentpart':('version__document__contracts_linked__pk',),
  'documents.documentcontract':('contract_id',),
  'documents.document':('contracts_linked__pk',),
  'documents.documentversion':('document__contracts_linked__pk',),

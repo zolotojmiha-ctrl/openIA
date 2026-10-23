@@ -1,4 +1,4 @@
-from projects.archive import ArchiveProtectedModel
+from projects.archive import ArchiveProtectedModel,ArchiveQuerySet
 import uuid
 from django.conf import settings
 from django.db import models
@@ -20,6 +20,9 @@ class Document(ArchiveProtectedModel):
     created_at=models.DateTimeField(auto_now_add=True)
     archived=models.BooleanField(default=False)
     revision=models.PositiveIntegerField(default=1)
+    expires_on=models.DateField('Действует до',null=True,blank=True)
+    remind=models.BooleanField('Напоминать об окончании срока',default=False)
+    days_before=models.PositiveSmallIntegerField('За сколько дней напомнить',default=30)
     bundle=models.ForeignKey('Bundle',on_delete=models.PROTECT,null=True,blank=True,related_name='documents')
     is_primary=models.BooleanField('Основной документ комплекта',default=False)
     link_not_required=models.BooleanField('Связь не требуется',default=False)
@@ -28,6 +31,8 @@ class Document(ArchiveProtectedModel):
     objects_linked=models.ManyToManyField('projects.ProjectObject',through='DocumentObject',related_name='documents')
     contracts_linked=models.ManyToManyField('projects.Contract',through='DocumentContract',related_name='documents')
     people_linked=models.ManyToManyField(settings.AUTH_USER_MODEL,through='DocumentPerson',related_name='personnel_documents')
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(days_before__lte=365),name='document_reminder_days'),models.CheckConstraint(condition=models.Q(remind=False)|models.Q(expires_on__isnull=False),name='document_reminder_date')]
     def __str__(self):return self.title
 
 class DocumentVersion(ArchiveProtectedModel):
@@ -157,3 +162,39 @@ class UploadReceipt(models.Model):
     document=models.ForeignKey(Document,on_delete=models.PROTECT)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['user','token'],name='unique_upload_receipt')]
+
+class ImmutablePartQuerySet(ArchiveQuerySet):
+    def update(self,**kwargs):raise ValueError('Исходники сохранённой версии неизменяемы.')
+    def delete(self):raise ValueError('Исходники сохраняются вместе с историей версий.')
+
+class DocumentPart(ArchiveProtectedModel):
+    """Original scan/PDF inputs of an immutable assembled version, in order."""
+    objects=ImmutablePartQuerySet.as_manager()
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    version=models.ForeignKey(DocumentVersion,on_delete=models.PROTECT,related_name='parts')
+    position=models.PositiveSmallIntegerField()
+    page_count=models.PositiveSmallIntegerField()
+    storage_key=models.CharField(max_length=40)
+    original_name=models.CharField(max_length=200)
+    content_type=models.CharField(max_length=100)
+    size=models.PositiveIntegerField()
+    sha256=models.CharField(max_length=64)
+    class Meta:
+        ordering=['position']
+        constraints=[models.UniqueConstraint(fields=['version','position'],name='document_part_position')]
+    def save(self,*args,**kwargs):
+        if not self._state.adding or type(self).objects.filter(pk=self.pk).exists():raise ValueError('Страницы сохранённой версии неизменяемы. Создайте новую версию.')
+        return super().save(*args,**kwargs)
+
+    def delete(self,*args,**kwargs):raise ValueError('Исходники сохраняются вместе с историей версий.')
+
+class DocumentAssembly(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    version=models.ForeignKey(DocumentVersion,on_delete=models.PROTECT)
+    digest=models.CharField(max_length=64)
+
+class DocumentDeadlineBatch(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)

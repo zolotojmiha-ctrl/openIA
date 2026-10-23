@@ -155,10 +155,12 @@ def detail(request,pk):
         try:
             with verified_file(doc.current_version) as stream:text=stream.read(256*1024).decode('utf-8',errors='replace')
         except OSError:return HttpResponse('Файл не прошёл проверку сохранности.',status=503)
-    versions=[{'version':v,'download':True} for v in doc.versions.select_related('uploaded_by')]
+    versions=[{'version':v,'download':True,'parts':list(v.parts.all()),'pages':sum(p.page_count for p in v.parts.all())} for v in doc.versions.select_related('uploaded_by').prefetch_related('parts')]
+    parts=list(doc.current_version.parts.all()) if doc.current_version_id else []
+    readonly=doc.contracts_linked.filter(status='archived').exists()
     direct=doc.access_rules.select_related('user') if can_manage(request.user,doc) else []
     inherited=doc.bundle.access_rules.select_related('user').filter(enabled=True) if doc.bundle_id and can_manage(request.user,doc) else []
-    return render(request,'documents/detail.html',{'subcontract_back':subcontract_back,'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
+    return render(request,'documents/detail.html',{'document_readonly':readonly,'document_parts':parts,'document_parts_images':bool(parts) and all(p.content_type in ['image/png','image/jpeg'] for p in parts),'subcontract_back':subcontract_back,'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not readonly and not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
 
 @login_required
 def replace(request,pk):

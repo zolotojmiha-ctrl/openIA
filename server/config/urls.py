@@ -1,3 +1,4 @@
+from documents import assembly,deadlines
 from projects.closure import closure
 from django.urls import path
 from accounts import views
@@ -122,6 +123,13 @@ urlpatterns=[
  path('cabinet/documents/export/',documents.export,name='document_export'),
  path('cabinet/documents/approvals/',documents.approvals,name='document_approvals'),
  path('cabinet/documents/<uuid:pk>/',documents.detail,name='document_detail'),
+ path('cabinet/documents/compose/',assembly.compose,name='document_compose'),
+ path('cabinet/documents/<uuid:pk>/pages/',assembly.compose,name='document_pages'),
+ path('cabinet/documents/<uuid:pk>/parts/<uuid:part_id>/',assembly.original,name='document_part'),
+ path('cabinet/documents/deadlines/',deadlines.listing,name='document_deadlines'),
+ path('cabinet/documents/deadlines/export/',deadlines.export,name='document_deadlines_export'),
+ path('cabinet/documents/deadlines/import/',deadlines.upload,name='document_deadlines_import'),
+ path('cabinet/documents/<uuid:pk>/expiry/',deadlines.configure,name='document_expiry'),
  path('cabinet/documents/<uuid:pk>/replace/',documents.replace,name='document_replace'),
  path('cabinet/documents/<uuid:pk>/archive/',documents.archive,name='document_archive'),
  path('cabinet/documents/<uuid:pk>/access/',documents.share,name='document_share'),

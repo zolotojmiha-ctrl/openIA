@@ -84,6 +84,7 @@ class AuditEvent(models.Model):
     ACTIONS += [('equipment_updated','Изменена техника'),('equipment_assigned','Назначение техники'),('equipment_document_updated','Документ техники'),('equipment_imported','Импорт техники')]
     ACTIONS += [('stock_updated','Изменены складские справочники'),('stock_access_changed','Доступ к складу'),('stock_moved','Складская операция'),('stock_imported','Импорт складских данных')]
     ACTIONS += [('subcontract_updated','Изменён субподряд'),('subcontract_access_changed','Доступ к субподряду'),('subcontract_reported','Результат субподрядчика'),('subcontract_decided','Проверка субподряда'),('subcontract_document_linked','Документ субподрядчика'),('subcontract_imported','Импорт субподряда')]
+    ACTIONS += [('document_assembled','Собран многостраничный документ'),('document_expiry_changed','Изменён срок документа')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)
