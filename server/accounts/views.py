@@ -115,6 +115,8 @@ def dashboard(request):
     if request.user.is_leader:
         from finance.views import dashboard_data
         context.update(dashboard_data(request.user))
+    from .start import role_home
+    context['role_home']=role_home(request.user)
     return render(request,'accounts/dashboard.html',context)
 
 @permission_required('users.manage')

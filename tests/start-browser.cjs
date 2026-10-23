@@ -1,0 +1,8 @@
+const {chromium}=require('playwright');const assert=require('node:assert/strict');const fs=require('node:fs');
+(async()=>{const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const errors=[];fs.mkdirSync('/tmp/openia-role-home',{recursive:true});
+const roles=['leader','foreman','technician','mechanic','safety','supply'];
+for(let i=0;i<roles.length;i++){const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(process.env.ARMADA_TEST_URL+'/cabinet/login/');await page.locator('[name=phone]').fill('+7000000080'+(i+1));await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await page.locator('button[type=submit]').click();await page.waitForURL('**/cabinet/');assert.equal(await page.locator('#role-home-title').count(),1);
+for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,roles[i]+' '+width);if(width===390||width===1440)await page.screenshot({path:'/tmp/openia-role-home/'+roles[i]+'-'+width+'.png',fullPage:true});}
+const hrefs=await page.locator('.role-cards a').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));for(const href of hrefs){const response=await page.goto(process.env.ARMADA_TEST_URL+href);assert.equal(response.status(),200,roles[i]+' '+href);}
+if(i>0){const response=await page.goto(process.env.ARMADA_TEST_URL+'/cabinet/users/');assert.equal(response.status(),403);}
+await page.close();console.log('PASS '+roles[i]);}assert.deepEqual(errors,[]);await browser.close();})().catch(e=>{console.error(e);process.exit(1)});
