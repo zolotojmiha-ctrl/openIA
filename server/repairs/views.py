@@ -311,3 +311,11 @@ def reassign(request,pk):
                 messages.success(request,'Ответственный мастер сохранён. Прежние записи остались в истории.')
                 return redirect('repair_detail',pk=current.pk)
     return render(request,'repairs/reassign.html',{'job':job,'form':form},status=status)
+
+
+@login_required
+def local_drafts(request):
+    # No draft contents leave this browser; opening a work still checks current ACL.
+    response=render(request,'repairs/drafts.html')
+    response['Cache-Control']='no-store'
+    return response

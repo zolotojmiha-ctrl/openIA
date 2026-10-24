@@ -49,6 +49,7 @@ def role_home(user):
             card('Создать объект','object_new',detail='Затем добавьте контракт и укажите связанные объекты')
         rows=[{'title':j.defect_status+' · '+', '.join('км '+d.km+' · № '+d.number for d in j.active_defects),'detail':j.section.name,'url':reverse('repair_detail',args=[j.pk]),'action':'Проверить результат','tone':j.status_tone} for j in jobs.filter(state='reported').order_by('pk')[:5]]
     elif role=='foreman':
+        card('Черновики на этом устройстве','repair_drafts',detail='Неотправленные сведения и фотографии')
         own=jobs.filter(assigned_to=user)
         todo=own.exclude(state__in=['confirmed','reported'])
         card('Все назначенные мне работы','repairs',own.count(),'?master='+str(user.pk))

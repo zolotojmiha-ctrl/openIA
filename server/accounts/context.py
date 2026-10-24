@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.8.0-role-home'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.9.0-field-drafts'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts

@@ -75,6 +75,7 @@ urlpatterns=[
  path('cabinet/work/contracts/<uuid:pk>/objects/<uuid:object_id>/',workspace.place,name='work_place'),
  path('cabinet/personnel/<uuid:pk>/account/',person_accounts.person_account,name='person_account'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
+ path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
  path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),
  path('cabinet/repairs/sections/new/',repairs.section_new,name='repair_section_new'),

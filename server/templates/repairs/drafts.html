@@ -1,0 +1,7 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<div class="page-head"><div><h1>Черновики на этом устройстве</h1><p class="muted">Локальные копии сведений и выбранных фотографий. Статус отправки указан в каждой записи.</p></div><a class="button secondary" href="{% url 'dashboard' %}">← На главную</a></div>
+<p>Для открытия работы и отправки нужна связь. Права доступа и изменения задания проверяются сервером при открытии и отправке. После очистки данных браузера или выхода из ЛК локальные черновики удаляются.</p>
+<div class="notice neutral" role="status" data-local-drafts-state>Загружаем черновики…</div>
+<div data-local-drafts data-user="{{ user.pk }}" data-repairs-url="{% url 'repairs' %}"></div>
+<script src="/static/repairs/drafts.js" defer></script>
+{% endblock %}
