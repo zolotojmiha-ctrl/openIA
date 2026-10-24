@@ -13,7 +13,7 @@ class ObjectForm(forms.ModelForm):
 class ContractForm(forms.ModelForm):
     work_kinds=forms.MultipleChoiceField(label='Виды работ — можно выбрать несколько',choices=WORK_KINDS,widget=forms.CheckboxSelectMultiple)
     expected_version = forms.IntegerField(widget=forms.HiddenInput,required=False)
-    linked_objects = forms.ModelMultipleChoiceField(label='Связанные объекты',queryset=ProjectObject.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    linked_objects = forms.ModelMultipleChoiceField(label='Связанные объекты',queryset=ProjectObject.objects.none(),required=False,widget=forms.CheckboxSelectMultiple(attrs={'data-bulk-check':'objects'}))
     class Meta:
         model=Contract
         fields=['number','date','subject','work_kinds','counterparty','deadline','amount','status','private_notes']

@@ -56,10 +56,12 @@ def place(request,pk,object_id):
 class AllocationForm(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)
     contract=forms.ModelChoiceField(label='Контракт, к которому относятся выбранные работы',queryset=Contract.objects.none())
-    jobs=forms.ModelMultipleChoiceField(label='Старые работы без контракта',queryset=Job.objects.none(),widget=forms.CheckboxSelectMultiple)
+    jobs=forms.ModelMultipleChoiceField(label='Старые работы без контракта',queryset=Job.objects.none(),widget=forms.CheckboxSelectMultiple(attrs={'data-bulk-check':'jobs'}))
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['contract'].queryset=repair_contracts(user)
+        self.has_contracts=self.fields['contract'].queryset.exists()
+        if not self.has_contracts:self.fields['contract'].empty_label='Нет контрактов с видом работ «Устранение дефектов»'
         self.fields['contract'].label_from_instance=lambda c:contract_card(c,user)['title']
         qs=visible_jobs(user,include_archived=True).filter(contract__isnull=True).order_by('section__name','pk')
         ids=list(qs.values_list('pk',flat=True)[:100])
@@ -108,7 +110,11 @@ def legacy(request):
         else:
             messages.success(request,'Работы связаны с контрактом. Исходные записи, результаты, файлы и права на документы сохранены.')
             return redirect('work_contract',pk=form.cleaned_data['contract'].pk)
-    return render(request,'projects/allocate.html',{'form':form})
+    unconfigured=[]
+    for contract in visible_contracts(request.user).exclude(status='archived'):
+        if not contract.work_kinds and not contract.objects_linked.exclude(pk__in=visible_objects(request.user)).exists():
+            unconfigured.append(contract_card(contract,request.user))
+    return render(request,'projects/allocate.html',{'form':form,'unconfigured_contracts':unconfigured})
 
 @login_required
 def sections_options(request,pk):

@@ -182,3 +182,20 @@ class ContractFoundationTests(TestCase):
         self.assertTrue(all(j['contract_id']==str(self.ca.pk) for j in parsed['jobs']))
         response=self.client.post(reverse('repair_import'),{'contract':self.cb.pk,'section':self.section.pk,'file':SimpleUploadedFile('export.xlsx',exported.content)})
         self.assertContains(response,'другого контракта');self.assertFalse(ImportBatch.objects.exists())
+
+    def test_unconfigured_contract_has_explanation_and_edit_link(self):
+        self.ca.work_kinds=[];self.ca.save();self.login()
+        response=self.client.get(reverse('work_legacy'))
+        self.assertContains(response,'Пока нет доступных контрактов')
+        self.assertContains(response,'ТЗС-1726-2025')
+        self.assertContains(response,reverse('contract_edit',args=[self.ca.pk]))
+        self.assertNotContains(response,'ЧУЖОЙ КОНТРАКТ')
+        self.assertFalse(response.context['form'].fields['contract'].queryset.exists())
+        self.ca.refresh_from_db();self.assertEqual(self.ca.work_kinds,[])
+
+    def test_configured_contract_becomes_selectable_without_auto_allocation(self):
+        self.login();response=self.client.get(reverse('work_legacy'))
+        self.assertTrue(response.context['form'].fields['contract'].queryset.filter(pk=self.ca.pk).exists())
+        self.assertContains(response,'data-bulk-check="jobs"')
+        self.assertContains(self.client.get(reverse('contract_edit',args=[self.ca.pk])),'data-bulk-check="objects"')
+        self.legacy.refresh_from_db();self.assertIsNone(self.legacy.contract_id)
