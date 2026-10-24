@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.9.0-field-drafts'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.10.0-registry-excel'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts

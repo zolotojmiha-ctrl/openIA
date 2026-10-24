@@ -4,6 +4,7 @@ import re
 import zipfile
 from decimal import Decimal
 from xml.etree import ElementTree as ET
+from xml.sax.saxutils import quoteattr
 from django.core.exceptions import ValidationError
 from accounts.models import normalize_phone
 from .importer import numeric, method
@@ -12,7 +13,7 @@ from .values import kilometre,identifier
 HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение','ID контракта']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-def workbook(rows,headers=None):
+def workbook(rows,headers=None,sheet_name='Дефекты'):
     ET.register_namespace('',NS)
     sheet=ET.Element('{'+NS+'}worksheet')
     data=ET.SubElement(sheet,'{'+NS+'}sheetData')
@@ -28,7 +29,7 @@ def workbook(rows,headers=None):
     with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('[Content_Types].xml','<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
         z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
-        z.writestr('xl/workbook.xml',f'<workbook xmlns="{NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Дефекты" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        z.writestr('xl/workbook.xml',f'<workbook xmlns="{NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name={quoteattr(sheet_name)} sheetId="1" r:id="rId1"/></sheets></workbook>')
         z.writestr('xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
         z.writestr('xl/worksheets/sheet1.xml',ET.tostring(sheet,encoding='utf-8',xml_declaration=True))
     return stream.getvalue()

@@ -398,3 +398,10 @@ class ContractClosureEvent(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     class Meta:
         ordering=['-created_at','-pk']
+
+
+class RegistryImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    kind=models.CharField(max_length=20,choices=[('objects','Объекты'),('contracts','Контракты'),('people','Персонал')])
+    created_at=models.DateTimeField(auto_now_add=True)
