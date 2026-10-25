@@ -405,3 +405,61 @@ class RegistryImportReceipt(models.Model):
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     kind=models.CharField(max_length=20,choices=[('objects','Объекты'),('contracts','Контракты'),('people','Персонал')])
     created_at=models.DateTimeField(auto_now_add=True)
+
+
+class ContractChange(ArchiveProtectedModel):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='customer_changes')
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    state=models.CharField(max_length=20,choices=[('review','На рассмотрении'),('revision','На доработке'),('approved','Подтверждено руководителем')],default='review')
+    version=models.PositiveIntegerField(default=1)
+    current_revision=models.ForeignKey('ContractChangeRevision',on_delete=models.PROTECT,null=True,related_name='+')
+    active_revision=models.ForeignKey('ContractChangeRevision',on_delete=models.PROTECT,null=True,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+
+
+class ContractChangeRevision(ArchiveProtectedModel):
+    change=models.ForeignKey(ContractChange,on_delete=models.PROTECT,related_name='revisions')
+    number=models.PositiveIntegerField()
+    title=models.CharField(max_length=200)
+    received_on=models.DateField()
+    effective_from=models.DateField()
+    scope=models.TextField(max_length=3000)
+    object_ids=models.JSONField(default=list)
+    before_text=models.TextField(max_length=3000,blank=True)
+    after_text=models.TextField(max_length=3000)
+    basis_kind=models.CharField(max_length=20,choices=[('oral','Устное указание'),('letter','Письмо'),('message','Сообщение'),('document','Документ')])
+    basis_note=models.TextField(max_length=3000)
+    basis_version=models.ForeignKey('documents.DocumentVersion',on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    impacts=models.JSONField(default=list)
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['change','number'],name='customer_change_revision_unique')]
+        ordering=['-number']
+
+
+class ContractChangeDecision(ArchiveProtectedModel):
+    revision=models.OneToOneField(ContractChangeRevision,on_delete=models.PROTECT,related_name='decision')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    action=models.CharField(max_length=20,choices=[('approved','Подтверждено руководителем'),('revision','Возвращено на доработку')])
+    note=models.TextField(max_length=3000)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+
+class ContractChangeCommercial(ArchiveProtectedModel):
+    revision=models.ForeignKey(ContractChangeRevision,on_delete=models.PROTECT,related_name='commercial_events')
+    status=models.CharField(max_length=20,choices=[('unknown','Не оценено'),('not_required','Не требует изменения цены договора'),('pending','Требуется оформление'),('signed','Изменение договора оформлено')])
+    note=models.TextField(max_length=3000)
+    document_version=models.ForeignKey('documents.DocumentVersion',on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:ordering=['-created_at','-pk']
+
+
+class ContractChangeSubmission(ArchiveProtectedModel):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    change=models.ForeignKey(ContractChange,on_delete=models.PROTECT,related_name='+')
+    revision=models.ForeignKey(ContractChangeRevision,on_delete=models.PROTECT,related_name='+')
+    digest=models.CharField(max_length=64)

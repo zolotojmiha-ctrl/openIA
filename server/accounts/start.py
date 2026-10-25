@@ -41,6 +41,8 @@ def role_home(user):
         if contracts.exists() or can('projects.manage') or can('repairs.prepare'):
             card('Контракты и работы','work_home',contracts.count(),detail='Выберите контракт и место выполнения')
     if role=='leader':
+        from projects.models import ContractChange
+        card('Указания заказчика на рассмотрении','contract_changes_review',ContractChange.objects.filter(contract__in=contracts,state='review').count())
         card('Результаты ремонтов на проверке','repairs',jobs.filter(state='reported').count(),'?state=reported','Посмотреть результат, подтвердить или вернуть на доработку')
         card('Заявки на закрытие контрактов','contracts',pending_contracts(user).count())
         card('Результаты субподрядчиков','subcontracts',orders(user).filter(state='reported').exclude(contract__status='archived').count(),detail='Проверка выполнения порученных работ')

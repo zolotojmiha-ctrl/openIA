@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'contract.changes':'Вести указания заказчика и изменения контрактов',
  'subcontract.manage':'Вести субподрядчиков, поручения и доступ представителей',
  'stock.manage':'Вести склады, остатки и движение материалов',
  'equipment.manage':'Вести технику, документы и назначения на объекты',

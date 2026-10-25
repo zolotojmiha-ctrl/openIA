@@ -4,7 +4,7 @@ from django.urls import path
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
-from projects import registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
+from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
@@ -76,6 +76,13 @@ urlpatterns=[
  path('cabinet/personnel/<uuid:pk>/account/',person_accounts.person_account,name='person_account'),
  path('cabinet/registers/<str:kind>/export.xlsx',registry_excel.export,name='registry_export'),
  path('cabinet/registers/<str:kind>/import/',registry_excel.upload,name='registry_import'),
+ path('cabinet/contracts/<uuid:contract_id>/changes/export.xlsx',changes_excel.export,name='contract_changes_export'),
+ path('cabinet/contracts/<uuid:contract_id>/changes/import/',changes_excel.upload,name='contract_changes_import'),
+ path('cabinet/contract-changes/review/',changes.queue,name='contract_changes_review'),
+ path('cabinet/contracts/<uuid:contract_id>/changes/',changes.index,name='contract_changes'),
+ path('cabinet/contracts/<uuid:contract_id>/changes/new/',changes.edit,name='contract_change_new'),
+ path('cabinet/contracts/<uuid:contract_id>/changes/<uuid:pk>/edit/',changes.edit,name='contract_change_edit'),
+ path('cabinet/contract-changes/<uuid:pk>/',changes.detail,name='contract_change'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
  path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
