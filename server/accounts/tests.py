@@ -147,9 +147,9 @@ class AccountTests(TestCase):
     def test_bootstrap_refuses_noninteractive_execution(self):
         with patch('sys.stdin.isatty',return_value=False),self.assertRaises(CommandError):
             call_command('bootstrap_leaders',stdout=StringIO())
-    def test_bootstrap_requires_distinct_secrets_and_is_atomic(self):
+    def test_bootstrap_rejects_short_second_password_atomically(self):
         User.objects.all().delete()
-        values=['ТЕСТ Первый','+70000000001',self.secret,self.secret,'ТЕСТ Второй','+70000000002',self.secret,self.secret]
+        values=['ТЕСТ Первый','+70000000001',self.secret,self.secret,'ТЕСТ Второй','+70000000002','12345','12345']
         with patch('sys.stdin.isatty',return_value=True),patch('getpass.getpass',side_effect=values),self.assertRaises(CommandError):
             call_command('bootstrap_leaders',stdout=StringIO())
         self.assertEqual(User.objects.count(),0)
