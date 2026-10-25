@@ -1,4 +1,6 @@
 from django import forms
+from django.core import signing
+from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.sessions.models import Session
@@ -18,14 +20,32 @@ class PreferenceForm(forms.ModelForm):
         model=Preference
         fields=['hints','notify_documents','notify_versions','notify_comments','large_text','compact']
 
+class IdentityForm(forms.Form):
+    snapshot=forms.CharField(widget=forms.HiddenInput)
+    full_name=forms.CharField(label='Фамилия, имя и отчество',max_length=150)
+
 @login_required
 def profile(request):
     obj,_=Preference.objects.get_or_create(user=request.user)
-    form=PreferenceForm(request.POST or None,instance=obj)
-    if request.method=='POST' and form.is_valid():form.save();return redirect('profile')
+    identity_post=request.method=='POST' and request.POST.get('action')=='identity'
+    name_form=IdentityForm(request.POST if identity_post else None,initial={'full_name':request.user.full_name,'snapshot':signing.dumps([str(request.user.pk),request.user.full_name],salt='own-profile-name')})
+    form=PreferenceForm(request.POST if request.method=='POST' and not identity_post else None,instance=obj)
+    if identity_post and name_form.is_valid():
+        try:
+            shown=signing.loads(name_form.cleaned_data['snapshot'],salt='own-profile-name',max_age=3600)
+            with transaction.atomic():
+                actor=User.objects.select_for_update().get(pk=request.user.pk)
+                if not actor.is_active or actor.session_version!=request.user.session_version:raise PermissionDenied
+                if shown!=[str(actor.pk),actor.full_name]:raise ValidationError('Имя уже изменилось или форма устарела. Обновите страницу.')
+                before=actor.full_name;actor.full_name=name_form.cleaned_data['full_name']
+                actor.save(update_fields=['full_name'])
+                if before!=actor.full_name:audit(actor,'employee_updated',actor,kind='own_profile_name',previous_name=before,full_name=actor.full_name)
+        except (signing.BadSignature,ValidationError) as exc:name_form.add_error(None,exc if isinstance(exc,ValidationError) else 'Форма устарела. Обновите страницу.')
+        else:messages.success(request,'ФИО сохранено.');return redirect('profile')
+    elif request.method=='POST' and not identity_post and form.is_valid():form.save();return redirect('profile')
     keys=Session.objects.filter(expire_date__gt=timezone.now()).values('session_key')
     sessions=request.user.active_sessions.filter(session_key__in=keys).order_by('-last_seen')
-    return render(request,'accounts/profile.html',{'form':form,'sessions':sessions,'current_key':request.session.session_key,'permissions':request.user.grants.filter(permission__in=PERMISSIONS)})
+    return render(request,'accounts/profile.html',{'form':form,'name_form':name_form,'sessions':sessions,'current_key':request.session.session_key,'permissions':request.user.grants.filter(permission__in=PERMISSIONS)})
 
 @login_required
 @require_POST
