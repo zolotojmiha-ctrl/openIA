@@ -128,7 +128,8 @@ class BrigadeAssignment(ArchiveProtectedModel):
     brigade=models.ForeignKey(Brigade,on_delete=models.PROTECT,related_name='assignments')
     contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='brigade_assignments')
     project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='brigade_assignments')
-    master=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='crew_assignments')
+    master=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='crew_assignments',null=True,blank=True)
+    foreman_person=models.ForeignKey('documents.Person',on_delete=models.PROTECT,null=True,blank=True,related_name='led_assignments')
     start_date=models.DateField('Начало работы')
     end_date=models.DateField('Окончание работы',null=True,blank=True)
     roster=models.JSONField(default=list)
@@ -165,6 +166,7 @@ class Equipment(models.Model):
 class EquipmentAssignment(ArchiveProtectedModel):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     equipment=models.ForeignKey(Equipment,on_delete=models.PROTECT,related_name='placements')
+    crew_assignment=models.ForeignKey(BrigadeAssignment,on_delete=models.PROTECT,null=True,blank=True,related_name='equipment_placements')
     project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='equipment_placements')
     contract=models.ForeignKey(Contract,on_delete=models.PROTECT,null=True,blank=True,related_name='equipment_placements')
     start_date=models.DateField('Начало работы')

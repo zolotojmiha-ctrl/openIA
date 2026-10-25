@@ -92,6 +92,7 @@ if(document.querySelector('[data-inbox-count]')){
  async function notifications(){if(polling||document.hidden)return;polling=true;try{
   const response=await fetch('/cabinet/notifications/',{headers:{'Accept':'application/json'}});if(!response.ok||response.redirected)return;const data=await response.json();
   for(const item of document.querySelectorAll('[data-inbox-count]')){item.textContent=data.inbox;item.classList.toggle('has-new',data.inbox>0);}
+  for(const item of document.querySelectorAll('[data-business-count]')){item.textContent=data.business||0;item.classList.toggle('has-new',data.business>0);}
   for(const item of document.querySelectorAll('[data-unsorted-count]'))item.textContent=data.unsorted;
   const storageKey='armada-notices:'+data.identity;let seen=[];try{seen=JSON.parse(sessionStorage.getItem(storageKey)||'[]')}catch{}const unseen=(data.keys||[]).some(key=>!seen.includes(key));try{sessionStorage.setItem(storageKey,JSON.stringify([...new Set([...seen,...(data.keys||[])])].slice(-200)))}catch{}
   if(data.notification&&unseen){let toast=document.getElementById('workspace-notice');if(!toast){toast=document.createElement('a');toast.id='workspace-notice';toast.href='/cabinet/documents/?mode=inbox';toast.setAttribute('role','status');document.body.append(toast)}toast.href=data.url;toast.textContent=data.notification+' · Открыть входящие';setTimeout(()=>toast.remove(),12000);}

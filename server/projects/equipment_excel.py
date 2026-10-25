@@ -19,7 +19,7 @@ from . import equipment as service
 
 HEADERS={
  'register':['ID техники','Название / модель','Вид техники','Инвентарный номер','Госномер','Заводской номер / VIN','Принадлежность (own/rent/subcontractor)','Собственник','Состояние (ready/working/repair/reserve/archived)','Примечание','Версия'],
- 'assignments':['ID назначения','ID техники','ID объекта','ID контракта','Начало работы','Окончание работы','Пояснение','Версия'],
+ 'assignments':['ID назначения','ID техники','ID объекта','ID контракта','Начало работы','Окончание работы','Пояснение','Версия','ID назначения бригады'],
  'documents':['ID связи','ID техники','ID документа','Вид документа','Действует до','Напоминать (0/1)','За сколько дней','Показывать (0/1)','Версия'],
 }
 class UploadForm(forms.Form):file=forms.FileField(label='Файл XLSX',widget=forms.FileInput(attrs={'accept':'.xlsx'}))
@@ -30,7 +30,9 @@ def export_rows(user,kind):
     if kind=='register':return [[str(i.pk),*[getattr(i,k) for k in service.FIELDS],i.version] for i in service.visible_equipment(user).order_by('inventory_number')]
     if kind=='assignments':
         allowed=set(visible_contracts(user).values_list('pk',flat=True))
-        return [[str(a.pk),str(a.equipment_id),str(a.project_object_id),str(a.contract_id) if a.contract_id in allowed else '',str(a.start_date),str(a.end_date or ''),a.note,a.version] for a in service.placements(user).order_by('pk')]
+        from .crews import visible_assignments
+        allowed_crews=set(visible_assignments(user).values_list('pk',flat=True))
+        return [[str(a.pk),str(a.equipment_id),str(a.project_object_id),str(a.contract_id) if a.contract_id in allowed else '',str(a.start_date),str(a.end_date or ''),a.note,a.version,str(a.crew_assignment_id) if a.crew_assignment_id in allowed_crews else ''] for a in service.placements(user).order_by('pk')]
     return [[str(r.pk),str(r.equipment_id),str(r.document_id),r.label,str(r.expires_on or ''),int(r.remind),r.days_before,int(r.active),r.version] for r in service.equipment_files(user).order_by('pk')]
 
 @permission_required('equipment.manage')
@@ -64,6 +66,9 @@ def apply_rows(user,kind,rows):
                     permitted_contracts=set(visible_contracts(actor).values_list('pk',flat=True))
                     contract=str(a.contract_id) if a.contract_id in permitted_contracts else ''
                     if [str(a.equipment_id),str(a.project_object_id),contract,str(a.start_date),a.note]!=[v[1],v[2],v[3],v[4],v[6]]:raise ValidationError('Место, технику, контракт и начало исторического назначения не переписывают. Создайте новое назначение с пустым ID.')
+                    from .crews import visible_assignments
+                    shown_crew=str(a.crew_assignment_id) if a.crew_assignment_id and visible_assignments(actor).filter(pk=a.crew_assignment_id).exists() else ''
+                    if len(v)>8 and shown_crew!=v[8]:raise ValidationError('Историческую бригаду не переписывают. Создайте новое назначение.')
                     if a.version!=int(v[7]):raise ValidationError('Назначение изменено. Выгрузите актуальный файл.')
                     end=day(v[5])
                     if a.end_date!=end:
@@ -71,7 +76,9 @@ def apply_rows(user,kind,rows):
                         service.end_assignment(actor,a.pk,a.version,end)
                 else:
                     item=service.visible_equipment(actor).get(pk=uuid.UUID(v[1]));obj=visible_objects(actor).get(pk=uuid.UUID(v[2]));contract=visible_contracts(actor).get(pk=uuid.UUID(v[3])) if v[3] else None
-                    service.assign(actor,item.pk,item.version,obj,contract,day(v[4],True),day(v[5]),v[6])
+                    from .crews import visible_assignments
+                    crew=visible_assignments(actor).get(pk=uuid.UUID(v[8])) if len(v)>8 and v[8] else None
+                    service.assign(actor,item.pk,item.version,obj,contract,day(v[4],True),day(v[5]),v[6],crew_assignment=crew)
             else:
                 item=service.visible_equipment(actor).get(pk=uuid.UUID(v[1]));document=visible_documents(actor).get(pk=uuid.UUID(v[2]))
                 service.save_file(actor,item.pk,uuid.UUID(v[0]) if v[0] else None,int(v[8]) if v[0] else None,{'document':document,'label':v[3],'expires_on':day(v[4]),'remind':boolean(v[5]),'days_before':int(v[6]),'active':boolean(v[7])})
@@ -82,6 +89,7 @@ def apply_rows(user,kind,rows):
 def parse_rows(file,kind,user):
     book=read_book(file);cells=book['cells'];headers=HEADERS[kind]
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
+    if kind=='assignments' and not cells.get((1,9)):headers=headers[:8]
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]!=headers:raise ValidationError('Столбцы не совпадают с шаблоном выбранного реестра.')
     rows=[];seen=set()
     for n in sorted({r for r,c in cells if r>1}):

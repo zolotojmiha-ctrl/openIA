@@ -58,12 +58,15 @@ class CrewTests(TestCase):
     def test_parallel_assignments_of_same_person_allowed(self):
         crew=self.crew();a=self.assignment(crew);b=self.assignment(crew,self.obj2)
         self.assertEqual(PersonAssignment.objects.filter(person=self.person).count(),2);self.assertNotEqual(a.pk,b.pk)
-    def test_missing_master_account_or_grants_rejected_without_partial_assignments(self):
+    def test_physical_assignment_does_not_require_account_or_grants(self):
         crew=self.crew();ContractAccess.objects.filter(user=self.master).delete()
-        with self.assertRaises(ValidationError):self.assignment(crew)
-        self.assertFalse(BrigadeAssignment.objects.exists());self.assertFalse(PersonAssignment.objects.exists())
+        a=self.assignment(crew)
+        with self.assertRaises(ValidationError):assign_jobs_to_crew(self.tech,a.pk,{str(self.job().pk):1})
         self.person.user=None;self.person.save()
-        with self.assertRaises(ValidationError):self.assignment(crew)
+        b=self.assignment(crew,self.obj2)
+        self.assertIsNone(b.master_id);self.assertEqual(b.foreman_person,self.person)
+        self.assertEqual(b.person_assignments.count(),2)
+        self.assertFalse(DocumentAccess.objects.exists())
     def test_assignment_rejects_stale_roster(self):
         crew=self.crew();version=crew.version;add_member(self.tech,crew.pk,version,self.person2,self.today,None)
         with self.assertRaises(ValidationError):assign_crew_place(self.tech,crew.pk,version,self.contract.pk,self.obj.pk,self.today,None)

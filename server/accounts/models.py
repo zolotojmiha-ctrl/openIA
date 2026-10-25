@@ -133,3 +133,10 @@ class UserSession(models.Model):
     session_key=models.CharField(max_length=40,unique=True)
     device=models.CharField(max_length=200,blank=True)
     last_seen=models.DateTimeField(auto_now=True)
+
+class BusinessNoticeRead(models.Model):
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    event=models.ForeignKey(AuditEvent,on_delete=models.CASCADE)
+    read_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['user','event'],name='business_notice_read_unique')]

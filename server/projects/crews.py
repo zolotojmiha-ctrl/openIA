@@ -85,13 +85,11 @@ def assign_crew_place(user,crew_id,version,contract_id,object_id,start,end):
     if not members or not any(m.person_id==crew.foreman_id for m in members):raise ValidationError('Мастер должен входить в состав бригады на дату назначения.')
     if any(m.person.archived for m in members):raise ValidationError('В составе есть сотрудник из архива. Уточните состав.')
     master=crew.foreman.user
-    if not master or not master.is_active:raise ValidationError('Свяжите мастера с активной учётной записью.')
-    from repairs.views import assignees
-    # Same grant checks as a manual foreman assignment. No access is granted here.
-    if not master.is_leader and (not master.object_assignments.filter(project_object=obj).exists() or not master.contract_access.filter(contract=contract).exists()):raise ValidationError('Сначала выдайте мастеру доступ к объекту и контракту.')
+    if master and not master.is_active:master=None
+    # Physical staffing is independent of login and document permissions.
     if BrigadeAssignment.objects.filter(brigade=crew,contract=contract,project_object=obj,start_date=start,end_date=end).exists():raise ValidationError('Такое назначение уже есть. Откройте существующую запись.')
     snapshot=[{'person':str(m.person_id),'name':m.person.full_name,'position':m.person.position,'membership':m.pk,'start':str(m.start_date),'end':str(m.end_date or '')} for m in members]
-    assignment=BrigadeAssignment.objects.create(brigade=crew,contract=contract,project_object=obj,master=master,start_date=start,end_date=end,roster=snapshot,created_by=actor)
+    assignment=BrigadeAssignment.objects.create(brigade=crew,contract=contract,project_object=obj,master=master,foreman_person=crew.foreman,start_date=start,end_date=end,roster=snapshot,created_by=actor)
     for member in members:
         member_end=min(d for d in [end,member.end_date] if d) if end or member.end_date else None
         PersonAssignment.objects.create(person=member.person,project_object=obj,start_date=start,end_date=member_end,brigade_assignment=assignment,created_by=actor)
@@ -103,6 +101,7 @@ def close_assignment(user,pk,version,end):
     actor=manager(user);assignment=visible_assignments(actor).select_for_update(of=('self',)).get(pk=pk)
     if assignment.version!=version or assignment.end_date:raise ValidationError('Назначение уже изменено или завершено.')
     date_range(assignment.start_date,end)
+    if assignment.equipment_placements.filter(Q(end_date__isnull=True)|Q(end_date__gt=end)).exists():raise ValidationError('Сначала завершите или переведите технику этой бригады.')
     assignment.end_date=end;assignment.version+=1;assignment.save(update_fields=['end_date','version'])
     for p in assignment.person_assignments.all():
         if p.end_date is None or p.end_date>end:p.end_date=end;p.save(update_fields=['end_date'])
@@ -117,6 +116,11 @@ def assign_jobs_to_crew(user,assignment_id,versions):
     if not can_prepare(actor) or actor.session_version!=user.session_version:raise PermissionDenied
     assignment=visible_assignments(actor).select_for_update(of=('self',)).get(pk=assignment_id)
     if assignment.end_date and assignment.end_date<timezone.localdate():raise ValidationError('Назначение бригады уже завершено.')
+    if not assignment.master_id and assignment.foreman_person_id and assignment.foreman_person.user_id:
+        account=assignment.foreman_person.user
+        if account.is_active:
+            assignment.master=account;assignment.version+=1;assignment.save(update_fields=['master','version'])
+    if not assignment.master_id:raise ValidationError('Бригада назначена. Чтобы мастер вносил результаты, свяжите его карточку персонала с активной учётной записью и выдайте доступ к контракту и объекту.')
     if not assignment.master.is_active or (not assignment.master.is_leader and (not assignment.master.object_assignments.filter(project_object=assignment.project_object).exists() or not assignment.master.contract_access.filter(contract=assignment.contract).exists())):raise ValidationError('Доступ мастера изменился. Проверьте учётную запись и разрешения.')
     jobs=list(visible_jobs(actor).select_for_update(no_key=True,of=('self',)).filter(pk__in=versions).order_by('pk'))
     if not jobs or len(jobs)!=len(versions):raise ValidationError('Выбор работ изменился.')
@@ -157,3 +161,25 @@ def update_membership(user,pk,version,start,end):
     crew.version+=1;crew.save(update_fields=['version'])
     audit(actor,'person_assigned',kind='membership_dates_corrected',membership=pk,previous=before,start=str(start),end=str(end or ''))
     return item
+
+@transaction.atomic
+def assign_crew_places(user,crew_id,version,contract_id,object_ids,start,end,replacements=None):
+    """One contract lock serializes bulk assignments and dated replacements."""
+    from datetime import timedelta
+    actor=manager(user)
+    contract=Contract.objects.select_for_update().get(pk=contract_id)
+    if not visible_contracts(actor).filter(pk=contract.pk).exists() or contract.status=='archived':raise ValidationError('Контракт недоступен или в архиве.')
+    ids=sorted(set(str(pk) for pk in object_ids))
+    if not ids:raise ValidationError('Выберите объекты.')
+    if visible_objects(actor).filter(pk__in=ids,contracts=contract).exclude(status='archived').count()!=len(ids):raise ValidationError('Список объектов изменился.')
+    existing=list(visible_assignments(actor).select_for_update(of=('self',)).filter(contract=contract,project_object_id__in=ids).filter(Q(end_date__isnull=True)|Q(end_date__gte=start)).order_by('pk'))
+    if end:existing=[a for a in existing if a.start_date<=end]
+    # Parallel assignments are allowed unless the operator explicitly replaces them.
+    if replacements is not None:
+        actual={str(a.pk):a.version for a in existing}
+        if actual!=replacements:raise ValidationError('Назначения изменились. Обновите страницу перед заменой.')
+        for a in existing:
+            if a.start_date>=start or a.end_date:raise ValidationError('Для замены выберите дату после начала открытого назначения.')
+            if a.equipment_placements.filter(Q(end_date__isnull=True)|Q(end_date__gte=start)).exists():raise ValidationError('Сначала завершите или переведите технику прежней бригады.')
+            close_assignment(actor,a.pk,a.version,start-timedelta(days=1))
+    return [assign_crew_place(actor,crew_id,version,contract_id,pk,start,end) for pk in ids]

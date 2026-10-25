@@ -1,0 +1,1 @@
+document.getElementById('all-places')?.addEventListener('click',()=>{const boxes=[...document.querySelectorAll('input[name="project_objects"]')];const value=boxes.some(b=>!b.checked);boxes.forEach(b=>b.checked=value);});

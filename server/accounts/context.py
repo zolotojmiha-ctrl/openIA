@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.11.0-customer-changes'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.12.0-feedback'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts
@@ -23,6 +23,8 @@ def local_testing(request):
         context.update(can_manage_equipment=permitted(request.user,'equipment.manage'),can_equipment=permitted(request.user,'equipment.manage') or visible_equipment(request.user).exists())
         from documents.deadlines import due_documents as due_files
         context['document_due_count']=len(due_files(request.user))
+        from .business_notices import unread as business_unread
+        context['business_notice_count']=business_unread(request.user).count()
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

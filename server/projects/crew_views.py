@@ -51,7 +51,9 @@ def crew_detail(request,pk):
         try:add_member(request.user,pk,form.cleaned_data['version'],form.cleaned_data['person'],form.cleaned_data['start'],form.cleaned_data['end'])
         except ValidationError as e:form.add_error(None,e)
         else:return redirect('brigade_detail',pk=pk)
-    return render(request,'projects/crew_detail.html',{'crew':crew,'members':crew.memberships.select_related('person').order_by('-start_date','pk'),'assignments':visible_assignments(request.user).filter(brigade=crew),'form':form})
+    from .equipment import placements
+    from django.db.models import Prefetch
+    return render(request,'projects/crew_detail.html',{'today':timezone.localdate(),'crew':crew,'members':crew.memberships.select_related('person').order_by('-start_date','pk'),'assignments':visible_assignments(request.user).filter(brigade=crew).prefetch_related(Prefetch('equipment_placements',queryset=placements(request.user),to_attr='visible_equipment')),'form':form})
 
 class EndForm(forms.Form):
     version=forms.IntegerField(widget=forms.HiddenInput)
@@ -158,3 +160,37 @@ def crew_edit(request,pk):
         except ValidationError as e:form.add_error(None,e)
         else:return redirect('brigade_detail',pk=pk)
     return render(request,'projects/crew_form.html',{'title':'Настройки бригады','form':form})
+
+class BulkPlaceForm(forms.Form):
+    snapshot=forms.CharField(widget=forms.HiddenInput)
+    project_objects=forms.ModelMultipleChoiceField(label='Объекты контракта',queryset=ProjectObject.objects.none(),widget=forms.CheckboxSelectMultiple)
+    start=forms.DateField(label='Начало работы',widget=DATE)
+    end=forms.DateField(label='Окончание работы',widget=DATE,required=False)
+    replace=forms.BooleanField(label='Заменить прежние бригады на выбранных объектах с указанной даты',required=False)
+    def __init__(self,*args,user,contract,crew,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['project_objects'].queryset=visible_objects(user).filter(contracts=contract).exclude(status='archived')
+        self.initial.update(start=timezone.localdate(),snapshot=signing.dumps({'crew':str(crew.pk),'version':crew.version,'contract':str(contract.pk),'assignments':{str(a.pk):[a.version,str(a.project_object_id)] for a in visible_assignments(user).filter(contract=contract)}},salt='crew-bulk'))
+
+@permission_required('personnel.manage')
+def crew_place(request,pk):
+    from .crews import assign_crew_places
+    crew=get_object_or_404(visible_crews(request.user),pk=pk)
+    contracts=visible_contracts(request.user).exclude(status='archived')
+    contract=get_object_or_404(contracts,pk=request.GET.get('contract')) if request.GET.get('contract') else None
+    form=BulkPlaceForm(request.POST or None,user=request.user,contract=contract,crew=crew) if contract else None
+    if request.method=='POST' and form and form.is_valid():
+        try:
+            shown=signing.loads(form.cleaned_data['snapshot'],salt='crew-bulk',max_age=3600)
+            if shown['crew']!=str(crew.pk) or shown['contract']!=str(contract.pk):raise ValidationError('Выбор изменился.')
+            ids=[str(o.pk) for o in form.cleaned_data['project_objects']]
+            replacements={k:v[0] for k,v in shown['assignments'].items() if v[1] in ids} if form.cleaned_data['replace'] else None
+            if replacements is not None:
+                # Exclude assignments which do not overlap the chosen period.
+                overlapping=visible_assignments(request.user).filter(pk__in=replacements).filter(Q(end_date__isnull=True)|Q(end_date__gte=form.cleaned_data['start']))
+                if form.cleaned_data['end']:overlapping=overlapping.filter(start_date__lte=form.cleaned_data['end'])
+                replacements={str(a.pk):replacements[str(a.pk)] for a in overlapping}
+            assign_crew_places(request.user,crew.pk,shown['version'],contract.pk,ids,form.cleaned_data['start'],form.cleaned_data['end'],replacements)
+        except (signing.BadSignature,KeyError,ValidationError) as e:form.add_error(None,e if isinstance(e,ValidationError) else 'Выбор устарел. Обновите страницу.')
+        else:messages.success(request,'Бригада назначена на выбранные объекты. История сохранена.');return redirect('brigade_detail',pk=pk)
+    return render(request,'projects/crew_place.html',{'crew':crew,'contracts':[contract_card(c,request.user) for c in contracts],'contract':contract,'form':form})

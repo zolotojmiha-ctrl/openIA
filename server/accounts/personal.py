@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied
@@ -112,7 +113,9 @@ def support(request,pk=None):
     if request.method=='POST' and form.is_valid():
         saved=form.save(commit=False)
         if not obj:saved.author=request.user
-        saved.save();audit(request.user,'support_updated',request_id=saved.pk);return redirect('support')
+        saved.save();audit(request.user,'support_updated',request_id=saved.pk,reply=bool(obj))
+        messages.success(request,'Ответ сохранён. Автор увидит уведомление.' if obj else 'Обращение сохранено. Оба руководителя увидят его в уведомлениях.')
+        return redirect('support')
     return render(request,'accounts/support.html',{'form':form,'items':qs.select_related('author').order_by('-created_at')[:100]})
 
 
@@ -151,8 +154,30 @@ def notifications(request):
     candidates=unread.filter(current_version__sequence=1) if p.notify_documents and not p.notify_versions else unread.filter(current_version__sequence__gt=1) if p.notify_versions and not p.notify_documents else unread if p.notify_versions and p.notify_documents else unread.none()
     keys=['v:'+str(doc.current_version_id) for doc in candidates[:50]]
     if p.notify_comments:keys+=['c:'+str(pk) for pk in Notice.objects.filter(user=request.user,read=False,document__in=visible_documents(request.user)).values_list('pk',flat=True)[:50]]
+    from .business_notices import unread as business_unread
+    business=business_unread(request.user)
+    business_count=business.count()
+    keys+=['b:'+str(pk) for pk in business.values_list('pk',flat=True)[:50]]
     new=keys
     from django.urls import reverse
     notices=Notice.objects.filter(user=request.user,read=False,document__in=visible_documents(request.user)).order_by('-created_at')
     url=reverse('document_detail',args=[notices[0].document_id]) if not unread.exists() and notices.exists() else reverse('documents')+'?mode=inbox'
-    return JsonResponse({'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые доступные документы или сообщения: '+str(len(new)) if new else ''})
+    if business_count:url=reverse('business_inbox')
+    return JsonResponse({'business':business_count,'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые уведомления: '+str(len(new)) if new else ''})
+
+@login_required
+def business_inbox(request):
+    from django.core.paginator import Paginator
+    from .business_notices import events,destination
+    from .models import BusinessNoticeRead
+    qs=events(request.user)
+    if request.method=='POST':
+        # Only explicitly displayed rows are acknowledged, never unseen new events.
+        ids=request.POST.getlist('events')[:100]
+        if any(not i.isdigit() for i in ids):raise PermissionDenied
+        allowed=qs.filter(pk__in=ids)
+        BusinessNoticeRead.objects.bulk_create([BusinessNoticeRead(user=request.user,event=e) for e in allowed],ignore_conflicts=True)
+        return redirect('business_inbox')
+    if request.GET.get('all')!='1':qs=qs.exclude(pk__in=BusinessNoticeRead.objects.filter(user=request.user).values('event_id'))
+    page=Paginator(qs,50).get_page(request.GET.get('page'))
+    return render(request,'accounts/business_inbox.html',{'page':page,'notice_rows':[{'event':e,'url':destination(e)} for e in page],'show_all':request.GET.get('all')=='1'})

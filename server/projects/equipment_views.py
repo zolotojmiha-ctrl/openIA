@@ -10,7 +10,7 @@ from django.utils import timezone
 from accounts.permissions import permission_required,permitted
 from documents.models import Document
 from documents.access import visible_documents
-from .models import Equipment,ProjectObject,Contract,EquipmentAssignment,EquipmentDocument
+from .models import Equipment,ProjectObject,Contract,EquipmentAssignment,EquipmentDocument,BrigadeAssignment
 from .access import visible_objects,visible_contracts,contract_card
 from . import equipment as service
 
@@ -26,6 +26,7 @@ class PlacementForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     project_object=forms.ModelChoiceField(label='Объект',queryset=ProjectObject.objects.none())
     contract=forms.ModelChoiceField(label='Контракт (при необходимости)',queryset=Contract.objects.none(),required=False)
+    crew_assignment=forms.ModelChoiceField(label='Бригада на объекте (необязательно)',queryset=BrigadeAssignment.objects.none(),required=False)
     start_date=forms.DateField(label='Начало работы',widget=DATE)
     end_date=forms.DateField(label='Окончание работы',widget=DATE,required=False)
     note=forms.CharField(label='Пояснение',max_length=1000,required=False,widget=forms.Textarea(attrs={'rows':2}))
@@ -34,6 +35,8 @@ class PlacementForm(forms.Form):
         super().__init__(*args,**kwargs)
         self.fields['project_object'].queryset=visible_objects(user).exclude(status='archived')
         self.fields['contract'].queryset=visible_contracts(user).exclude(status='archived')
+        from .crews import visible_assignments
+        self.fields['crew_assignment'].queryset=visible_assignments(user).filter(Q(end_date__isnull=True)|Q(end_date__gte=timezone.localdate()))
         # Contract labels respect per-field grants.
         self.fields['contract'].label_from_instance=lambda c:contract_card(c,user)['title']
 
@@ -46,7 +49,7 @@ class FileForm(forms.ModelForm):
     class Meta:
         model=EquipmentDocument
         fields=['document','label','expires_on','remind','days_before','active']
-        labels={'document':'Файл документа','active':'Показывать связь с техникой'}
+        labels={'document':'Файл документа','label':'Название документа на карточке техники','active':'Показывать связь с техникой'}
         widgets={'expires_on':DATE}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['document'].queryset=visible_documents(user).filter(archived=False).order_by('title');self.fields['days_before'].min_value=0;self.fields['days_before'].max_value=365
@@ -71,17 +74,24 @@ def listing(request):
     try:target_id=UUID(request.GET.get('assign_object',''))
     except ValueError:target_id=None
     target=visible_objects(request.user).filter(pk=target_id).first() if target_id else None
+    from .crews import visible_assignments
+    try:crew_id=UUID(request.GET.get('assign_crew',''))
+    except ValueError:crew_id=None
+    target_crew=visible_assignments(request.user).filter(pk=crew_id).first() if crew_id else None
+    if target_crew:target=target_crew.project_object
     qs=filtered(request.user,request.GET);page=Paginator(qs,25).get_page(request.GET.get('page'))
     location_map={}
     for row in service.current(service.placements(request.user)).filter(equipment__in=page.object_list):location_map.setdefault(row.equipment_id,[]).append(row)
     rows=[{'item':item,'locations':location_map.get(item.pk,[])} for item in page.object_list]
-    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'state':request.GET.get('state',''),'target_object':target,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
+    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
 
 @login_required
 def detail(request,pk):
     item=get_object_or_404(service.visible_equipment(request.user),pk=pk)
     cards={c.pk:contract_card(c,request.user) for c in visible_contracts(request.user)}
-    history=[{'row':a,'contract':cards.get(a.contract_id)} for a in service.placements(request.user).filter(equipment=item).order_by('-start_date','-pk')]
+    from .crews import visible_assignments
+    crews={a.pk:a.brigade.name for a in visible_assignments(request.user)}
+    history=[{'row':a,'contract':cards.get(a.contract_id),'crew':crews.get(a.crew_assignment_id)} for a in service.placements(request.user).filter(equipment=item).order_by('-start_date','-pk')]
     return render(request,'projects/equipment_detail.html',{'item':item,'history':history,'files':service.equipment_files(request.user).filter(equipment=item),'events':[]})
 
 @permission_required('equipment.manage')
@@ -100,10 +110,16 @@ def assign(request,pk):
     item=get_object_or_404(service.visible_equipment(request.user),pk=pk)
     initial={'expected_version':item.version,'start_date':timezone.localdate()}
     if request.GET.get('object'):initial['project_object']=request.GET['object']
+    if request.GET.get('crew'):
+        from .crews import visible_assignments
+        try:crew_id=UUID(request.GET['crew'])
+        except ValueError:crew_id=None
+        assignment=get_object_or_404(visible_assignments(request.user),pk=crew_id)
+        initial.update(crew_assignment=assignment.pk,project_object=assignment.project_object_id,contract=assignment.contract_id,start_date=max(timezone.localdate(),assignment.start_date),end_date=assignment.end_date)
     form=PlacementForm(request.POST or None,user=request.user,initial=initial);status=200
     if request.method=='POST' and form.is_valid():
         c=form.cleaned_data
-        try:service.assign(request.user,pk,c['expected_version'],c['project_object'],c['contract'],c['start_date'],c['end_date'],c['note'],c['transfer'])
+        try:service.assign(request.user,pk,c['expected_version'],c['project_object'],c['contract'],c['start_date'],c['end_date'],c['note'],c['transfer'],c['crew_assignment'])
         except ValidationError as e:form.add_error(None,e);status=409
         else:messages.success(request,'Назначение сохранено. Доступ к объекту и документам не изменён.');return redirect('equipment_detail',pk=pk)
     return render(request,'projects/equipment_form.html',{'form':form,'item':item,'title':'Назначить / перевести технику'},status=status)

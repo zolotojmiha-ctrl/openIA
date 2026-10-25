@@ -59,10 +59,16 @@ def dates(start,end):
     if not start or end and end<start:raise ValidationError('Окончание не может быть раньше начала.')
 
 @transaction.atomic
-def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False):
+def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False,crew_assignment=None):
     actor=manager(user);item=visible_equipment(actor).select_for_update().get(pk=pk)
     if item.version!=version or item.status=='archived':raise ValidationError('Техника изменена или находится в архиве.')
     dates(start,end)
+    if crew_assignment:
+        from .crews import visible_assignments
+        crew_assignment=visible_assignments(actor).select_for_update(of=('self',)).filter(pk=crew_assignment.pk).first()
+        if not crew_assignment:raise ValidationError('Назначение бригады больше недоступно. Обновите выбор.')
+        if crew_assignment.project_object_id!=obj.pk or not contract or crew_assignment.contract_id!=contract.pk:raise ValidationError('Бригада назначена на другой объект или контракт.')
+        if start<crew_assignment.start_date or (crew_assignment.end_date and (not end or end>crew_assignment.end_date)):raise ValidationError('Период техники должен входить в период назначения бригады.')
     if obj.status=='archived' or obj.legal_entity_id!=item.legal_entity_id or not visible_objects(actor).filter(pk=obj.pk).exists():raise ValidationError('Объект недоступен или в архиве.')
     if contract and (contract.status=='archived' or not visible_contracts(actor).filter(pk=contract.pk,objects_linked=obj).exists()):raise ValidationError('Контракт недоступен или не связан с объектом.')
     if len(note)>1000:raise ValidationError('Пояснение — до 1000 символов.')
@@ -75,9 +81,9 @@ def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False):
         if not visible_objects(actor).filter(pk=old.project_object_id).exists():raise ValidationError('Нет доступа к прежнему объекту. Перевод должен выполнить уполномоченный сотрудник.')
         old.end_date=start-timedelta(days=1);old.version+=1;old.save(update_fields=['end_date','version'])
         audit(actor,'equipment_assigned',kind='transfer_from',assignment=str(old.pk),end=str(old.end_date))
-    result=EquipmentAssignment.objects.create(equipment=item,project_object=obj,contract=contract,start_date=start,end_date=end,note=note,created_by=actor)
+    result=EquipmentAssignment.objects.create(equipment=item,project_object=obj,contract=contract,crew_assignment=crew_assignment,start_date=start,end_date=end,note=note,created_by=actor)
     item.version+=1;item.save(update_fields=['version'])
-    audit(actor,'equipment_assigned',kind='assigned',equipment=str(pk),assignment=str(result.pk),object=str(obj.pk),contract=str(contract.pk) if contract else None,start=str(start),end=str(end or ''),note=note)
+    audit(actor,'equipment_assigned',kind='assigned',equipment=str(pk),assignment=str(result.pk),object=str(obj.pk),contract=str(contract.pk) if contract else None,start=str(start),end=str(end or ''),note=note,crew_assignment=str(crew_assignment.pk) if crew_assignment else None)
     return result
 
 @transaction.atomic
