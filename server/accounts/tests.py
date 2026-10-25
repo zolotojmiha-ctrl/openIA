@@ -94,7 +94,7 @@ class AccountTests(TestCase):
             self.assertFalse(user.is_leader)
             self.assertEqual(set(user.grants.values_list('permission',flat=True)),{'document.upload','personnel.manage'})
             self.assertTrue(user.must_change_password)
-            temporary=r.context['temporary'];self.assertTrue(user.check_password(temporary))
+            temporary=r.context['temporary'];self.assertEqual(len(temporary),6);self.assertTrue(user.check_password(temporary))
             self.assertNotEqual(user.password,temporary)
             self.assertNotIn(temporary,str(list(AuditEvent.objects.values())))
     def test_no_default_grants(self):
@@ -113,7 +113,7 @@ class AccountTests(TestCase):
     def test_reset_password_revokes_sessions(self):
         employee_client=Client();employee_client.force_login(self.employee)
         self.leader_login();r=self.client.post(reverse('employee_reset',args=[self.employee.pk]))
-        self.employee.refresh_from_db();self.assertTrue(self.employee.check_password(r.context['temporary']))
+        self.employee.refresh_from_db();self.assertEqual(len(r.context['temporary']),6);self.assertTrue(self.employee.check_password(r.context['temporary']))
         self.assertTrue(self.employee.must_change_password)
         self.assertEqual(employee_client.get(reverse('dashboard')).status_code,302)
     def test_no_registration_or_django_admin(self):

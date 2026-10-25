@@ -1,5 +1,5 @@
+from .passwords import temporary_password
 """Connect an HR record to a login without implicit file or project access."""
-import secrets
 from django import forms
 from django.core.exceptions import PermissionDenied
 from django.db import transaction,IntegrityError
@@ -53,7 +53,7 @@ def person_account(request,pk):
                 if person.revision!=form.cleaned_data['revision'] or person.user_id:form.add_error(None,'Карточка уже связана или изменена. Обновите страницу.')
                 else:
                     if form.cleaned_data['mode']=='create':
-                        temporary=secrets.token_urlsafe(20)
+                        temporary=temporary_password()
                         account=User.objects.create_user(form.cleaned_data['phone'],temporary,full_name=person.full_name,role=form.cleaned_data['role'],temporary_expires_at=temporary_deadline())
                     else:
                         account=User.objects.select_for_update().get(pk=form.cleaned_data['account'].pk)

@@ -19,7 +19,7 @@ class Command(BaseCommand):
             self.stdout.write(f'Закрытая настройка {label}. Введённые данные не будут выведены.')
             name=getpass.getpass('ФИО (скрытый ввод): ').strip()
             phone=getpass.getpass('Телефон (скрытый ввод): ')
-            password=getpass.getpass('Уникальный временный пароль (не менее 14 символов): ')
+            password=getpass.getpass('Уникальный временный пароль (не менее 6 символов): ')
             confirmation=getpass.getpass('Повторите пароль: ')
             if not name or len(name)>150 or password!=confirmation or password in secrets:
                 raise CommandError('Проверьте ФИО, совпадение и независимость паролей.')

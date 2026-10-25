@@ -58,7 +58,7 @@ elif DEVELOPMENT:
 else:
     raise ImproperlyConfigured('Set DATABASE_URL for the production PostgreSQL database.')
 AUTH_USER_MODEL = 'accounts.User'
-AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator','OPTIONS':{'user_attributes':['phone','full_name']}},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':14}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
+AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator','OPTIONS':{'user_attributes':['phone','full_name']}},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':6}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.Argon2PasswordHasher', 'django.contrib.auth.hashers.PBKDF2PasswordHasher']
 LANGUAGE_CODE = 'ru'
 TIME_ZONE = 'Asia/Omsk'

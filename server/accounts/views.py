@@ -1,4 +1,4 @@
-import secrets
+from .passwords import temporary_password
 from datetime import timedelta
 from functools import wraps
 from django.conf import settings
@@ -150,7 +150,7 @@ def employee_edit(request,pk=None):
                 else:
                     employee=User()
                     before=[]
-                    temporary=secrets.token_urlsafe(20)
+                    temporary=temporary_password()
                     employee.set_password(temporary)
                 employee.full_name=form.cleaned_data['full_name']
                 employee.phone=form.cleaned_data['phone']
@@ -187,7 +187,7 @@ def reset_password(request,pk):
         actor=locked_users[request.user.pk]
         user=locked_users.get(pk)
         if not user or not permitted(actor,'users.manage') or not manageable_user(actor,user):raise PermissionDenied
-        temporary=secrets.token_urlsafe(20)
+        temporary=temporary_password()
         user.set_password(temporary)
         user.must_change_password=True
         user.temporary_expires_at=temporary_deadline()
