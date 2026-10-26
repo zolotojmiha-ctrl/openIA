@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import IntegrityError, transaction
 from django.http import FileResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
@@ -167,7 +167,12 @@ def employee_edit(request,pk=None):
                     from documents.models import Person
                     from projects.models import LegalEntity,COMPANY_TAX_ID
                     Person.objects.create(user=employee,legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID),full_name=employee.full_name,position=employee.get_role_display(),created_by=request.user)
+                if form.cleaned_data.get('request_mail'):
+                    from postoffice.services import request_address
+                    request_address(actor,form.cleaned_data['mail_address'],owner=employee)
                 audit(request.user,'employee_created' if temporary else 'employee_updated',employee,previous_permissions=before,permissions=form.cleaned_data['permissions'],active=employee.is_active)
+        except ValidationError as exc:
+            form.add_error(None,exc)
         except IntegrityError:
             form.add_error('phone','Телефон уже используется. Обновите страницу и повторите.')
         else:

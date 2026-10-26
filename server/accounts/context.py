@@ -1,7 +1,7 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.12.3-profile'}
+    context={'lan_test':settings.LAN_TEST,'release_version':'6.13.0-mail'}
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts
@@ -11,6 +11,8 @@ def local_testing(request):
         context.update(can_repairs=can_prepare(request.user) or jobs.exists(),can_prepare_repairs=can_prepare(request.user),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
         context['can_work']=context['can_work'] or can_prepare(request.user) or jobs.exists() or context['can_manage_projects']
         if request.user.is_leader:
+            from projects.daily import works as daily_works
+            context['daily_review_count']=daily_works(request.user).filter(state='reported').count()
             from projects.closure import pending_contracts
             context['contract_closure_count']=pending_contracts(request.user).count()
         context['repair_return_count']=jobs.filter(assigned_to=request.user).exclude(review_note='').count()
@@ -25,6 +27,8 @@ def local_testing(request):
         context['document_due_count']=len(due_files(request.user))
         from .business_notices import unread as business_unread
         context['business_notice_count']=business_unread(request.user).count()
+        from postoffice.access import boxes
+        context['mail_count']=sum(boxes(request.user).filter(state='active').values_list('unread',flat=True))
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

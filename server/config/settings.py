@@ -42,7 +42,7 @@ if LAN_TEST:
             raise ImproperlyConfigured('LAN test hosts must be explicit local IPv4 addresses.')
         if address.version != 4 or not any(address in network for network in private_networks):
             raise ImproperlyConfigured('LAN test is restricted to local IPv4 addresses.')
-INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects', 'documents', 'finance', 'repairs']
+INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects', 'documents', 'finance', 'repairs', 'postoffice']
 MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'whitenoise.middleware.WhiteNoiseMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'repairs.middleware.FieldUploads', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware', 'accounts.middleware.AccountStateMiddleware', 'django.contrib.messages.middleware.MessageMiddleware', 'django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -91,3 +91,19 @@ if os.environ.get('ARMADA_TRUST_PROXY') == '1':
 CSRF_TRUSTED_ORIGINS = [v for v in os.environ.get('ARMADA_CSRF_ORIGINS','').split(',') if v]
 
 PRIVATE_DOCUMENT_ROOT = Path(os.environ.get("PRIVATE_DOCUMENT_ROOT", BASE_DIR / ".runtime" / "documents"))
+
+# Mail endpoints are operator-controlled; users cannot submit arbitrary hosts.
+ARMADA_MAIL_DOMAIN=os.environ.get('ARMADA_MAIL_DOMAIN','armada-sibir.ru')
+ARMADA_IMAP_HOST=os.environ.get('ARMADA_IMAP_HOST','imap.beget.com')
+ARMADA_IMAP_PORT=int(os.environ.get('ARMADA_IMAP_PORT','993'))
+ARMADA_SMTP_HOST=os.environ.get('ARMADA_SMTP_HOST','smtp.beget.com')
+ARMADA_SMTP_STARTTLS=os.environ.get('ARMADA_SMTP_STARTTLS')=='1'
+ARMADA_SMTP_PORT=int(os.environ.get('ARMADA_SMTP_PORT','587' if ARMADA_SMTP_STARTTLS else '465'))
+ARMADA_MAIL_KEY=read_secret('ARMADA_MAIL_KEY')
+if DEVELOPMENT and not ARMADA_MAIL_KEY:
+    import base64
+    mail_key=RUNTIME/'mail-key'
+    try:
+        with open(mail_key,'x',opener=lambda p,flags:os.open(p,flags,0o600)) as f:f.write(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())
+    except FileExistsError:pass
+    ARMADA_MAIL_KEY=mail_key.read_text().strip()

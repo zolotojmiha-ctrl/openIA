@@ -226,9 +226,10 @@ def _apply_row(actor,kind,v):
         if obj and (Job.objects.filter(contract=obj).exclude(section__project_object_id__in=desired).exists() or (Job.objects.filter(contract=obj).exists() and 'repairs' not in saved.work_kinds)):
             raise ValidationError('Нельзя убрать объект или вид работ, пока с ними связаны ремонтные задания.')
     if kind=='contracts' and obj:
-        for related in (obj.brigade_assignments,obj.equipment_placements,obj.subcontract_orders):
+        for related in (obj.brigade_assignments,obj.equipment_placements,obj.subcontract_orders,obj.daily_works):
             if related.exclude(project_object_id__in=desired).exists():
                 raise ValidationError('Нельзя убрать объект с назначениями бригад, техники или поручениями субподрядчикам.')
+        if obj.daily_works.exclude(kind__in=saved.work_kinds).exists():raise ValidationError('Нельзя убрать вид работ с ежедневными выполнениями.')
         if obj.subcontract_orders.exclude(kind__in=saved.work_kinds).exists():
             raise ValidationError('Нельзя убрать вид работ, по которому есть поручения субподрядчику.')
     if not obj:

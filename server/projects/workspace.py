@@ -40,7 +40,9 @@ def contract(request,pk):
     item=get_object_or_404(visible_contracts(request.user),pk=pk)
     places=visible_objects(request.user).filter(contracts=item).order_by('name')
     qs=visible_jobs(request.user).filter(contract=item)
-    return render(request,'projects/work_contract.html',{'card':contract_card(item,request.user),'kinds':item.work_kinds_display,'places':places,'job_count':qs.count(),'review_count':qs.filter(state='reported').count(),'work_contract_id':item.pk,'work_types':[{'code':k,'name':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS)]})
+    from .daily import works as daily_works
+    daily_rows=daily_works(request.user).filter(contract=item)
+    return render(request,'projects/work_contract.html',{'card':contract_card(item,request.user),'kinds':item.work_kinds_display,'places':places,'job_count':qs.count(),'daily_count':daily_rows.count(),'review_count':qs.filter(state='reported').count()+daily_rows.filter(state='reported').count(),'work_contract_id':item.pk,'work_types':[{'code':k,'name':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS)]})
 
 @login_required
 def place(request,pk,object_id):
@@ -51,7 +53,7 @@ def place(request,pk,object_id):
     for section in sections:
         qs=visible_jobs(request.user).filter(contract=item,section=section)
         rows.append({'section':section,'total':qs.count(),'review':qs.filter(state='reported').count()})
-    return render(request,'projects/work_place.html',{'card':contract_card(item,request.user),'object':obj,'rows':rows,'has_repairs':'repairs' in item.work_kinds,'other_types':[dict(WORK_KINDS)[k] for k in item.work_kinds if k in dict(WORK_KINDS) and k!='repairs']})
+    return render(request,'projects/work_place.html',{'card':contract_card(item,request.user),'object':obj,'rows':rows,'has_repairs':'repairs' in item.work_kinds,'other_types':[{'code':k,'label':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS) and k!='repairs']})
 
 class AllocationForm(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)

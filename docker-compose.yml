@@ -1,7 +1,7 @@
 # Local test only. No existing Synology folders or Docker socket are mounted.
 services:
   init:
-    image: armada-test-web:profile-v6.12.3
+    image: armada-test-web:mail-v6.13.0
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
@@ -44,7 +44,7 @@ services:
     security_opt:
       - no-new-privileges:true
   web:
-    image: armada-test-web:profile-v6.12.3
+    image: armada-test-web:mail-v6.13.0
     build:
       context: .
       dockerfile: deploy/synology/Dockerfile
@@ -58,6 +58,7 @@ services:
       PRIVATE_DOCUMENT_ROOT: /var/lib/armada-documents
       ARMADA_LAN_TEST: "1"
       ARMADA_SECRET_KEY_FILE: /run/armada/django-key
+      ARMADA_MAIL_KEY_FILE: /run/armada/mail-key
       DATABASE_URL_FILE: /run/armada/database-url
       ARMADA_ALLOWED_HOSTS: "${NAS_IP:-192.168.50.248},127.0.0.1"
     ports:
@@ -82,11 +83,37 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+  mailworker:
+    image: armada-test-web:mail-v6.13.0
+    restart: unless-stopped
+    command: [python, server/manage.py, process_mail, --loop]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=128m,mode=1777
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PRIVATE_DOCUMENT_ROOT: /var/lib/armada-documents
+      ARMADA_LAN_TEST: "1"
+      ARMADA_SECRET_KEY_FILE: /run/armada/django-key
+      ARMADA_MAIL_KEY_FILE: /run/armada/mail-key
+      DATABASE_URL_FILE: /run/armada/database-url
+      ARMADA_ALLOWED_HOSTS: "${NAS_IP:-192.168.50.248},127.0.0.1"
+    volumes:
+      - config:/run/armada:ro
+    networks: [private, mail_egress]
+    depends_on:
+      web:
+        condition: service_started
+
 volumes:
   documents:
   config:
   database:
 networks:
+  mail_egress:
   private:
     internal: true
   entry: {}

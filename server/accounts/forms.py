@@ -19,9 +19,14 @@ class EmployeeForm(forms.Form):
         self.edit_user=user
         self.actor=actor
         super().__init__(*args,**kwargs)
+        from postoffice.forms import add_request_fields
+        add_request_fields(self,actor)
         if actor and not actor.is_leader:
             allowed=set(actor.grants.values_list('permission',flat=True))
             self.fields['permissions'].choices=[(k,v) for k,v in PERMISSIONS.items() if k in allowed]
+    def clean(self):
+        from postoffice.forms import validate_request
+        return validate_request(self,super().clean())
     def clean_phone(self):
         phone=normalize_phone(self.cleaned_data['phone'])
         existing=User.objects.filter(phone=phone)

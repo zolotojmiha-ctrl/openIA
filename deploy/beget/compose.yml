@@ -1,0 +1,127 @@
+name: armada
+x-app: &app
+  image: armada-web:6.13.0
+  build:
+    context: ../..
+    dockerfile: deploy/synology/Dockerfile
+  read_only: true
+  restart: unless-stopped
+  tmpfs:
+    - /tmp:rw,size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  networks: [backend, edge]
+  environment: &environment
+    ARMADA_SECRET_KEY_FILE: /run/armada/django-key
+    ARMADA_MAIL_KEY_FILE: /run/armada/mail-key
+    DATABASE_URL_FILE: /run/armada/database-url
+    PRIVATE_DOCUMENT_ROOT: /var/lib/armada-documents
+    ARMADA_ALLOWED_HOSTS: armada-sibir.ru,www.armada-sibir.ru,app.armada-sibir.ru
+    ARMADA_CSRF_ORIGINS: https://armada-sibir.ru,https://www.armada-sibir.ru,https://app.armada-sibir.ru
+    ARMADA_TRUST_PROXY: "1"
+    ARMADA_MAIL_DOMAIN: armada-sibir.ru
+    ARMADA_IMAP_HOST: ${ARMADA_IMAP_HOST:-imap.beget.com}
+    ARMADA_IMAP_PORT: ${ARMADA_IMAP_PORT:-993}
+    ARMADA_SMTP_HOST: ${ARMADA_SMTP_HOST:-smtp.beget.com}
+    ARMADA_SMTP_PORT: ${ARMADA_SMTP_PORT:-465}
+    ARMADA_SMTP_STARTTLS: ${ARMADA_SMTP_STARTTLS:-0}
+  volumes:
+    - config:/run/armada:ro
+    - documents:/var/lib/armada-documents
+services:
+  init:
+    image: armada-web:6.13.0
+    build:
+      context: ../..
+      dockerfile: deploy/synology/Dockerfile
+    user: "0:0"
+    command: [python, /app/deploy/synology/init_secrets.py]
+    network_mode: none
+    read_only: true
+    mem_limit: 128m
+    volumes:
+      - config:/run/armada
+      - documents:/var/lib/armada-documents
+  db:
+    image: armada-db:17
+    build:
+      context: ../..
+      dockerfile: deploy/synology/Dockerfile.postgres
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: armada_admin
+      POSTGRES_DB: armada
+      POSTGRES_PASSWORD_FILE: /run/armada/postgres-admin-password
+    command: [postgres, -c, shared_buffers=32MB, -c, max_connections=25]
+    volumes:
+      - database:/var/lib/postgresql/data
+      - config:/run/armada:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U armada_admin -d armada]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  web:
+    <<: *app
+    mem_limit: 512m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/cabinet/login/',headers={'Host':'app.armada-sibir.ru','X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+  mailworker:
+    <<: *app
+    mem_limit: 256m
+    command: [python, server/manage.py, process_mail, --loop]
+    depends_on:
+      web:
+        condition: service_healthy
+  proxy:
+    image: caddy:2-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL to an existing monitored email}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - proxy_config:/config
+    networks: [edge]
+    depends_on:
+      web:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  config:
+  documents:
+  database:
+  certificates:
+  proxy_config:
+networks:
+  backend:
+    internal: true
+  edge:

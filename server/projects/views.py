@@ -153,6 +153,10 @@ def contract_edit(request,pk=None):
             from repairs.models import Job
             if locked and (Job.objects.filter(contract=locked).exclude(section__project_object_id__in=desired).exists() or (Job.objects.filter(contract=locked).exists() and 'repairs' not in saved.work_kinds)):
                 form.add_error(None,'Нельзя убрать место или вид работ, пока с ними связаны ремонтные задания.')
+            if locked:
+                for related in (locked.daily_works,locked.brigade_assignments,locked.equipment_placements,locked.subcontract_orders):
+                    if related.exclude(project_object_id__in=desired).exists():form.add_error(None,'Нельзя убрать объект с выполнениями или назначениями.')
+                if locked.daily_works.exclude(kind__in=saved.work_kinds).exists():form.add_error(None,'Нельзя убрать вид работ с ежедневными выполнениями.')
             if not form.errors:
                 saved.version=locked.version+1 if locked else 1
                 if not obj:saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)

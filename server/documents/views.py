@@ -5,7 +5,7 @@ from uuid import UUID
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied,ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
@@ -434,17 +434,23 @@ def person_detail(request,pk):
 def person_edit(request,pk=None):
     if not has_permission(request.user,'personnel.manage'):raise PermissionDenied
     obj=get_object_or_404(visible_people(request.user),pk=pk) if pk else None
-    form=PersonForm(request.POST or None,instance=obj,initial={'expected_revision':obj.revision} if obj else None)
+    form=PersonForm(request.POST or None,actor=request.user,instance=obj,initial={'expected_revision':obj.revision} if obj else None)
     if request.method=='POST' and form.is_valid():
-        with transaction.atomic():
-            if obj:
-                locked=Person.objects.select_for_update().get(pk=pk)
-                if locked.revision!=form.cleaned_data['expected_revision']:form.add_error(None,'Карточка изменена. Обновите страницу.')
-            if not form.errors:
-                saved=form.save(commit=False)
-                if not obj:saved.created_by=request.user;saved.legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID)
-                saved.revision+=1;saved.save();audit(request.user,'person_updated',entity_id=str(saved.pk))
-                return redirect('person_detail',pk=saved.pk)
+        try:
+            with transaction.atomic():
+                if obj:
+                    locked=Person.objects.select_for_update().get(pk=pk)
+                    if locked.revision!=form.cleaned_data['expected_revision']:form.add_error(None,'Карточка изменена. Обновите страницу.')
+                if not form.errors:
+                    saved=form.save(commit=False)
+                    if not obj:saved.created_by=request.user;saved.legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID)
+                    saved.revision+=1;saved.save();audit(request.user,'person_updated',entity_id=str(saved.pk))
+                    if form.cleaned_data.get('request_mail'):
+                        from postoffice.services import request_address
+                        request_address(request.user,form.cleaned_data['mail_address'],person=saved)
+        except ValidationError as exc:form.add_error(None,exc)
+        else:
+            if not form.errors:return redirect('person_detail',pk=saved.pk)
     return render(request,'documents/form.html',{'form':form,'title':'Карточка работника'})
 
 @login_required

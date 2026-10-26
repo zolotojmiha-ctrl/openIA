@@ -89,6 +89,13 @@ class ShareForm(forms.Form):
         return data
 
 class PersonForm(forms.ModelForm):
+    def __init__(self,*args,actor=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        from postoffice.forms import add_request_fields
+        add_request_fields(self,actor)
+    def clean(self):
+        from postoffice.forms import validate_request
+        return validate_request(self,super().clean())
     expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
     class Meta:
         model=Person

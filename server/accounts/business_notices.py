@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.urls import reverse
 from .models import AuditEvent,BusinessNoticeRead,SupportRequest
 
-NOISE=('login','logout','document_downloaded','document_exported','repair_exported','sessions_ended')
+NOISE=('login','logout','document_downloaded','document_exported','repair_exported','sessions_ended','mail_read')
 def events(user):
     qs=AuditEvent.objects.exclude(action__in=NOISE)
     if not user.is_leader:
@@ -16,6 +16,8 @@ def unread(user):
     return events(user).exclude(pk__in=BusinessNoticeRead.objects.filter(user=user).values('event_id'))
 
 def destination(event):
+    if event.action.startswith('work_'):return reverse('daily_detail',args=[event.details['work']])
+    if event.action.startswith(('mail_','mailbox_')):return reverse('mail')
     if event.action=='support_updated':return reverse('support_detail',args=[event.details['request_id']])
     if event.action.startswith('repair_'):return reverse('repairs')+'?state=reported' if event.action=='repair_reported' else reverse('work_home')
     if event.action.startswith('subcontract_'):return reverse('subcontracts')

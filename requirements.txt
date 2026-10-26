@@ -13,3 +13,5 @@ typing_extensions==4.16.0
 whitenoise==6.12.0
 Pillow==13.0.0
 pypdf==6.21.2
+
+cryptography==50.0.2

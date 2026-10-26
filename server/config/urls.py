@@ -1,9 +1,10 @@
 from documents import assembly,deadlines
 from projects.closure import closure
-from django.urls import path
+from django.urls import path,include
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
+from projects import daily_views
 from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
 from finance import views as finance
@@ -12,6 +13,13 @@ from repairs import views as repairs
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/daily/review/',daily_views.review_queue,name='daily_review'),
+ path('cabinet/daily/<uuid:record_id>/',daily_views.detail,name='daily_detail'),
+ path('cabinet/work/contracts/<uuid:pk>/places/<uuid:object_id>/daily/<str:kind>/',daily_views.listing,name='daily_works'),
+ path('cabinet/work/contracts/<uuid:pk>/places/<uuid:object_id>/daily/<str:kind>/new/',daily_views.edit,name='daily_new'),
+ path('cabinet/work/contracts/<uuid:pk>/places/<uuid:object_id>/daily/<str:kind>/excel/',daily_views.excel,name='daily_excel'),
+ path('cabinet/work/contracts/<uuid:pk>/places/<uuid:object_id>/daily/<str:kind>/<uuid:record_id>/',daily_views.edit,name='daily_edit'),
+ path('cabinet/mail/',include('postoffice.urls')),
  path('cabinet/subcontracts/',subcontract_views.home,name='subcontracts'),
  path('cabinet/subcontracts/companies/new/',subcontract_views.company_edit,name='subcontract_company_new'),
  path('cabinet/subcontracts/companies/<uuid:pk>/',subcontract_views.company_detail,name='subcontract_company'),

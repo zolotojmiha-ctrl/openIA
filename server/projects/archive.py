@@ -12,6 +12,9 @@ from django.db import models,transaction,OperationalError
 MESSAGE='Контракт находится в архиве. Изменения доступны после восстановления руководителем.'
 _lifecycle=ContextVar('contract_lifecycle',default=False)
 PATHS={
+ 'projects.dailywork':('contract_id',),
+ 'projects.dailyworkrevision':('work__contract_id',),
+ 'projects.dailyworkdecision':('revision__work__contract_id',),
  'projects.contractchange':('contract_id',),
  'projects.contractchangerevision':('change__contract_id',),
  'projects.contractchangedecision':('revision__change__contract_id',),

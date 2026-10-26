@@ -84,6 +84,7 @@ def closing_checks(contract):
         elif order.state!='confirmed':unfinished_orders+=1
     checks=[
         ('Указания заказчика на рассмотрении',contract.customer_changes.filter(state='review').count()),
+        ('Ежедневные ведомости ожидают проверки или доработки',contract.daily_works.exclude(state='confirmed').count()),
         ('Ремонты ожидают проверки',jobs.filter(state='reported').count()),
         ('Ремонты не завершены',jobs.exclude(state__in=['reported','confirmed']).count()),
         ('Дефекты без ремонтного задания',Defect.objects.filter(contract=contract,archived_at__isnull=True,jobs__isnull=True).count()),

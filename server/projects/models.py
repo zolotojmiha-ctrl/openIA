@@ -6,7 +6,7 @@ from django.db import models
 
 COMPANY_TAX_ID = '8604073687'
 STATUSES = [('planned','Подготовка'),('active','В работе'),('completed','Завершён'),('archived','В архиве')]
-WORK_KINDS=[('repairs','Устранение дефектов'),('valves','Замена запорной арматуры'),('diagnostics','Подготовка к диагностике'),('construction','Другие СМР')]
+WORK_KINDS=[('repairs','Устранение дефектов'),('valves','Замена запорной арматуры'),('diagnostics','Подготовка к диагностике'),('insulation','Замена изоляции'),('construction','Другие СМР')]
 
 SHARED_FIELDS = {
     'show_number':'Номер договора',
@@ -465,3 +465,44 @@ class ContractChangeSubmission(ArchiveProtectedModel):
     change=models.ForeignKey(ContractChange,on_delete=models.PROTECT,related_name='+')
     revision=models.ForeignKey(ContractChangeRevision,on_delete=models.PROTECT,related_name='+')
     digest=models.CharField(max_length=64)
+
+WORK_STAGES={
+ 'diagnostics':[('strip','Снятие изоляции'),('blast_diagnostics','Пескоструйная подготовка к диагностике'),('blast_insulation','Пескоструйная подготовка перед изоляцией'),('grind_long','Продольная шлифовка'),('grind_cross','Поперечная шлифовка'),('insulate','Нанесение изоляции'),('downtime','Простой')],
+ 'insulation':[('strip','Снятие изоляции'),('grind_long','Продольная шлифовка'),('grind_cross','Поперечная шлифовка'),('insulate','Нанесение изоляции'),('downtime','Простой')],
+ 'valves':[('prepare','Подготовка'),('demount','Демонтаж'),('mount','Монтаж'),('weld','Сварка'),('test','Испытания'),('restore','Восстановление'),('downtime','Простой')],
+ 'construction':[('prepare','Подготовка'),('work','Выполнение работ'),('test','Испытания'),('restore','Восстановление'),('downtime','Простой')],
+}
+class DailyWork(ArchiveProtectedModel):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='daily_works')
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,related_name='daily_works')
+    kind=models.CharField(max_length=20,choices=WORK_KINDS)
+    state=models.CharField(max_length=16,choices=[('reported','На проверке'),('confirmed','Подтверждено'),('revision','На доработке')],default='reported')
+    version=models.PositiveIntegerField(default=1)
+    current_revision=models.ForeignKey('DailyWorkRevision',on_delete=models.PROTECT,null=True,related_name='+')
+    active_revision=models.ForeignKey('DailyWorkRevision',on_delete=models.PROTECT,null=True,related_name='+')
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+
+    @property
+    def stage_label(self):return dict(WORK_STAGES.get(self.kind,[])).get(self.current_revision.data.get('stage'),'') if self.current_revision_id else ''
+
+class DailyWorkRevision(ArchiveProtectedModel):
+    work=models.ForeignKey(DailyWork,on_delete=models.PROTECT,related_name='revisions')
+    number=models.PositiveIntegerField()
+    data=models.JSONField()
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['work','number'],name='daily_work_revision_unique')]
+
+class DailyWorkDecision(ArchiveProtectedModel):
+    revision=models.OneToOneField(DailyWorkRevision,on_delete=models.PROTECT,related_name='decision')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    action=models.CharField(max_length=16,choices=[('confirmed','Подтверждено'),('revision','На доработку')])
+    note=models.CharField(max_length=2000,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+class DailyWorkImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)

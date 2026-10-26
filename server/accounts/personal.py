@@ -178,12 +178,19 @@ def notifications(request):
     business=business_unread(request.user)
     business_count=business.count()
     keys+=['b:'+str(pk) for pk in business.values_list('pk',flat=True)[:50]]
+    from postoffice.access import boxes
+    mail_rows=list(boxes(request.user).filter(state='active',unread__gt=0).values('pk','unread','unread_digest'))
+    old_keys=list(keys)
+    keys+=['m:'+str(b['pk'])+':'+b['unread_digest'] for b in mail_rows]
     new=keys
     from django.urls import reverse
     notices=Notice.objects.filter(user=request.user,read=False,document__in=visible_documents(request.user)).order_by('-created_at')
     url=reverse('document_detail',args=[notices[0].document_id]) if not unread.exists() and notices.exists() else reverse('documents')+'?mode=inbox'
     if business_count:url=reverse('business_inbox')
-    return JsonResponse({'business':business_count,'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые уведомления: '+str(len(new)) if new else ''})
+    elif mail_rows and not old_keys:url=reverse('mail')
+    from postoffice.access import boxes
+    mail_count=sum(boxes(request.user).filter(state='active').values_list('unread',flat=True))
+    return JsonResponse({'mail':mail_count,'business':business_count,'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые уведомления: '+str(len(new)) if new else ''})
 
 @login_required
 def business_inbox(request):

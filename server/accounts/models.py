@@ -9,6 +9,7 @@ from django.db import models
 from django.utils.crypto import salted_hmac
 
 PERMISSIONS = {
+ 'works.prepare':'Готовить и корректировать ежедневные ведомости работ',
  'contract.changes':'Вести указания заказчика и изменения контрактов',
  'subcontract.manage':'Вести субподрядчиков, поручения и доступ представителей',
  'stock.manage':'Вести склады, остатки и движение материалов',
@@ -86,6 +87,8 @@ class AuditEvent(models.Model):
     ACTIONS += [('stock_updated','Изменены складские справочники'),('stock_access_changed','Доступ к складу'),('stock_moved','Складская операция'),('stock_imported','Импорт складских данных')]
     ACTIONS += [('subcontract_updated','Изменён субподряд'),('subcontract_access_changed','Доступ к субподряду'),('subcontract_reported','Результат субподрядчика'),('subcontract_decided','Проверка субподряда'),('subcontract_document_linked','Документ субподрядчика'),('subcontract_imported','Импорт субподряда')]
     ACTIONS += [('document_assembled','Собран многостраничный документ'),('document_expiry_changed','Изменён срок документа')]
+    ACTIONS += [('work_reported','Ежедневное выполнение работ'),('work_decided','Проверка ежедневного выполнения')]
+    ACTIONS += [('mailbox_updated','Корпоративный почтовый ящик'),('mail_prepared','Подготовлено письмо'),('mail_sent','Результат отправки письма'),('mail_read','Просмотр корпоративной почты')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

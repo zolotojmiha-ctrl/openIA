@@ -19,6 +19,8 @@ def write_once(name,value):
     return path.read_text().strip()
 
 write_once('django-key',secrets.token_urlsafe(64))
+import base64
+write_once('mail-key',base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())
 write_once('postgres-admin-password',secrets.token_urlsafe(32))
 password=write_once('postgres-app-password',secrets.token_urlsafe(32))
 write_once('database-url',f'postgresql://armada_app:{password}@db:5432/armada')
