@@ -154,3 +154,18 @@ class MailTests(TestCase):
         response=self.client.generic('POST',reverse('mail_compose',args=[box.pk]),data=payload,content_type=MULTIPART_CONTENT)
         self.assertEqual(response.status_code,302)
         self.assertEqual(Letter.objects.get().body,'Я'*24000)
+
+    def test_mail_home_supports_shared_and_person_only_mailboxes(self):
+        shared=services.request_address(self.leader,'info@armada-sibir.ru')
+        person=Person.objects.create(legal_entity=self.company,full_name='ТЕСТ Без учётной записи',created_by=self.leader)
+        personal=services.request_address(self.leader,'person-only@armada-sibir.ru',person=person)
+        for admin in (self.leader,self.second):
+            self.client.force_login(admin)
+            response=self.client.get(reverse('mail'))
+            self.assertContains(response,shared.address)
+            self.assertContains(response,'Общий ящик')
+            self.assertContains(response,person.full_name)
+        self.client.force_login(self.other)
+        response=self.client.get(reverse('mail'))
+        self.assertNotContains(response,shared.address)
+        self.assertNotContains(response,personal.address)
