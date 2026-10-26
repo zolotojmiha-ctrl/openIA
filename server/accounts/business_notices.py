@@ -3,9 +3,9 @@ from django.db.models import Q
 from django.urls import reverse
 from .models import AuditEvent,BusinessNoticeRead,SupportRequest
 
-NOISE=('login','logout','document_downloaded','document_exported','repair_exported','sessions_ended','mail_read')
+NOISE=('login','logout','document_downloaded','document_exported','repair_exported','sessions_ended','mail_read','mail_prepared','mailbox_updated','agreement_updated')
 def events(user):
-    qs=AuditEvent.objects.exclude(action__in=NOISE)
+    qs=AuditEvent.objects.exclude(action__in=NOISE).exclude(action='mail_sent',details__state='sent')
     if not user.is_leader:
         # Employees receive replies to their own support tickets only.
         ids=SupportRequest.objects.filter(author=user).values_list('pk',flat=True)

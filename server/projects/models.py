@@ -506,3 +506,35 @@ class DailyWorkImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     created_at=models.DateTimeField(auto_now_add=True)
+
+class CounterpartyAgreement(models.Model):
+    """Supporting supplier contracts, separate from customer work contracts."""
+    KINDS=[('subcontract','Субподряд'),('equipment_rent','Аренда техники'),('housing','Аренда жилья'),('supply','Поставка материалов'),('other','Прочий договор')]
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    number=models.CharField('Номер договора',max_length=100)
+    kind=models.CharField('Вид договора',max_length=24,choices=KINDS)
+    counterparty=models.CharField('Контрагент',max_length=200)
+    subject=models.CharField('Предмет договора',max_length=300)
+    date=models.DateField('Дата договора',null=True,blank=True)
+    deadline=models.DateField('Срок окончания',null=True,blank=True)
+    amount=models.DecimalField('Сумма договора, ₽',max_digits=18,decimal_places=2,null=True,blank=True)
+    customer_contract=models.ForeignKey(Contract,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Контракт заказчика',related_name='supporting_agreements')
+    project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Объект',related_name='supporting_agreements')
+    equipment=models.ForeignKey('Equipment',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Техника')
+    documents=models.ManyToManyField('documents.Document',blank=True,verbose_name='Документы договора')
+    notes=models.TextField('Примечания',max_length=5000,blank=True)
+    archived=models.BooleanField('В архиве',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    updated_at=models.DateTimeField(auto_now=True)
+    def __str__(self):return f'{self.number} · {self.counterparty}'
+    def clean(self):
+        if self.amount is not None and self.amount<0:raise ValidationError({'amount':'Сумма не может быть отрицательной.'})
+        if self.date and self.deadline and self.deadline<self.date:raise ValidationError({'deadline':'Окончание раньше даты договора.'})
+        if self.customer_contract_id and self.customer_contract.legal_entity.tax_id!=COMPANY_TAX_ID:raise ValidationError('Контракт другой организации.')
+        if self.project_object_id and self.project_object.legal_entity.tax_id!=COMPANY_TAX_ID:raise ValidationError('Объект другой организации.')
+        if self.customer_contract_id and self.project_object_id and not self.customer_contract.objects_linked.filter(pk=self.project_object_id).exists():raise ValidationError({'project_object':'Объект не входит в выбранный контракт заказчика.'})
+
+class AgreementImportReceipt(models.Model):
+    token=models.UUIDField(unique=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)

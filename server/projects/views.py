@@ -170,7 +170,7 @@ def contract_edit(request,pk=None):
                 audit(actor,'contract_updated' if obj else 'contract_created',entity_id=str(saved.pk),summary=saved.number,linked=[str(oid) for oid in desired],unlinked=[str(oid) for oid in previous-desired])
                 messages.success(request,'Договор сохранён.')
                 return redirect('contract_detail',pk=saved.pk)
-    return render(request,'projects/edit.html',{'form':form,'title':'Редактирование договора' if obj else 'Новый договор','back':'contracts'})
+    return render(request,'projects/edit.html',{'form':form,'title':'Изменить контракт заказчика' if obj else 'Новый контракт с заказчиком','back':'contracts'})
 
 @permission_required('projects.access')
 def share_contract(request,pk):

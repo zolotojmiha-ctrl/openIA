@@ -190,7 +190,7 @@ def notifications(request):
     elif mail_rows and not old_keys:url=reverse('mail')
     from postoffice.access import boxes
     mail_count=sum(boxes(request.user).filter(state='active').values_list('unread',flat=True))
-    return JsonResponse({'mail':mail_count,'business':business_count,'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые уведомления: '+str(len(new)) if new else ''})
+    return JsonResponse({'mailboxes':{str(b['pk']):b['unread'] for b in boxes(request.user).filter(state='active').values('pk','unread')},'mail':mail_count,'business':business_count,'identity':str(request.user.pk),'keys':keys,'url':url,'inbox':unread.count(),'unsorted':unsorted_documents(request.user).count(),'notification':'Новые уведомления: '+str(len(new)) if new else ''})
 
 @login_required
 def business_inbox(request):

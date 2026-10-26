@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError,PermissionDenied
 from django.core import signing
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.shortcuts import render,redirect,get_object_or_404
-from django.http import HttpResponse
+from django.http import HttpResponse,JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
@@ -155,6 +155,12 @@ def message_action(request,pk,uid):
                 else:
                     transport.checked(client.uid('COPY',str(uid),target));transport.checked(client.uid('STORE',str(uid),'+FLAGS','(\\Deleted)'))
             else:raise ValidationError('Неизвестное действие.')
+            transport.select(client,'INBOX');unread=transport.checked(client.uid('SEARCH',None,'UNSEEN','UNDELETED'))[0].split()
+            Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(unread),unread_digest=hashlib.sha256(b' '.join(unread)).hexdigest(),synced_at=timezone.now())
         audit(request.user,'mail_prepared',mailbox=str(box.pk),kind=action,uid=uid)
-    except ValidationError as e:messages.error(request,'; '.join(e.messages))
+    except ValidationError as e:
+        if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':False},status=502)
+        messages.error(request,'; '.join(e.messages))
+    else:
+        if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':True})
     return redirect(reverse('mail_inbox',args=[pk])+'?'+urlencode({'folder':folder}))

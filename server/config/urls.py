@@ -4,6 +4,7 @@ from django.urls import path,include
 from accounts import views
 from accounts import personal,person_accounts
 from projects import views as projects
+from projects import agreements
 from projects import daily_views
 from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
@@ -13,6 +14,11 @@ from repairs import views as repairs
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/agreements/',agreements.home,name='agreements'),
+ path('cabinet/agreements/new/',agreements.edit,name='agreement_new'),
+ path('cabinet/agreements/excel/',agreements.excel,name='agreement_excel'),
+ path('cabinet/agreements/<uuid:pk>/',agreements.detail,name='agreement_detail'),
+ path('cabinet/agreements/<uuid:pk>/edit/',agreements.edit,name='agreement_edit'),
  path('cabinet/daily/review/',daily_views.review_queue,name='daily_review'),
  path('cabinet/daily/<uuid:record_id>/',daily_views.detail,name='daily_detail'),
  path('cabinet/work/contracts/<uuid:pk>/places/<uuid:object_id>/daily/<str:kind>/',daily_views.listing,name='daily_works'),

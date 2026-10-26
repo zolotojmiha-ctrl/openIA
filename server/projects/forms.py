@@ -17,6 +17,7 @@ class ContractForm(forms.ModelForm):
     class Meta:
         model=Contract
         fields=['number','date','subject','work_kinds','counterparty','deadline','amount','status','private_notes']
+        labels={'number':'Номер контракта заказчика','counterparty':'Заказчик','subject':'Предмет контракта'}
         widgets={key:forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}) for key in ['date','deadline']}
     def __init__(self,*args,user=None,**kwargs):
         super().__init__(*args,**kwargs)

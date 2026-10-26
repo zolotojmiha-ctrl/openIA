@@ -92,7 +92,12 @@ def detail(request,pk):
     from .crews import visible_assignments
     crews={a.pk:a.brigade.name for a in visible_assignments(request.user)}
     history=[{'row':a,'contract':cards.get(a.contract_id),'crew':crews.get(a.crew_assignment_id)} for a in service.placements(request.user).filter(equipment=item).order_by('-start_date','-pk')]
-    return render(request,'projects/equipment_detail.html',{'item':item,'history':history,'files':service.equipment_files(request.user).filter(equipment=item),'events':[]})
+    files=list(service.equipment_files(request.user).filter(equipment=item))
+    for link in files:
+        days=(link.expires_on-timezone.localdate()).days if link.expires_on else None
+        link.deadline_state='expired' if days is not None and days<0 else 'soon' if days is not None and days<=link.days_before else 'valid' if days is not None else 'none'
+        link.deadline_label={'expired':'Просрочен','soon':'Скоро истекает','valid':'Действует','none':'Без срока'}[link.deadline_state]
+    return render(request,'projects/equipment_detail.html',{'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

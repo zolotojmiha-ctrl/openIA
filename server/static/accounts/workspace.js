@@ -94,9 +94,13 @@ if(document.querySelector('[data-inbox-count]')){
   for(const item of document.querySelectorAll('[data-inbox-count]')){item.textContent=data.inbox;item.classList.toggle('has-new',data.inbox>0);}
   for(const item of document.querySelectorAll('[data-business-count]')){item.textContent=data.business||0;item.classList.toggle('has-new',data.business>0);}
   for(const item of document.querySelectorAll('[data-mail-count]'))item.textContent=data.mail||0;
+  for(const item of document.querySelectorAll('[data-box-unread]')){const count=(data.mailboxes||{})[item.dataset.boxUnread]||0;item.textContent='Непрочитанных: '+count;item.closest('.panel').classList.toggle('mailbox-has-new',count>0);}
   for(const item of document.querySelectorAll('[data-unsorted-count]'))item.textContent=data.unsorted;
   const storageKey='armada-notices:'+data.identity;let seen=[];try{seen=JSON.parse(sessionStorage.getItem(storageKey)||'[]')}catch{}const unseen=(data.keys||[]).some(key=>!seen.includes(key));try{sessionStorage.setItem(storageKey,JSON.stringify([...new Set([...seen,...(data.keys||[])])].slice(-200)))}catch{}
   if(data.notification&&unseen){let toast=document.getElementById('workspace-notice');if(!toast){toast=document.createElement('a');toast.id='workspace-notice';toast.href='/cabinet/documents/?mode=inbox';toast.setAttribute('role','status');document.body.append(toast)}toast.href=data.url;toast.textContent=data.notification+' · Открыть входящие';setTimeout(()=>toast.remove(),12000);}
  }catch{}finally{polling=false}}
  notifications();setInterval(notifications,60000);
 }
+
+const readMailForm=document.querySelector('form[data-mail-mark-read]');
+if(readMailForm){const data=new FormData(readMailForm);data.set('action','seen');fetch(readMailForm.action,{method:'POST',credentials:'same-origin',body:data,headers:{Accept:'application/json'}}).then(r=>{if(!r.ok)throw Error();return r.json()}).catch(()=>{const notice=document.createElement('p');notice.className='notice';notice.textContent='Не удалось обновить статус чтения. Нажмите «Отметить прочитанным», чтобы повторить.';readMailForm.prepend(notice)})}
