@@ -195,7 +195,7 @@ def notifications(request):
 @login_required
 def business_inbox(request):
     from django.core.paginator import Paginator
-    from .business_notices import events,destination
+    from .business_notices import events,destination,notice_title
     from .models import BusinessNoticeRead
     qs=events(request.user)
     if request.method=='POST':
@@ -207,4 +207,4 @@ def business_inbox(request):
         return redirect('business_inbox')
     if request.GET.get('all')!='1':qs=qs.exclude(pk__in=BusinessNoticeRead.objects.filter(user=request.user).values('event_id'))
     page=Paginator(qs,50).get_page(request.GET.get('page'))
-    return render(request,'accounts/business_inbox.html',{'page':page,'notice_rows':[{'event':e,'url':destination(e)} for e in page],'show_all':request.GET.get('all')=='1'})
+    return render(request,'accounts/business_inbox.html',{'page':page,'notice_rows':[{'event':e,'url':destination(e),'title':notice_title(e)} for e in page],'show_all':request.GET.get('all')=='1'})

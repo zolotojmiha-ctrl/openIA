@@ -120,6 +120,7 @@ class FeedbackBrowserTests(StaticLiveServerTestCase):
         contract=Contract.objects.create(legal_entity=company,number='ТЕСТ-К',subject='ТЕСТ',work_kinds=['repairs'])
         for name in ['ТЕСТ Объект А','ТЕСТ Объект Б']:
             obj=ProjectObject.objects.create(legal_entity=company,name=name);ContractObject.objects.create(contract=contract,project_object=obj)
+        audit(leader,'contract_updated',entity_id=str(contract.pk),kind='closure_request')
         env=os.environ.copy();env.update(ARMADA_TEST_URL=self.live_server_url,ARMADA_TEST_PASSWORD=password,ARMADA_CREW=str(crew.pk),ARMADA_CONTRACT=str(contract.pk))
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/feedback-browser.cjs')],env=env,capture_output=True,text=True,timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)

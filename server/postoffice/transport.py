@@ -65,21 +65,31 @@ def select(client,folder,readonly=True):
     if folder not in [r['name'] for r in folders(client)]:raise ValidationError('Папка недоступна или была переименована.')
     return checked(client.select('"'+folder.replace('\\','\\\\').replace('"','\\"')+'"',readonly=readonly))
 
-def listing(client,folder,page=1,search=''):
+def listing(client,folder,page=1,search='',unread_only=False):
     select(client,folder)
     if search:
         if any(c in search for c in '\r\n') or len(search)>150:raise ValidationError('Проверьте поисковую строку.')
         # ASCII search works with all servers. Unicode search may require provider support.
         client.literal=search.encode('utf-8')
-        ids=checked(client.uid('SEARCH','CHARSET','UTF-8','UNDELETED','TEXT'))[0].split()
-    else:ids=checked(client.uid('SEARCH',None,'UNDELETED'))[0].split()
+        criteria=['UNDELETED']+(['UNSEEN'] if unread_only else [])+['TEXT']
+        ids=checked(client.uid('SEARCH','CHARSET','UTF-8',*criteria))[0].split()
+    else:ids=checked(client.uid('SEARCH',None,'UNDELETED',*(['UNSEEN'] if unread_only else [])))[0].split()
     ids=list(reversed(ids));rows=[]
     for uid in ids[(page-1)*25:page*25]:
         response=checked(client.uid('FETCH',uid,'(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'))
         for part in response:
             if not isinstance(part,tuple):continue
             msg=BytesParser(policy=policy.default).parsebytes(part[1])
-            rows.append({'uid':uid.decode(),'subject':decoded(msg['Subject']) or '(Без темы)','sender':decoded(msg['From']),'date':decoded(msg['Date']),'unread':b'\\Seen' not in part[0]});break
+            sender=decoded(msg['From']);date=decoded(msg['Date']);short_date=date
+            from email.utils import parseaddr,parsedate_to_datetime
+            from django.utils import timezone
+            try:
+                stamp=parsedate_to_datetime(str(msg['Date']))
+                if timezone.is_naive(stamp):stamp=timezone.make_aware(stamp,timezone.get_current_timezone())
+                stamp=timezone.localtime(stamp);today=timezone.localdate()
+                short_date=stamp.strftime('%H:%M' if stamp.date()==today else '%d.%m' if stamp.year==today.year else '%d.%m.%Y')
+            except (TypeError,ValueError,OverflowError,AttributeError):pass
+            rows.append({'sender_short':parseaddr(sender)[0] or parseaddr(sender)[1] or sender,'short_date':short_date,'uid':uid.decode(),'subject':decoded(msg['Subject']) or '(Без темы)','sender':decoded(msg['From']),'date':decoded(msg['Date']),'unread':b'\\Seen' not in part[0]});break
     return rows,len(ids)
 
 def message(client,folder,uid):

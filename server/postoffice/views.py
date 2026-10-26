@@ -47,7 +47,7 @@ def inbox(request,pk):
     if box.state=='active':
         try:
             with transport.connect(box) as client:
-                all_folders=transport.folders(client);rows,total=transport.listing(client,folder,page,query)
+                all_folders=transport.folders(client);rows,total=transport.listing(client,folder,page,query,unread_only=request.GET.get('unread')=='1')
                 transport.select(client,'INBOX');unread=transport.checked(client.uid('SEARCH',None,'UNSEEN','UNDELETED'))[0].split()
                 Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(unread),unread_digest=hashlib.sha256(b' '.join(unread)).hexdigest(),synced_at=timezone.now())
             audit(request.user,'mail_read',mailbox=str(box.pk),kind='folder')
@@ -162,5 +162,5 @@ def message_action(request,pk,uid):
         if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':False},status=502)
         messages.error(request,'; '.join(e.messages))
     else:
-        if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':True})
+        if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':True,'mail':sum(boxes(request.user).filter(state='active').values_list('unread',flat=True)),'box':str(box.pk),'unread':len(unread)})
     return redirect(reverse('mail_inbox',args=[pk])+'?'+urlencode({'folder':folder}))

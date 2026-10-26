@@ -18,12 +18,18 @@ RAW=b'From: sender@example.org\r\nTo: worker@armada-sibir.ru\r\nSubject: TLS mes
 class IMAP(socketserver.StreamRequestHandler):
     def handle(self):
         self.connection.settimeout(5);self.wfile.write(b'* OK IMAP ready\r\n')
+        seen=False;writable=False
         while line:=self.rfile.readline():
             tag,cmd=line.split(b' ',1);upper=cmd.upper()
             if upper.startswith(b'CAPABILITY'):self.wfile.write(b'* CAPABILITY IMAP4rev1 UIDPLUS MOVE\r\n')
             elif upper.startswith(b'LIST'):self.wfile.write(b'* LIST (\\HasNoChildren) "/" "INBOX"\r\n* LIST (\\Sent) "/" "Sent"\r\n')
-            elif upper.startswith((b'SELECT',b'EXAMINE')):self.wfile.write(b'* 1 EXISTS\r\n* OK [UIDVALIDITY 7] ready\r\n')
-            elif upper.startswith(b'UID SEARCH'):self.wfile.write(b'* SEARCH 1\r\n')
+            elif upper.startswith((b'SELECT',b'EXAMINE')):
+                writable=upper.startswith(b'SELECT');self.wfile.write(b'* 1 EXISTS\r\n* OK [UIDVALIDITY 7] ready\r\n')
+            elif upper.startswith(b'UID STORE'):
+                if not writable or cmd.strip()!=b'UID STORE 1 +FLAGS (\\Seen)':
+                    self.wfile.write(tag+b' NO bad flag or readonly\r\n');continue
+                seen=True;self.wfile.write(b'* 1 FETCH (UID 1 FLAGS (\\Seen))\r\n')
+            elif upper.startswith(b'UID SEARCH'):self.wfile.write(b'* SEARCH'+(b'' if seen and b'UNSEEN' in upper else b' 1')+b'\r\n')
             elif b'RFC822.SIZE' in upper:self.wfile.write(b'* 1 FETCH (UID 1 RFC822.SIZE '+str(len(RAW)).encode()+b')\r\n')
             elif upper.startswith(b'UID FETCH'):
                 body=RAW.split(b'\r\n\r\n')[0]+b'\r\n\r\n' if b'HEADER.FIELDS' in upper else RAW
@@ -79,3 +85,11 @@ class TransportTLSTests(SimpleTestCase):
             msg=EmailMessage();msg['From']='worker@armada-sibir.ru';msg['To']='receiver@example.org';msg['Subject']='TLS message';msg.set_content('Hello')
             self.assertEqual(transport.deliver(self.box(),msg,['receiver@example.org']),{})
             self.assertIn(b'Subject: TLS message',srv.message);self.assertEqual(srv.auth,b'\0worker@armada-sibir.ru\0synthetic-provider-secret')
+
+    def test_actual_imap_tls_read_flag_and_unread_filter(self):
+        with self.server(IMAP) as srv,override_settings(ARMADA_IMAP_HOST='localhost',ARMADA_IMAP_PORT=srv.server_address[1]):
+            with transport.connect(self.box()) as client:
+                rows,total=transport.listing(client,'INBOX',unread_only=True);self.assertEqual(total,1)
+                transport.select(client,'INBOX',readonly=False)
+                transport.checked(client.uid('STORE','1','+FLAGS','(\\Seen)'))
+                rows,total=transport.listing(client,'INBOX',unread_only=True);self.assertEqual(total,0)

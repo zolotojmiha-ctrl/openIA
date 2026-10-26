@@ -90,3 +90,17 @@ class UpdateTests(TestCase):
             r=self.client.post(reverse('mail_message_action',args=[box.pk,5]),{'action':'seen','folder':'INBOX'},HTTP_ACCEPT='application/json')
         self.assertEqual(r.status_code,200);box.refresh_from_db();self.assertEqual(box.unread,0)
         client.uid.assert_any_call('STORE','5','+FLAGS','(\\Seen)')
+
+    def test_compact_notifications_keep_attention_and_hide_routine_events(self):
+        for action in ['person_updated','equipment_updated','finance_created','employee_updated','contract_created','mail_prepared']:
+            AuditEvent.objects.create(actor=self.leader,action=action,details={})
+        urgent=AuditEvent.objects.create(actor=self.leader,action='contract_updated',details={'kind':'closure_request','entity_id':str(self.contract.pk)})
+        failed=AuditEvent.objects.create(actor=self.leader,action='mail_sent',details={'state':'failed'})
+        self.client.force_login(self.leader)
+        response=self.client.get(reverse('business_inbox'));self.assertEqual(response.status_code,200)
+        self.assertContains(response,'class="notice-row"',count=2);self.assertNotContains(response,'<article class="panel">')
+        self.assertContains(response,'Запрос на закрытие контракта');self.assertContains(response,'Ошибка отправки письма')
+        self.assertEqual(self.client.get(reverse('notifications')).json()['business'],2)
+        self.client.post(reverse('business_inbox'),{'events':[urgent.pk,failed.pk]})
+        self.assertEqual(self.client.get(reverse('notifications')).json()['business'],0)
+        self.assertEqual(AuditEvent.objects.count(),8)
