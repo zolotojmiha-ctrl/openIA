@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 from uuid import UUID
 from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404
 from accounts.models import User
 from accounts.permissions import permission_required,permitted
 from django.core.exceptions import PermissionDenied
@@ -39,7 +40,12 @@ def object_detail(request,pk):
 @permission_required('projects.manage')
 def object_edit(request,pk=None):
     obj=get_object_or_404(visible_objects(request.user),pk=pk) if pk else None
-    form=ObjectForm(request.POST or None,instance=obj,initial={'expected_version':obj.version} if obj else None)
+    initial={'expected_version':obj.version} if obj else {}
+    if not obj and request.GET.get('contract'):
+        try:contract_id=UUID(request.GET['contract'])
+        except ValueError:raise Http404
+        initial['related_contract']=get_object_or_404(visible_contracts(request.user).exclude(status='archived'),pk=contract_id)
+    form=ObjectForm(request.POST or None,instance=obj,initial=initial,user=request.user)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             actor=User.objects.select_for_update().get(pk=request.user.pk)
@@ -54,11 +60,20 @@ def object_edit(request,pk=None):
             else:
                 saved=form.save(commit=False)
                 saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)
+            related=form.cleaned_data.get('related_contract')
+            if related:
+                related=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=visible_contracts(actor).values('pk')),pk=related.pk)
+                if related.status=='archived':form.add_error('related_contract','Контракт уже в архиве.')
             if not form.errors:
                 saved.save()
                 if not obj and not request.user.is_leader:ObjectAccess.objects.create(user=request.user,project_object=saved,granted_by=request.user)
                 audit(request.user,'object_updated' if obj else 'object_created',entity_id=str(saved.pk),summary=saved.name)
-                messages.success(request,'Объект сохранён.')
+                if related:
+                    ContractObject.objects.create(contract=related,project_object=saved)
+                    related.version+=1;related.save(update_fields=['version','updated_at'])
+                    audit(actor,'contract_updated',entity_id=str(related.pk),linked=[str(saved.pk)])
+                messages.success(request,'Объект сохранён и добавлен в контракт.' if related else 'Объект сохранён.')
+                if related:return redirect('contract_detail',pk=related.pk)
                 return redirect('object_detail',pk=saved.pk)
     return render(request,'projects/edit.html',{'form':form,'title':'Редактирование объекта' if obj else 'Новый объект','back':'objects'})
 
@@ -165,7 +180,7 @@ def contract_edit(request,pk=None):
                 ContractObject.objects.filter(contract=saved).exclude(project_object_id__in=desired).delete()
                 for oid in desired-previous:ContractObject.objects.create(contract=saved,project_object_id=oid)
                 for rule in saved.access_rules.select_related('user'):
-                    if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists():rule.delete()
+                    if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists() and not (not desired and permitted(rule.user,'projects.manage')):rule.delete()
                 if not obj and not actor.is_leader:ContractAccess.objects.create(user=actor,contract=saved,granted_by=actor,**{f:True for f in SHARED_FIELDS})
                 audit(actor,'contract_updated' if obj else 'contract_created',entity_id=str(saved.pk),summary=saved.number,linked=[str(oid) for oid in desired],unlinked=[str(oid) for oid in previous-desired])
                 messages.success(request,'Договор сохранён.')

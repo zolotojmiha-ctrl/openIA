@@ -1,3 +1,4 @@
+from django.db.models import Q
 from .models import COMPANY_TAX_ID, Contract, ProjectObject
 
 def visible_objects(user):
@@ -9,7 +10,10 @@ def visible_objects(user):
 def visible_contracts(user):
     qs = Contract.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
     if not user.is_leader:
-        qs = qs.filter(access_rules__user=user, objects_linked__in=visible_objects(user))
+        from accounts.permissions import permitted
+        scope=Q(objects_linked__in=visible_objects(user))
+        if permitted(user,'projects.manage'):scope|=Q(objects_linked__isnull=True)
+        qs = qs.filter(scope,access_rules__user=user)
     return qs.distinct()
 
 def contract_card(contract, user):

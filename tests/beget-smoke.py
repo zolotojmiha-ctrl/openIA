@@ -1,6 +1,6 @@
 """Isolated Docker production/backup check; creates and removes ONLY a random test project.
 Never points at the live armada project and never starts public proxy or external mail.
-Run from a disposable development machine with images armada-web:6.14.0/armada-db:17 built.
+Run from a disposable development machine with images armada-web:6.14.1/armada-db:17 built.
 """
 import subprocess,os,secrets,time,tempfile,pathlib,tarfile,hashlib,io,json,sys
 repo=pathlib.Path(__file__).resolve().parents[1]; project='armada-verify-'+secrets.token_hex(4)

@@ -243,7 +243,7 @@ def _apply_row(actor,kind,v):
         ContractObject.objects.filter(contract=saved).exclude(project_object_id__in=desired).delete()
         for oid in sorted(desired-previous,key=str):ContractObject.objects.create(contract=saved,project_object_id=oid)
         for rule in saved.access_rules.select_related('user'):
-            if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists():rule.delete()
+            if not ObjectAccess.objects.filter(user=rule.user,project_object__contracts=saved).exists() and not (not desired and permitted(rule.user,'projects.manage')):rule.delete()
         if not obj and not actor.is_leader:ContractAccess.objects.create(user=actor,contract=saved,granted_by=actor,**{f:True for f in SHARED_FIELDS})
     action='person_updated' if kind=='people' else ('object_updated' if obj else 'object_created') if kind=='objects' else ('contract_updated' if obj else 'contract_created')
     after={f:scalar(getattr(saved,f)) for f in (OBJECT_FIELDS if kind=='objects' else ['full_name','position'] if kind=='people' else CONTRACT_FIELDS+PRIVATE_FIELDS)}

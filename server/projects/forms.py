@@ -1,9 +1,14 @@
 from django import forms
 from accounts.models import User
 from .models import ProjectObject, Contract, SHARED_FIELDS, COMPANY_TAX_ID, WORK_KINDS
-from .access import visible_objects
+from .access import visible_objects,visible_contracts
 
 class ObjectForm(forms.ModelForm):
+    related_contract=forms.ModelChoiceField(label='Контракт заказчика (необязательно)',queryset=Contract.objects.none(),required=False,help_text='Выберите ранее созданный контракт. Объект добавится в него после сохранения.')
+    def __init__(self,*args,user=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        if not self.instance._state.adding:self.fields.pop('related_contract')
+        elif user:self.fields['related_contract'].queryset=visible_contracts(user).exclude(status='archived')
     expected_version = forms.IntegerField(widget=forms.HiddenInput,required=False)
     class Meta:
         model=ProjectObject
@@ -33,7 +38,8 @@ class ContractForm(forms.ModelForm):
                     rule=self.instance.access_rules.filter(user=user).first()
                     for flag,name in [('show_number','number'),('show_date','date'),('show_subject','subject'),('show_counterparty','counterparty'),('show_deadline','deadline')]:
                         if not rule or not getattr(rule,flag):self.fields.pop(name,None)
-        self.fields['linked_objects'].required=self.instance._state.adding
+        self.fields['linked_objects'].required=False
+        self.fields['linked_objects'].help_text='Необязательно. Сначала сохраните контракт, затем добавьте объекты из его карточки.'
     def clean_work_kinds(self):
         return list(dict.fromkeys(self.cleaned_data['work_kinds']))
 

@@ -100,7 +100,9 @@ class ContractFoundationTests(TestCase):
     def test_allocation_rejects_stale_or_unrelated_contract(self):
         with self.assertRaises(ValidationError):allocate_legacy(self.tech,self.ca,[self.legacy.pk],{str(self.legacy.pk):0})
         ContractObject.objects.filter(contract=self.ca).delete()
-        with self.assertRaises(Http404):allocate_legacy(self.tech,self.ca,[self.legacy.pk],{str(self.legacy.pk):1})
+        # A contract without objects remains visible to its explicitly granted editor,
+        # but work allocation still requires the matching object link.
+        with self.assertRaises(ValidationError):allocate_legacy(self.tech,self.ca,[self.legacy.pk],{str(self.legacy.pk):1})
         self.legacy.refresh_from_db();self.assertIsNone(self.legacy.contract_id)
     def test_cannot_split_shared_legacy_defect_history(self):
         j=Job.objects.create(section=self.section,method='p1',length_m=1,created_by=self.leader);JobDefect.objects.create(job=j,defect=self.d)
