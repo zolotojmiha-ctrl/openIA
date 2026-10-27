@@ -41,11 +41,12 @@ class ProjectAccessTests(TestCase):
             self.assertEqual(self.client.get(reverse(name)).status_code,302)
     def test_employee_sees_only_assigned_object(self):
         self.as_employee();r=self.client.get(reverse('objects'))
-        self.assertContains(r,self.a.name);self.assertNotContains(r,self.b.name);self.assertNotContains(r,self.c.name)
+        self.assertRedirects(r,reverse('contracts'))
+        r=self.client.get(reverse('object_detail',args=[self.a.pk]));self.assertContains(r,self.a.name);self.assertNotContains(r,self.b.name);self.assertNotContains(r,self.c.name)
         self.assertEqual(self.client.get(reverse('object_detail',args=[self.b.pk])).status_code,404)
     def test_search_does_not_find_unassigned_object(self):
         self.as_employee();r=self.client.get(reverse('objects'),{'q':'СЕКРЕТНЫЙ'})
-        self.assertEqual(r.context['page'].paginator.count,0)
+        self.assertRedirects(r,reverse('contracts'))
     def test_object_access_does_not_grant_contract_access(self):
         self.as_employee()
         self.assertEqual(self.client.get(reverse('contract_detail',args=[self.contract.pk])).status_code,404)

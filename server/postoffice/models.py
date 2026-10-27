@@ -43,3 +43,18 @@ class MailboxImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     created_at=models.DateTimeField(auto_now_add=True)
+
+class BegetSettings(models.Model):
+    id=models.PositiveSmallIntegerField(primary_key=True,default=1,editable=False)
+    login=models.CharField(max_length=100,blank=True)
+    credential=models.TextField(blank=True)
+    enabled=models.BooleanField(default=False)
+    version=models.PositiveIntegerField(default=1)
+
+class MailboxProvision(models.Model):
+    mailbox=models.OneToOneField(Mailbox,on_delete=models.PROTECT,related_name='provision')
+    credential=models.TextField()
+    mailbox_version=models.PositiveIntegerField()
+    state=models.CharField(max_length=20,choices=[('queued','Ожидает создания'),('creating','Создаётся в Beget'),('active','Создан и подключён'),('failed','Не создан — проверьте настройку'),('uncertain','Проверьте результат в Beget')],default='queued')
+    error=models.CharField(max_length=300,blank=True)
+    updated_at=models.DateTimeField(auto_now=True)

@@ -80,7 +80,7 @@ class PlaceAssignmentForm(forms.Form):
 @permission_required('personnel.manage')
 def contract_crews(request,pk):
     contract=get_object_or_404(visible_contracts(request.user),pk=pk)
-    form=PlaceAssignmentForm(request.POST or None,user=request.user,contract=contract)
+    form=PlaceAssignmentForm(request.POST or None,user=request.user,contract=contract,initial={'project_object':request.GET.get('object')})
     versions={str(c.pk):c.version for c in form.fields['brigade'].queryset}
     snapshot=signing.dumps(versions,salt='crew-place-versions')
     if request.method=='POST' and form.is_valid():

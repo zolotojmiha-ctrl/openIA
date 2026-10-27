@@ -36,10 +36,12 @@ def request_address(user,address,owner=None,person=None):
         admin=actor(user);leader(admin)
         from projects.models import LegalEntity
         LegalEntity.objects.select_for_update().get(tax_id='8604073687')
-        if owner:owner=User.objects.get(pk=owner.pk,is_active=True)
+        if owner:owner=User.objects.exclude(role='customer').get(pk=owner.pk,is_active=True)
         if person and (person.archived or person.legal_entity.tax_id!='8604073687'):raise ValidationError('Сотрудник недоступен.')
         if Mailbox.objects.filter(address=address).exists():raise ValidationError('Такой адрес уже добавлен. Откройте существующий ящик.')
         box=Mailbox.objects.create(address=address,owner=owner,person=person,created_by=admin)
+        from .provider import queue
+        queue(box)
         audit(admin,'mailbox_updated',kind='requested',mailbox=str(box.pk),address=box.address)
         return box
 

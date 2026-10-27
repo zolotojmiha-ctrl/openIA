@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
 from accounts.views import audit
 from .access import boxes,leader
-from .models import Mailbox,Letter
+from .models import Mailbox,Letter,BegetSettings,MailboxProvision
 from .forms import RequestForm,ConnectForm,ComposeForm
 from . import services,transport
 
@@ -35,7 +35,7 @@ def configure(request,pk=None):
             else:box=services.request_address(request.user,c['address'],c['owner'],c['person'])
         except ValidationError as e:form.add_error(None,e)
         else:messages.success(request,'Настройки сохранены.' if pk else 'Адрес добавлен как заявка. Сам почтовый ящик ещё нужно создать у провайдера.');return redirect('mailbox_configure',pk=box.pk)
-    return render(request,'postoffice/configure.html',{'form':form,'box':box})
+    return render(request,'postoffice/configure.html',{'form':form,'box':box,'provider_enabled':BegetSettings.objects.filter(pk=1,enabled=True).exists(),'provision':MailboxProvision.objects.filter(mailbox=box).first() if box else None})
 
 @login_required
 def inbox(request,pk):

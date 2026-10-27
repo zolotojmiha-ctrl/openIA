@@ -163,7 +163,7 @@ def employee_edit(request,pk=None):
                     Person.objects.filter(user=employee).update(archived=True)
                 employee.grants.all().delete()
                 AccessGrant.objects.bulk_create([AccessGrant(user=employee,permission=p,granted_by=request.user) for p in form.cleaned_data['permissions']])
-                if temporary:
+                if temporary and employee.role!='customer':
                     from documents.models import Person
                     from projects.models import LegalEntity,COMPANY_TAX_ID
                     Person.objects.create(user=employee,legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID),full_name=employee.full_name,position=employee.get_role_display(),created_by=request.user)

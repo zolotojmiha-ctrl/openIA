@@ -3,3 +3,7 @@
 .contract-areas{margin:24px 0}.contract-areas .workspace-places{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}.contract-areas .workspace-place{display:flex;flex-direction:column;gap:12px;margin:0;text-decoration:none}.contract-areas .workspace-place strong{font-size:1.35rem;line-height:1.35}.contract-areas .workspace-place:hover{border-color:var(--primary,#6650aa)}
 
 .area-defect-table table{min-width:620px}.area-defect-table td:nth-child(2),.area-defect-table td:nth-child(3){white-space:nowrap}
+
+.operation-form{max-width:900px}.operation-field{margin:0 0 18px}.operation-field>label{display:block;font-weight:600;margin-bottom:6px}.operation-form details{padding:12px 0;border-bottom:1px solid #ddd}.operation-form details>div,.operation-form [id^="id_people"],.operation-form [id^="id_equipment"]{max-height:260px;overflow:auto}.operation-form details label{display:flex;gap:8px;align-items:baseline;padding:5px}.operation-form input[type=checkbox]{width:auto}.simple-file .action-menu{flex-shrink:0}.simple-file .action-menu>div{right:0;min-width:190px}
+
+.customer-project table{min-width:680px}.customer-project th,.customer-project td{padding:12px;word-break:normal;overflow-wrap:normal}.customer-project td:nth-child(2){white-space:nowrap}

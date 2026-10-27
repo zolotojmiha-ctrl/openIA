@@ -19,6 +19,7 @@ class Document(ArchiveProtectedModel):
     responsible=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='responsible_documents')
     created_at=models.DateTimeField(auto_now_add=True)
     archived=models.BooleanField(default=False)
+    deleted_at=models.DateTimeField(null=True,blank=True)
     revision=models.PositiveIntegerField(default=1)
     expires_on=models.DateField('Действует до',null=True,blank=True)
     remind=models.BooleanField('Напоминать об окончании срока',default=False)

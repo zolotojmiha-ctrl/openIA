@@ -37,7 +37,7 @@ class LinkForm(forms.ModelForm):
 
 class UploadForm(LinkForm):
     upload_token=forms.UUIDField(required=False,widget=forms.HiddenInput)
-    file=forms.FileField(label='Файл — до 10 МБ')
+    file=forms.FileField(label='Файл — до 32 МБ')
     comment=forms.CharField(label='Комментарий',max_length=2000,required=False)
     bundle_title=forms.CharField(label='Или создать новый комплект',max_length=200,required=False)
     recipients=forms.ModelMultipleChoiceField(label='Открыть доступ сотрудникам (необязательно)',queryset=User.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
@@ -53,7 +53,7 @@ class UploadForm(LinkForm):
 
 class VersionForm(forms.Form):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput)
-    file=forms.FileField(label='Новый файл — до 10 МБ')
+    file=forms.FileField(label='Новый файл — до 32 МБ')
     comment=forms.CharField(label='Что изменено (необязательно)',max_length=2000,required=False,widget=forms.Textarea)
     def clean_file(self):
         value=self.cleaned_data['file'];self.file_data=validate_upload(value);return value

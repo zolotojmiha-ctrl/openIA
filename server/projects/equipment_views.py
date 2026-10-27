@@ -97,7 +97,7 @@ def detail(request,pk):
         days=(link.expires_on-timezone.localdate()).days if link.expires_on else None
         link.deadline_state='expired' if days is not None and days<0 else 'soon' if days is not None and days<=link.days_before else 'valid' if days is not None else 'none'
         link.deadline_label={'expired':'Просрочен','soon':'Скоро истекает','valid':'Действует','none':'Без срока'}[link.deadline_state]
-    return render(request,'projects/equipment_detail.html',{'item':item,'history':history,'files':files,'events':[]})
+    return render(request,'projects/equipment_detail.html',{'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

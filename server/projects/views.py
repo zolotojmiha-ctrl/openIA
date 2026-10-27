@@ -18,11 +18,12 @@ from .models import LegalEntity, ProjectObject, Contract, ContractObject, Object
 
 @login_required
 def objects(request):
-    q=request.GET.get('q','').strip()[:200]
-    qs=visible_objects(request.user).order_by('name','id')
-    if q:
-        qs=qs.filter(Q(name__icontains=q)|Q(location__icontains=q)|Q(kind__icontains=q))
-    return render(request,'projects/objects.html',{'page':Paginator(qs,25).get_page(request.GET.get('page')),'q':q})
+    return redirect('contracts')
+
+@permission_required('projects.manage')
+def unassigned_areas(request):
+    qs=visible_objects(request.user).filter(contracts__isnull=True).order_by('name')
+    return render(request,'projects/unassigned_areas.html',{'areas':qs})
 
 @login_required
 def object_detail(request,pk):
@@ -33,13 +34,18 @@ def object_detail(request,pk):
         try:context_contract=get_object_or_404(contracts,pk=UUID(request.GET['contract']))
         except ValueError:raise Http404
     elif contracts.count()==1:context_contract=contracts.first()
+    from django.utils import timezone
+    from .crews import visible_assignments
+    today=timezone.localdate()
+    crews_here=visible_assignments(request.user).filter(project_object=obj,start_date__lte=today).filter(Q(end_date__isnull=True)|Q(end_date__gte=today))
+    if context_contract:crews_here=crews_here.filter(contract=context_contract)
     from .equipment import placements,current
     equipment_here=current(placements(request.user)).filter(project_object=obj).order_by('equipment__name')
     from .stock import warehouses
     stock_here=warehouses(request.user).filter(project_object=obj,archived=False)
     from .subcontracts import orders
     subcontract_here=orders(request.user).filter(project_object=obj)
-    return render(request,'projects/object.html',{'context_contract':context_contract,'subcontract_here':subcontract_here,'stock_here':stock_here,'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
+    return render(request,'projects/object.html',{'crews_here':crews_here,'context_contract':context_contract,'subcontract_here':subcontract_here,'stock_here':stock_here,'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(Q(assignments__project_object=obj)&(Q(assignments__start_date__isnull=True)|Q(assignments__start_date__lte=today))&(Q(assignments__end_date__isnull=True)|Q(assignments__end_date__gte=today))).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
         'assignments':obj.assignments.select_related('user').order_by('user__full_name') if permitted(request.user,'projects.access') else None})
 
 @permission_required('projects.manage')

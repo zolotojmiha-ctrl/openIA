@@ -20,6 +20,9 @@ class Command(BaseCommand):
                 try:
                     if not process_one():break
                 except Exception:self.stderr.write('Не удалось обработать почтовую очередь; реквизиты и содержимое не выводятся.');break
+            from postoffice.provider import process_one as create_mailbox
+            try:create_mailbox()
+            except Exception:self.stderr.write('Не удалось обработать создание ящика; секреты не выводятся.')
             if ticks%6==0:
                 for box in Mailbox.objects.filter(state='active'):
                     try:

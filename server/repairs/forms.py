@@ -99,6 +99,7 @@ class MultipleFiles(forms.FileField):
     def clean(self,data,initial=None):
         if not data:return []
         items=data if isinstance(data,(list,tuple)) else [data]
+        if any(item.size>10*1024*1024 for item in items):raise forms.ValidationError('Одно фото — до 10 МБ.')
         if len(items)>20:raise forms.ValidationError('За один раз можно добавить до 20 файлов.')
         if sum(item.size for item in items)>40*1024*1024:raise forms.ValidationError('За одну отправку можно добавить до 40 МБ файлов.')
         return [validate_upload(super(MultipleFiles,self).clean(item,initial)) for item in items]

@@ -50,6 +50,7 @@ def save_equipment(user,pk,version,data):
     before={k:getattr(item,k) for k in FIELDS} if pk else None
     for k in FIELDS:setattr(item,k,str(data.get(k,'')).strip())
     if item.status=='archived' and item.pk and item.placements.filter(Q(end_date__isnull=True)|Q(end_date__gte=timezone.localdate())).exists():raise ValidationError('Сначала завершите текущие и будущие назначения техники.')
+    if item.status=='archived' and item.pk and item.custodies.filter(Q(end_date__isnull=True)|Q(end_date__gte=timezone.localdate())).exists():raise ValidationError('Сначала завершите закрепление за бригадой и водителем.')
     item.full_clean()
     if pk:item.version+=1
     item.save();audit(actor,'equipment_updated',equipment=str(item.pk),previous=before,values={k:getattr(item,k) for k in FIELDS},version=item.version)

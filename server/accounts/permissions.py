@@ -4,7 +4,10 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 
 def permitted(user,key):
-    return user.is_authenticated and user.is_active and (user.is_leader or user.grants.filter(permission=key).exists())
+    if not user.is_authenticated or not user.is_active:return False
+    if user.is_leader:return True
+    if user.role=='customer':return False
+    return user.grants.filter(permission=key).exists()
 
 def permission_required(key):
     def decorate(view):

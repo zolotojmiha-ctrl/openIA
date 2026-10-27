@@ -11,6 +11,12 @@ class AccountStateMiddleware:
                 return redirect('login')
             if request.user.must_change_password and request.path.startswith('/cabinet/') and request.path not in ['/cabinet/password/','/cabinet/logout/']:
                 return redirect('password')
+        if request.user.is_authenticated and request.user.role=='customer' and not request.user.is_leader:
+            from django.http import HttpResponseForbidden
+            allowed=('/cabinet/customer/','/cabinet/password/','/cabinet/logout/')
+            if request.path=='/cabinet/':return redirect('customer_portal')
+            if request.path.startswith('/cabinet/') and not any(request.path.startswith(p) for p in allowed):
+                return HttpResponseForbidden('Этот раздел недоступен заказчику.')
         if request.user.is_authenticated and request.session.session_key:
             from .models import UserSession
             from django.utils import timezone

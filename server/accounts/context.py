@@ -1,7 +1,9 @@
 from django.conf import settings
 
 def local_testing(request):
-    context={'lan_test':settings.LAN_TEST,'release_version':'6.15.0'}
+    from .presets import PRESETS
+    context={'permission_presets':PRESETS,'lan_test':settings.LAN_TEST,'release_version':'6.16.0'}
+    if request.user.is_authenticated and request.user.role=='customer' and not request.user.is_leader:return context
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
         from projects.access import visible_contracts

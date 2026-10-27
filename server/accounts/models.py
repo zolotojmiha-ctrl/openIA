@@ -25,7 +25,7 @@ PERMISSIONS = {
  'finance.write':'Вносить финансовые записи и распределять выплаты',
 }
 
-ROLES = [('technician','Техник'),('pto','Инженер ПТО'),('other','Другая должность'),('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Инженер по ОТ и ПБ'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик')]
+ROLES = [('technician','Техник'),('pto','Инженер ПТО'),('other','Другая должность'),('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Инженер по ОТ и ПБ'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик'),('customer','Заказчик')]
 
 def normalize_phone(value):
     value = str(value).strip()
@@ -90,6 +90,7 @@ class AuditEvent(models.Model):
     ACTIONS += [('work_reported','Ежедневное выполнение работ'),('work_decided','Проверка ежедневного выполнения')]
     ACTIONS += [('agreement_updated','Изменён договор с контрагентом')]
     ACTIONS += [('mailbox_updated','Корпоративный почтовый ящик'),('mail_prepared','Подготовлено письмо'),('mail_sent','Результат отправки письма'),('mail_read','Просмотр корпоративной почты')]
+    ACTIONS += [('document_deleted','Документ удалён'),('object_deleted','Удалён пустой участок'),('admission_updated','Редакция комплекта допуска'),('customer_published','Опубликованы сведения заказчику')]
     actor=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     subject=models.ForeignKey(User,null=True,on_delete=models.PROTECT,related_name='+')
     action=models.CharField(max_length=60,choices=ACTIONS)

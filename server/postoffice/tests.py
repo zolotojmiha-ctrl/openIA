@@ -48,7 +48,7 @@ class MailTests(TestCase):
         self.client.force_login(self.leader)
         r=self.client.post(reverse('mailbox_new'),{'address':'new@armada-sibir.ru','owner':self.worker.pk})
         self.assertEqual(r.status_code,302);box=Mailbox.objects.get();self.assertEqual(box.state,'requested');self.assertFalse(box.credential)
-        self.assertContains(self.client.get(r.url),'Автоматическое создание ящиков через API Beget пока не подключено')
+        self.assertContains(self.client.get(r.url),'подключите')
     def test_person_account_link_grants_exact_employee(self):
         p=Person.objects.create(legal_entity=self.company,full_name='Без аккаунта',created_by=self.leader)
         box=services.request_address(self.leader,'person@armada-sibir.ru',person=p)

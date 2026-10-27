@@ -13,10 +13,11 @@ def visible_bundles(user):
 
 def scoped_documents(user):
     # File permission is explicit. Linking never grants a file or its parent card.
-    return Document.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
+    return Document.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID,deleted_at__isnull=True)
 
 def visible_documents(user):
     qs=scoped_documents(user)
+    if user.role=='customer' and not user.is_leader:return qs.none()
     if not user.is_authenticated or not user.is_active:return qs.none()
     reads=DocumentRead.objects.filter(document_id=OuterRef('pk'),user=user,version_id=OuterRef('current_version_id'))
     qs=qs.annotate(_already_read=Exists(reads)).annotate(is_unread=Case(When(_already_read=True,then=Value(False)),When(current_version__uploaded_by=user,then=Value(False)),default=Value(True),output_field=BooleanField()))

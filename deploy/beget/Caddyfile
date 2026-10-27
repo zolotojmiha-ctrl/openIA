@@ -10,7 +10,7 @@ armada-sibir.ru, www.armada-sibir.ru {
 app.armada-sibir.ru {
     encode zstd gzip
     request_body {
-        max_size 25MB
+        max_size 64MB
     }
     redir / /cabinet/ 302
     reverse_proxy web:8000

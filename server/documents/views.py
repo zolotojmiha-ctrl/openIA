@@ -145,6 +145,8 @@ def detail(request,pk):
     if doc.current_version_id:
         DocumentRead.objects.update_or_create(document=doc,user=request.user,defaults={'version_id':doc.current_version_id})
         Notice.objects.filter(user=request.user,document=doc,read=False).update(read=True)
+    from .actions import origin
+    back_url,back_label,back_context=origin(request,doc)
     contracts=[contract_card(c,request.user) for c in visible_contracts(request.user).filter(documents=doc)]
     from projects.equipment import visible_equipment
     equipment_cards=visible_equipment(request.user).filter(file_links__document=doc,file_links__active=True).distinct()
@@ -160,7 +162,7 @@ def detail(request,pk):
     readonly=doc.contracts_linked.filter(status='archived').exists()
     direct=doc.access_rules.select_related('user') if can_manage(request.user,doc) else []
     inherited=doc.bundle.access_rules.select_related('user').filter(enabled=True) if doc.bundle_id and can_manage(request.user,doc) else []
-    return render(request,'documents/detail.html',{'document_readonly':readonly,'document_parts':parts,'document_parts_images':bool(parts) and all(p.content_type in ['image/png','image/jpeg'] for p in parts),'subcontract_back':subcontract_back,'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not readonly and not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
+    return render(request,'documents/detail.html',{'back_url':back_url,'back_label':back_label,'back_context':back_context,'document_readonly':readonly,'document_parts':parts,'document_parts_images':bool(parts) and all(p.content_type in ['image/png','image/jpeg'] for p in parts),'subcontract_back':subcontract_back,'equipment_cards':equipment_cards,'document':doc,'text':text,'versions':versions,'contracts':contracts,'objects':visible_objects(request.user).filter(documents=doc),'people':visible_people(request.user).filter(documents=doc),'replace_allowed':not readonly and not doc.archived and can_modify(request.user,doc,'document.replace'),'manage_allowed':can_manage(request.user,doc),'share_allowed':can_share(request.user,doc),'direct_access':direct,'bundle_access':inherited,'bundle_visible':doc.bundle_id and visible_bundles(request.user).filter(pk=doc.bundle_id).exists(),'comments':doc.comments.select_related('author').order_by('created_at'),'comment_form':CommentForm(document=doc)})
 
 @login_required
 def replace(request,pk):

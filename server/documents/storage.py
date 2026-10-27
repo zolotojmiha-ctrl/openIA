@@ -10,16 +10,16 @@ import zipfile
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
-MAX_FILE_SIZE=10*1024*1024
+MAX_FILE_SIZE=32*1024*1024
 TYPES={'.pdf':'application/pdf','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.txt':'text/plain'}
 
 def validate_upload(upload):
     if not upload or upload.size<=0 or upload.size>MAX_FILE_SIZE:
-        raise ValidationError('Выберите непустой файл размером до 10 МБ.')
+        raise ValidationError('Выберите непустой файл размером до 32 МБ.')
     name=re.sub(r'[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]','',upload.name.replace('\\','/').split('/')[-1])[:200].strip()
     if not name:raise ValidationError('У файла должно быть название.')
     content=upload.read(MAX_FILE_SIZE+1);upload.seek(0)
-    if not content or len(content)>MAX_FILE_SIZE:raise ValidationError('Файл превышает 10 МБ.')
+    if not content or len(content)>MAX_FILE_SIZE:raise ValidationError('Файл превышает 32 МБ.')
     # Arbitrary files are opaque attachments. Never unpack, import or execute them.
     mime='application/octet-stream'
     suffix=Path(name).suffix.lower()

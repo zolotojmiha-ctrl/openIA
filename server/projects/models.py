@@ -538,3 +538,5 @@ class CounterpartyAgreement(models.Model):
 class AgreementImportReceipt(models.Model):
     token=models.UUIDField(unique=True)
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+
+from .operations_models import EquipmentCustody,Admission,AdmissionRevision,AdmissionFile,CustomerAccess,CustomerPublication,MaterialRequest

@@ -107,7 +107,7 @@ class EquipmentTests(TestCase):
         with self.assertRaises(ValidationError):service.save_file(self.mechanic,item.pk,None,None,self.file_data(doc))
     def test_current_object_tab_and_mechanic_dashboard(self):
         item=self.make();self.assignment(item);doc=self.doc();service.save_file(self.leader,item.pk,None,None,self.file_data(doc))
-        self.client.force_login(self.leader);r=self.client.get(reverse('object_detail',args=[self.a.pk]));self.assertContains(r,'Техника на объекте сейчас');self.assertContains(r,'ТЕСТ Экскаватор');self.assertContains(self.client.get(reverse('dashboard')),'Проверить сроки документов: 1')
+        self.client.force_login(self.leader);r=self.client.get(reverse('object_detail',args=[self.a.pk]));self.assertContains(r,'Техника на участке сейчас');self.assertContains(r,'ТЕСТ Экскаватор');self.assertContains(self.client.get(reverse('dashboard')),'Проверить сроки документов: 1')
     def book(self,kind,rows):return SimpleUploadedFile('equipment.xlsx',workbook(rows,headers=excel.HEADERS[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     def test_xlsx_preview_read_only_and_apply_retry_safe(self):
         self.client.force_login(self.leader);url=reverse('equipment_import',args=['register'])

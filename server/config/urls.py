@@ -1,9 +1,12 @@
 from documents import assembly,deadlines
+from postoffice import provider
 from projects.closure import closure
 from django.urls import path,include
 from accounts import views
-from accounts import personal,person_accounts
+from accounts import personal,person_accounts,seo
 from projects import views as projects
+from projects import operations,area_actions
+from documents import actions as document_actions
 from projects import agreements
 from projects import daily_views
 from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
@@ -11,9 +14,42 @@ from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
+from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/mail/<uuid:pk>/retry-provision/',provider.retry,name='beget_retry'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/withdraw/',operations.withdraw_publication,name='customer_withdraw'),
+ path('cabinet/defects/<uuid:pk>/edit/',defect_actions.edit,name='defect_edit'),
+ path('robots.txt',seo.robots,name='robots'),
+ path('sitemap.xml',seo.sitemap,name='sitemap'),
+ path('cabinet/mail/<uuid:pk>/verify-created/',provider.verify_created,name='beget_verify_created'),
+ path('cabinet/mail/provider/',provider.setup,name='beget_setup'),
+ path('cabinet/mail/provider/check/',provider.check,name='beget_check'),
+ path('cabinet/mail/<uuid:pk>/provision/',provider.provision,name='beget_provision'),
+ path('cabinet/unassigned-areas/',projects.unassigned_areas,name='unassigned_areas'),
+ path('cabinet/admissions/',operations.my_admissions,name='my_admissions'),
+ path('cabinet/equipment/<uuid:pk>/custody/',operations.custody,name='equipment_custody'),
+ path('cabinet/custody/<uuid:pk>/end/',operations.custody_end,name='custody_end'),
+ path('cabinet/areas/<uuid:pk>/delete/',area_actions.delete_area,name='area_delete'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/people/new/',operations.area_person,name='area_person'),
+ path('cabinet/brigades/<uuid:brigade_id>/admissions/',operations.admission_list,name='admissions'),
+ path('cabinet/brigades/<uuid:brigade_id>/admissions/new/',operations.admission_edit,name='admission_new'),
+ path('cabinet/brigades/<uuid:brigade_id>/admissions/<uuid:pk>/edit/',operations.admission_edit,name='admission_edit'),
+ path('cabinet/admissions/<uuid:pk>/',operations.admission_detail,name='admission_detail'),
+ path('cabinet/admissions/<uuid:pk>/<uuid:revision_id>/zip/',operations.admission_download,name='admission_zip'),
+ path('cabinet/admissions/<uuid:pk>/<uuid:revision_id>/file/<int:file_id>/',operations.admission_download,name='admission_file'),
+ path('cabinet/customer/',operations.customer_portal,name='customer_portal'),
+ path('cabinet/customer/photos/<uuid:publication_id>/<uuid:pk>/',operations.customer_photo,name='customer_photo'),
+ path('cabinet/customer-access/',operations.customer_access,name='customer_access'),
+ path('cabinet/customer-access/<int:pk>/revoke/',operations.customer_revoke,name='customer_revoke'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/publish/',operations.customer_publish,name='customer_publish'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/materials/new/',operations.material_edit,name='material_new'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/materials/<uuid:pk>/',operations.material_edit,name='material_edit'),
+ path('cabinet/documents/<uuid:pk>/rename/',document_actions.rename,name='document_rename'),
+ path('cabinet/documents/<uuid:pk>/delete/',document_actions.delete,name='document_delete'),
+ path('cabinet/documents/<uuid:pk>/unlink-person/<uuid:person_id>/',document_actions.unlink_person,name='document_unlink_person'),
+
  path('cabinet/agreements/',agreements.home,name='agreements'),
  path('cabinet/agreements/new/',agreements.edit,name='agreement_new'),
  path('cabinet/agreements/excel/',agreements.excel,name='agreement_excel'),
