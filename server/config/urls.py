@@ -102,6 +102,7 @@ urlpatterns=[
  path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
  path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/defects/new/',repairs.area_defect,name='area_defect_new'),
  path('cabinet/repairs/sections/new/',repairs.section_new,name='repair_section_new'),
  path('cabinet/repairs/sections/<uuid:section_id>/new/',repairs.job_edit,name='repair_new_section_job'),
  path('cabinet/repairs/new/',repairs.job_edit,name='repair_new'),

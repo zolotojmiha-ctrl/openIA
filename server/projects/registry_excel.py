@@ -222,6 +222,8 @@ def _apply_row(actor,kind,v):
     saved=form.save(commit=False)
     if kind=='contracts':
         desired=set(o.pk for o in form.cleaned_data['linked_objects'])
+        from .forms import validate_new_area_links
+        validate_new_area_links(obj,desired)
         from repairs.models import Job
         if obj and (Job.objects.filter(contract=obj).exclude(section__project_object_id__in=desired).exists() or (Job.objects.filter(contract=obj).exists() and 'repairs' not in saved.work_kinds)):
             raise ValidationError('Нельзя убрать объект или вид работ, пока с ними связаны ремонтные задания.')

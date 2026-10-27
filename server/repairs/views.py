@@ -51,15 +51,66 @@ def jobs(request):
     except (ValueError,TypeError):contract_readonly=False
     return render(request,'repairs/list.html',{'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
 
+class AreaDefectForm(forms.Form):
+    pipeline=forms.CharField(label='Нефтепровод',max_length=200,help_text='Например: ОИ, УБО или ОП. Укажите явно — километры разных нефтепроводов не смешиваются.')
+    rnu=forms.CharField(label='РНУ',max_length=120)
+
+@prepare_required
+def area_defect(request,contract_id,object_id):
+    from projects.access import visible_objects
+    from .access import repair_contracts
+    contract=get_object_or_404(repair_contracts(request.user),pk=contract_id)
+    area=get_object_or_404(visible_objects(request.user).filter(contracts=contract).exclude(status='archived'),pk=object_id)
+    header=AreaDefectForm(request.POST or None)
+    job_form=None
+    if request.method=='POST' and header.is_valid():
+        with transaction.atomic():
+            # Technical Section is a ledger, not another user-created work area.
+            section,_=Section.objects.get_or_create(project_object=area,rnu=header.cleaned_data['rnu'],pipeline=header.cleaned_data['pipeline'],name=area.name[:200])
+            data=request.POST.copy();data['section']=str(section.pk);data['contract']=str(contract.pk);data['expected_version']='0'
+            original=request.POST
+            try:
+                request.POST=data
+                response=job_edit(request,section_id=section.pk)
+            finally:request.POST=original
+            if response.status_code==302:return response
+            # Rebuild the same form while the temporary Section still exists.
+            job_form=JobForm(data,user=request.user,initial={'contract':contract.pk,'section':section.pk})
+            job_form.is_valid()
+            if not job_form.errors:job_form.add_error(None,'Не удалось сохранить. Проверьте состояние контракта и повторите.')
+            transaction.set_rollback(True)
+    if job_form is None:
+        job_form=JobForm(user=request.user,initial={'contract':contract.pk})
+    if request.method!='POST':
+        job_form.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=area,contract_access__contract=contract)).distinct().order_by('full_name')
+    for name in ('contract','section','expected_version'):
+        job_form.fields[name].widget=forms.HiddenInput()
+    return render(request,'repairs/area_defect.html',{'header':header,'form':job_form,'card_id':contract.pk,'area':area})
+
 @prepare_required
 def section_new(request):
-    form=SectionForm(request.POST or None,user=request.user,initial={'project_object':request.GET.get('object')})
+    from projects.access import visible_objects
+    from .access import repair_contracts
+    initial={'project_object':request.GET.get('object')}
+    contract=None;area=None
+    if request.GET.get('contract') and request.GET.get('object'):
+        contract=get_object_or_404(repair_contracts(request.user),pk=request.GET['contract'])
+        area=get_object_or_404(visible_objects(request.user).filter(contracts=contract).exclude(status='archived'),pk=request.GET['object'])
+        initial.update(project_object=area,name=area.name[:200])
+    form=SectionForm(request.POST or None,user=request.user,initial=initial)
+    if area:
+        form.fields['project_object'].disabled=True
+        form.fields['project_object'].label='Участок работ'
+        form.fields['name'].label='Название ведомости'
+        form.fields['name'].help_text='Можно оставить название участка. Здесь задаются нефтепровод и РНУ для загрузки дефектов.'
     if request.method=='POST' and form.is_valid():
         section=form.save();audit(request.user,'repair_prepared',entity_id=str(section.pk),kind='section')
         from django.urls import reverse
         from urllib.parse import urlencode
+        if request.GET.get('next')=='import' and contract:
+            return redirect(reverse('repair_import')+'?'+urlencode({'contract':contract.pk,'section':section.pk}))
         return redirect(reverse('repair_new_section_job',args=[section.pk])+'?'+urlencode({'contract':request.GET.get('contract','')}))
-    return render(request,'repairs/edit.html',{'form':form,'title':'Добавить участок','kind':'section'})
+    return render(request,'repairs/edit.html',{'form':form,'title':'Подготовить ведомость нефтепровода' if area else 'Добавить ведомость нефтепровода','kind':'section'})
 
 @prepare_required
 def job_edit(request,pk=None,section_id=None):

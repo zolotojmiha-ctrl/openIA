@@ -87,13 +87,13 @@ class ProjectAccessTests(TestCase):
             self.client.force_login(leader)
             r=self.client.get(reverse('contract_detail',args=[self.contract.pk]))
             for text in [self.contract.number,self.contract.private_notes,self.b.name]:self.assertContains(r,text)
-    def test_many_to_many_without_one_object_limit(self):
+    def test_new_contract_cannot_reuse_area_from_other_contract(self):
         self.as_leader()
         r=self.client.post(reverse('contract_new'),self.contract_data())
-        self.assertEqual(r.status_code,302)
-        created=Contract.objects.get(number='ТЕСТ-001')
-        self.assertEqual(created.objects_linked.count(),2)
-        self.assertEqual(self.a.contracts.count(),2)
+        self.assertEqual(r.status_code,200)
+        self.assertIn('linked_objects',r.context['form'].errors)
+        self.assertFalse(Contract.objects.filter(number='ТЕСТ-001').exists())
+        self.assertEqual(self.a.contracts.count(),1)
     def test_other_company_cannot_be_selected_or_viewed(self):
         self.as_leader()
         r=self.client.post(reverse('contract_new'),self.contract_data(linked_objects=[str(self.c.pk)]))

@@ -13,7 +13,7 @@ from documents.access import visible_documents,visible_people
 from documents.presentation import file_groups
 from accounts.views import leader_required, audit
 from .access import visible_objects, visible_contracts, contract_card
-from .forms import ObjectForm, ContractForm, AssignmentForm, ContractShareForm
+from .forms import validate_new_area_links, ObjectForm, ContractForm, AssignmentForm, ContractShareForm
 from .models import LegalEntity, ProjectObject, Contract, ContractObject, ObjectAccess, ContractAccess, COMPANY_TAX_ID, SHARED_FIELDS
 
 @login_required
@@ -28,13 +28,18 @@ def objects(request):
 def object_detail(request,pk):
     obj=get_object_or_404(visible_objects(request.user),pk=pk)
     contracts=visible_contracts(request.user).filter(objects_linked=obj).prefetch_related('access_rules')
+    context_contract=None
+    if request.GET.get('contract'):
+        try:context_contract=get_object_or_404(contracts,pk=UUID(request.GET['contract']))
+        except ValueError:raise Http404
+    elif contracts.count()==1:context_contract=contracts.first()
     from .equipment import placements,current
     equipment_here=current(placements(request.user)).filter(project_object=obj).order_by('equipment__name')
     from .stock import warehouses
     stock_here=warehouses(request.user).filter(project_object=obj,archived=False)
     from .subcontracts import orders
     subcontract_here=orders(request.user).filter(project_object=obj)
-    return render(request,'projects/object.html',{'subcontract_here':subcontract_here,'stock_here':stock_here,'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
+    return render(request,'projects/object.html',{'context_contract':context_contract,'subcontract_here':subcontract_here,'stock_here':stock_here,'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(assignments__project_object=obj).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],
         'assignments':obj.assignments.select_related('user').order_by('user__full_name') if permitted(request.user,'projects.access') else None})
 
 @permission_required('projects.manage')
@@ -72,10 +77,10 @@ def object_edit(request,pk=None):
                     ContractObject.objects.create(contract=related,project_object=saved)
                     related.version+=1;related.save(update_fields=['version','updated_at'])
                     audit(actor,'contract_updated',entity_id=str(related.pk),linked=[str(saved.pk)])
-                messages.success(request,'Объект сохранён и добавлен в контракт.' if related else 'Объект сохранён.')
+                messages.success(request,'Участок сохранён и добавлен в контракт.' if related else 'Участок сохранён.')
                 if related:return redirect('contract_detail',pk=related.pk)
                 return redirect('object_detail',pk=saved.pk)
-    return render(request,'projects/edit.html',{'form':form,'title':'Редактирование объекта' if obj else 'Новый объект','back':'objects'})
+    return render(request,'projects/edit.html',{'parent_contract':initial.get('related_contract'),'form':form,'title':'Редактирование участка работ' if obj else 'Новый участок работ','back':'objects'})
 
 @permission_required('projects.access')
 def assignments(request,pk):
@@ -163,6 +168,8 @@ def contract_edit(request,pk=None):
             if locked and locked.version!=form.cleaned_data['expected_version']:
                 form.add_error(None,'Договор уже изменён. Обновите страницу и проверьте изменения.')
             desired={o.pk for o in form.cleaned_data['linked_objects']}
+            try:validate_new_area_links(locked,desired)
+            except ValidationError as e:form.add_error('linked_objects',e)
             if desired-set(visible_objects(actor).values_list('pk',flat=True)):raise PermissionDenied
             saved=form.instance
             from repairs.models import Job

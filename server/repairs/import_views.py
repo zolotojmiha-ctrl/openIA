@@ -26,6 +26,12 @@ class UploadForm(forms.Form):
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['section'].queryset=visible_sections(user)
         self.fields['contract'].queryset=repair_contracts(user)
+        cid=self.data.get('contract') if self.is_bound else self.initial.get('contract')
+        try:
+            contract=self.fields['contract'].queryset.filter(pk=cid).first() if cid else None
+        except (ValidationError,ValueError):contract=None
+        if contract:self.fields['section'].queryset=self.fields['section'].queryset.filter(project_object__contracts=contract)
+        self.fields['section'].label='Ведомость нефтепровода на участке'
         self.fields['contract'].label_from_instance=lambda c:contract_card(c,user)['title']
     def clean(self):
         c=super().clean()

@@ -18,7 +18,7 @@ class ContractFirstTests(TestCase):
         self.assertFalse(ProjectObject.objects.exists())
         response=self.client.post(reverse('contract_new'),self.data());self.assertEqual(response.status_code,302)
         c=Contract.objects.get();self.assertFalse(c.objects_linked.exists());self.assertEqual(str(c.amount),'61000000.00')
-        self.assertContains(self.client.get(response.url),'Добавить объект в контракт')
+        self.assertContains(self.client.get(response.url),'Добавить участок работ')
         create=reverse('object_new')+'?contract='+str(c.pk)
         self.assertEqual(self.client.get(create).context['form'].initial['related_contract'],c)
         response=self.client.post(create,{'name':'Объект после контракта','kind':'Нефтепровод','status':'active','related_contract':str(c.pk)})
