@@ -42,7 +42,7 @@ def object_detail(request,pk):
     from .equipment import placements,current
     equipment_here=current(placements(request.user)).filter(project_object=obj).order_by('equipment__name')
     from .stock import warehouses
-    stock_here=warehouses(request.user).filter(project_object=obj,archived=False)
+    stock_here=warehouses(request.user).filter(served_objects=obj,archived=False).distinct()
     from .subcontracts import orders
     subcontract_here=orders(request.user).filter(project_object=obj)
     return render(request,'projects/object.html',{'crews_here':crews_here,'context_contract':context_contract,'subcontract_here':subcontract_here,'stock_here':stock_here,'equipment_here':equipment_here,'documents':visible_documents(request.user).filter(objects_linked=obj,archived=False),'file_groups':file_groups(request.user,visible_documents(request.user).filter(objects_linked=obj,archived=False)),'personnel':visible_people(request.user).filter(Q(assignments__project_object=obj)&(Q(assignments__start_date__isnull=True)|Q(assignments__start_date__lte=today))&(Q(assignments__end_date__isnull=True)|Q(assignments__end_date__gte=today))).distinct(),'object':obj,'cards':[contract_card(c,request.user) for c in contracts],

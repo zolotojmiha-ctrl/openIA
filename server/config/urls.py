@@ -7,7 +7,7 @@ from accounts import personal,person_accounts,seo
 from projects import views as projects
 from projects import operations,area_actions
 from documents import actions as document_actions
-from projects import agreements,contract_actions
+from projects import agreements,contract_actions,resource_picker
 from projects import daily_views
 from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
@@ -96,6 +96,7 @@ urlpatterns=[
  path('cabinet/stock/<uuid:pk>/',stock_views.detail,name='stock_detail'),
  path('cabinet/stock/<uuid:pk>/edit/',stock_views.warehouse_edit,name='stock_edit'),
  path('cabinet/stock/<uuid:pk>/access/',stock_views.access,name='stock_access'),
+ path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/equipment/',resource_picker.pick,name='area_equipment_pick'),
  path('cabinet/equipment/',equipment_views.listing,name='equipment'),
  path('cabinet/equipment/new/',equipment_views.edit,name='equipment_new'),
  path('cabinet/equipment/excel/<str:kind>/export/',equipment_excel.export,name='equipment_export'),

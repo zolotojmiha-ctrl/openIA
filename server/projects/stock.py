@@ -45,7 +45,13 @@ def save_warehouse(user,pk,version,data):
     actor=manager(user);company=lock()
     row=warehouses(actor).get(pk=pk) if pk else Warehouse(legal_entity=company,created_by=actor)
     if pk and row.version!=version:raise ValidationError('Склад изменён. Обновите страницу.')
-    obj=data.get('project_object');crew=data.get('brigade_assignment')
+    multi='served_objects' in data or 'served_brigades' in data
+    obj=row.project_object if multi else data.get('project_object');crew=data.get('brigade_assignment',row.brigade_assignment) if multi else data.get('brigade_assignment')
+    if multi:
+        from .crews import visible_crews
+        areas=list(data.get('served_objects',[]));crews=list(data.get('served_brigades',[]))
+        if set(o.pk for o in areas)-set(visible_objects(actor).exclude(status='archived').values_list('pk',flat=True)):raise ValidationError('Выбран недоступный участок.')
+        if set(b.pk for b in crews)-set(visible_crews(actor).filter(archived=False).values_list('pk',flat=True)):raise ValidationError('Выбрана недоступная бригада.')
     if obj and not visible_objects(actor).filter(pk=obj.pk).exists():raise ValidationError('Объект недоступен.')
     if crew:
         from .crews import visible_assignments
@@ -58,7 +64,14 @@ def save_warehouse(user,pk,version,data):
     row.name=data['name'].strip();row.location=data.get('location','').strip();row.project_object=obj;row.brigade_assignment=crew;row.archived=data.get('archived',False)
     row.full_clean()
     if pk:row.version+=1
-    row.save();audit(actor,'stock_updated',kind='warehouse',id=str(row.pk),previous=before,name=row.name,location=row.location,object=str(row.project_object_id or ''),crew=str(row.brigade_assignment_id or ''),archived=row.archived)
+    row.save()
+    if multi:
+        row.served_objects.set(areas);row.served_brigades.set(crews)
+        if crew:row.served_objects.add(crew.project_object_id);row.served_brigades.add(crew.brigade_id)
+    else:
+        if obj:row.served_objects.add(obj)
+        if crew:row.served_brigades.add(crew.brigade_id)
+    audit(actor,'stock_updated',kind='warehouse',id=str(row.pk),previous=before,name=row.name,location=row.location,object=str(row.project_object_id or ''),crew=str(row.brigade_assignment_id or ''),archived=row.archived,served_objects=[str(x) for x in row.served_objects.values_list('pk',flat=True)],served_brigades=[str(x) for x in row.served_brigades.values_list('pk',flat=True)])
     return row
 
 ITEM_FIELDS=('sku','name','kind','unit','method','diameter_mm','length_mm','wall_mm','archived')

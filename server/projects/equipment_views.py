@@ -7,6 +7,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
+from django.urls import reverse
 from accounts.permissions import permission_required,permitted
 from documents.models import Document
 from documents.access import visible_documents
@@ -79,6 +80,13 @@ def listing(request):
     except ValueError:crew_id=None
     target_crew=visible_assignments(request.user).filter(pk=crew_id).first() if crew_id else None
     if target_crew:target=target_crew.project_object
+    if target and permitted(request.user,'equipment.manage'):
+        choices=visible_contracts(request.user).filter(objects_linked=target).exclude(status='archived')
+        if target_crew:choices=choices.filter(pk=target_crew.contract_id)
+        if choices.count()==1:
+            url=reverse('area_equipment_pick',args=[choices.first().pk,target.pk])
+            if target_crew:url+='?crew='+str(target_crew.pk)
+            return redirect(url)
     qs=filtered(request.user,request.GET);page=Paginator(qs,25).get_page(request.GET.get('page'))
     location_map={}
     for row in service.current(service.placements(request.user)).filter(equipment__in=page.object_list):location_map.setdefault(row.equipment_id,[]).append(row)

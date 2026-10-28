@@ -1,6 +1,6 @@
 name: armada
 x-app: &app
-  image: armada-web:6.16.2
+  image: armada-web:6.17.0
   build:
     context: ../..
     dockerfile: deploy/synology/Dockerfile
@@ -35,7 +35,7 @@ x-app: &app
     - documents:/var/lib/armada-documents
 services:
   init:
-    image: armada-web:6.16.2
+    image: armada-web:6.17.0
     build:
       context: ../..
       dockerfile: deploy/synology/Dockerfile

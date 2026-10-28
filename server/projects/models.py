@@ -207,6 +207,8 @@ class Warehouse(models.Model):
     location=models.CharField('Место хранения / адрес',max_length=250,blank=True)
     project_object=models.ForeignKey(ProjectObject,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Объект (необязательно)')
     brigade_assignment=models.OneToOneField(BrigadeAssignment,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Выдано бригаде (назначение)')
+    served_objects=models.ManyToManyField(ProjectObject,blank=True,related_name='serving_warehouses',verbose_name='Обслуживаемые участки')
+    served_brigades=models.ManyToManyField(Brigade,blank=True,related_name='serving_warehouses',verbose_name='Обслуживаемые бригады')
     archived=models.BooleanField('В архиве',default=False)
     version=models.PositiveIntegerField(default=1)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')

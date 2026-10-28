@@ -16,16 +16,24 @@ from repairs.models import Coupling,Job,METHODS
 from repairs.access import visible_jobs
 from .models import Warehouse,WarehouseAccess,StockItem,StockBalance,STOCK_KINDS
 from .access import visible_objects
-from .crews import visible_assignments
+from .crews import visible_assignments,visible_crews
 from . import stock
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 class WarehouseForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
     class Meta:
-        model=Warehouse;fields=['name','location','project_object','brigade_assignment','archived']
+        model=Warehouse;fields=['name','location','served_objects','served_brigades','brigade_assignment','archived'];widgets={'served_objects':forms.CheckboxSelectMultiple,'served_brigades':forms.CheckboxSelectMultiple}
     def __init__(self,*args,user,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['project_object'].queryset=visible_objects(user);self.fields['brigade_assignment'].queryset=visible_assignments(user)
+        super().__init__(*args,**kwargs)
+        from .crews import visible_crews
+        self.fields['served_objects'].queryset=visible_objects(user).exclude(status='archived')
+        self.fields['served_brigades'].queryset=visible_crews(user).filter(archived=False)
+        self.fields['brigade_assignment'].queryset=visible_assignments(user)
+        self.fields['brigade_assignment'].label='Отдельный остаток у бригады (необязательно)'
+        self.fields['brigade_assignment'].help_text='Для общего склада оставьте пустым. Этот режим нужен для отдельного учёта уже выданных конкретной бригаде изделий.'
+        self.fields['served_objects'].help_text='Можно выбрать несколько. Остатки склада общие и не дублируются по участкам.'
+        self.fields['served_brigades'].help_text='Можно выбрать несколько бригад, даже если они работают на разных участках.'
 
 class ItemForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
@@ -39,7 +47,8 @@ class ItemForm(forms.ModelForm):
 
 class MoveForm(forms.Form):
     token=forms.UUIDField(widget=forms.HiddenInput,initial=uuid.uuid4)
-    item=forms.ModelChoiceField(label='Материал / муфта',queryset=StockItem.objects.none())
+    item=forms.ModelChoiceField(label='Материал / муфта',queryset=StockItem.objects.none(),required=False)
+    create_item=forms.BooleanField(label='Добавить новый материал / муфту',required=False)
     kind=forms.ChoiceField(label='Операция',choices=STOCK_KINDS[:-1])
     quantity=forms.DecimalField(label='Количество',max_digits=18,decimal_places=3,min_value=Decimal('0.001'))
     source=forms.ModelChoiceField(label='Откуда',queryset=Warehouse.objects.none(),required=False)
@@ -49,9 +58,16 @@ class MoveForm(forms.Form):
     note=forms.CharField(label='Основание / пояснение',max_length=1500,widget=forms.Textarea(attrs={'rows':2}))
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['item'].queryset=stock.items(user).filter(archived=False).order_by('sku')
+        self.fields['item'].empty_label='Выберите материал из справочника' if self.fields['item'].queryset.exists() else 'Справочник пуст — добавьте позицию ниже'
         for k in ('source','destination'):self.fields[k].queryset=stock.warehouses(user).filter(archived=False).order_by('name')
         self.fields['job'].queryset=visible_jobs(user)
         self.fields['job'].label_from_instance=lambda j:f'{j.section.name} · '+', '.join('км '+d.km+' № '+d.number for d in j.active_defects)
+
+    def clean(self):
+        c=super().clean()
+        if not c.get('item') and not c.get('create_item'):self.add_error('item','Выберите материал или отметьте «Добавить новый материал / муфту».')
+        if c.get('item') and c.get('create_item'):self.add_error('item','Выберите существующую позицию или создание новой, не оба варианта.')
+        return c
 
 class ReverseForm(forms.Form):
     token=forms.UUIDField(widget=forms.HiddenInput,initial=uuid.uuid4)
@@ -67,7 +83,7 @@ def detail(request,pk):
     wh=get_object_or_404(stock.warehouses(request.user),pk=pk)
     rows=StockBalance.objects.filter(warehouse=wh,quantity__gt=0).select_related('item').order_by('item__sku')
     history=stock.movements(request.user).filter(Q(source=wh)|Q(destination=wh)).order_by('-created_at','-pk')
-    return render(request,'projects/stock_detail.html',{'warehouse':wh,'rows':rows,'page':Paginator(history,30).get_page(request.GET.get('page')),'object_visible':wh.project_object_id and visible_objects(request.user).filter(pk=wh.project_object_id).exists()})
+    return render(request,'projects/stock_detail.html',{'warehouse':wh,'rows':rows,'page':Paginator(history,30).get_page(request.GET.get('page')),'served_objects':wh.served_objects.filter(pk__in=visible_objects(request.user)).order_by('name'),'served_brigades':wh.served_brigades.filter(pk__in=visible_crews(request.user)).order_by('name'),'object_visible':wh.project_object_id and visible_objects(request.user).filter(pk=wh.project_object_id).exists()})
 
 @permission_required('stock.manage')
 def warehouse_edit(request,pk=None):
@@ -77,7 +93,7 @@ def warehouse_edit(request,pk=None):
         try:row=stock.save_warehouse(request.user,pk,form.cleaned_data.get('expected_version'),form.cleaned_data)
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
         else:return redirect('stock_detail',pk=row.pk)
-    return render(request,'projects/stock_form.html',{'form':form,'warehouse':wh,'title':'Изменить склад / архив' if wh else 'Добавить склад или место выдачи бригаде'},status=status)
+    return render(request,'projects/stock_form.html',{'form':form,'warehouse':wh,'warehouse_config':True,'title':'Изменить склад / архив' if wh else 'Добавить склад или место выдачи бригаде'},status=status)
 
 @permission_required('stock.manage')
 def item_list(request):
@@ -102,12 +118,17 @@ def movement(request):
         except ValueError:pass
     if request.GET.get('kind') in dict(STOCK_KINDS[:-1]):initial['kind']=request.GET['kind']
     form=MoveForm(request.POST or None,user=request.user,initial=initial);status=200
-    if request.method=='POST' and form.is_valid():
+    new_item=ItemForm(request.POST if request.method=='POST' and request.POST.get('create_item') else None,user=request.user,prefix='new')
+    empty_catalogue=not form.fields['item'].queryset.exists()
+    if request.method=='POST' and form.is_valid() and (not form.cleaned_data['create_item'] or new_item.is_valid()):
         c=form.cleaned_data
-        try:row=stock.move(request.user,c['item'].pk,c['kind'],c['quantity'],c['source'].pk if c['source'] else None,c['destination'].pk if c['destination'] else None,c['date'],c['note'],c['token'],c['job'].pk if c['job'] else None)
+        try:
+            with transaction.atomic():
+                item=stock.save_item(request.user,None,None,new_item.cleaned_data) if c['create_item'] else c['item']
+                row=stock.move(request.user,item.pk,c['kind'],c['quantity'],c['source'].pk if c['source'] else None,c['destination'].pk if c['destination'] else None,c['date'],c['note'],c['token'],c['job'].pk if c['job'] else None)
         except ValidationError as e:form.add_error(None,e);status=409
         else:messages.success(request,'Операция сохранена. Остатки обновлены.');return redirect('stock_detail',pk=row.destination_id or row.source_id)
-    return render(request,'projects/stock_form.html',{'form':form,'title':'Складская операция','movement':True},status=status)
+    return render(request,'projects/stock_form.html',{'form':form,'title':'Складская операция','movement':True,'new_item':new_item,'empty_catalogue':empty_catalogue},status=status)
 
 @permission_required('stock.manage')
 def reversal(request,pk):
