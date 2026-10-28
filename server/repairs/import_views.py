@@ -6,6 +6,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import render,redirect,get_object_or_404
 from django.http import FileResponse,Http404
+from django.urls import reverse
+from urllib.parse import urlencode
 from projects.models import Contract
 from projects.access import contract_card
 from django.utils import timezone
@@ -86,9 +88,25 @@ class ReviewForm(forms.Form):
 @prepare_required
 def upload(request):
     form=UploadForm(request.POST or None,request.FILES or None,user=request.user,initial={'contract':request.GET.get('contract'),'section':request.GET.get('section')})
+    area=None
+    back=reverse('repairs')
+    if request.GET.get('contract') and request.GET.get('object'):
+        from projects.access import visible_objects
+        import uuid
+        try:cid=uuid.UUID(request.GET['contract']);oid=uuid.UUID(request.GET['object'])
+        except ValueError:raise Http404
+        contract=get_object_or_404(repair_contracts(request.user),pk=cid)
+        area=get_object_or_404(visible_objects(request.user).filter(contracts=contract).exclude(status='archived'),pk=oid)
+        form.initial['contract']=contract.pk;form.fields['contract'].disabled=True
+        form.fields['section'].queryset=visible_sections(request.user).filter(project_object=area)
+        sections=form.fields['section'].queryset
+        if sections.count()==1:
+            form.initial['section']=sections.first().pk;form.fields['section'].disabled=True
+        back=reverse('work_place',args=[contract.pk,area.pk])
     if request.method=='POST' and form.is_valid():
         try:
             payload=parse_work(form.cleaned_data['file'],form.cleaned_data['sheet'])
+            if area:payload['from_area']=True
             section=form.cleaned_data['section']
             for item in payload['jobs']:
                 if item.get('contract_id') and item['contract_id']!=str(form.cleaned_data['contract'].pk):raise ValidationError('В файле есть строки другого контракта. Выберите соответствующий контракт или подготовьте отдельную ведомость.')
@@ -106,7 +124,7 @@ def upload(request):
             except Exception:private_path(key).unlink(missing_ok=True);raise
             return redirect('repair_import_review',pk=batch.pk)
         except ValidationError as e:form.add_error('file',e.messages[0])
-    return render(request,'repairs/import.html',{'form':form})
+    return render(request,'repairs/import.html',{'form':form,'back':back,'area':area})
 
 @prepare_required
 def source(request,pk):
@@ -189,7 +207,10 @@ def review(request,pk):
                     locked.applied_at=timezone.now();locked.save(update_fields=['applied_at'])
                     audit(request.user,'repair_imported',entity_id=str(batch.pk),created=created,linked=linked,couplings=inventory)
                     messages.success(request,f'Создано работ: {created}. Дополнена история: {linked}. Добавлено муфт: {inventory}. Факт выполнения автоматически не подтверждался.')
+                    if batch.payload.get('from_area') and batch.contract_id:return redirect('work_place',pk=batch.contract_id,object_id=batch.section.project_object_id)
                     return redirect('repairs')
     rows=[]
     for i,item in enumerate(batch.payload['jobs']):rows.append({'item':item,'method':dict(METHODS)[item['method']],'field':form[f'row_{i}']})
-    return render(request,'repairs/import_review.html',{'batch':batch,'form':form,'rows':rows})
+    back=reverse('repair_import')
+    if batch.payload.get('from_area') and batch.contract_id:back+='?'+urlencode({'contract':batch.contract_id,'object':batch.section.project_object_id})
+    return render(request,'repairs/import_review.html',{'batch':batch,'form':form,'rows':rows,'back':back})

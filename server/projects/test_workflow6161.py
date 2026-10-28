@@ -26,8 +26,8 @@ class WorkflowTests(TestCase):
         response=self.client.get(url)
         self.assertContains(response,'Зарипов')
         self.assertTrue(response.context['header'].fields['rnu'].disabled)
-        self.assertTrue(response.context['header'].fields['pipeline'].disabled)
-        response=self.client.post(url,{'kilometre':'154','defect_numbers':'1749','pipe_section':'123','method':'grind','assigned_to':str(self.master.pk),'materials':'ready','open_assignment_access':'on','expected_version':0})
+        self.assertFalse(response.context['header'].fields['pipeline'].disabled)
+        response=self.client.post(url,{'pipeline':'ОИ','kilometre':'154','defect_numbers':'1749','pipe_section':'123','method':'grind','assigned_to':str(self.master.pk),'materials':'ready','open_assignment_access':'on','expected_version':0})
         self.assertEqual(response.status_code,302,str(response.context['form'].errors) if response.status_code==200 else '')
         job=Job.objects.get(defects__number='1749')
         self.assertEqual(job.section.rnu,'Новосибирское РНУ')
@@ -40,7 +40,7 @@ class WorkflowTests(TestCase):
         self.assertFalse(self.master.contract_access.get(contract=self.contract).show_counterparty)
     def test_assignment_requires_explicit_scope_and_rejects_forged_context(self):
         url=reverse('area_defect_new',args=[self.contract.pk,self.area.pk])
-        payload={'kilometre':'154','defect_numbers':'1751','method':'grind','assigned_to':str(self.other.pk),'materials':'ready','rnu':'Подмена','pipeline':'Подмена'}
+        payload={'kilometre':'154','defect_numbers':'1751','method':'grind','assigned_to':str(self.other.pk),'materials':'ready','rnu':'Подмена','pipeline':'УБО'}
         response=self.client.post(url,payload)
         self.assertIn('assigned_to',response.context['form'].errors)
         self.assertFalse(Defect.objects.filter(number='1751').exists())
@@ -49,7 +49,7 @@ class WorkflowTests(TestCase):
         self.assertEqual(self.client.post(url,payload).status_code,302)
         defect=Defect.objects.get(number='1751')
         self.assertEqual(defect.section.rnu,self.contract.rnu)
-        self.assertEqual(defect.section.pipeline,'ОИ')
+        self.assertEqual(defect.section.pipeline,'УБО')
     def test_same_register_and_origin_on_both_entrances(self):
         url=reverse('work_place',args=[self.contract.pk,self.area.pk])
         for route in [url,reverse('repairs')+'?contract='+str(self.contract.pk)+'&object='+str(self.area.pk)]:

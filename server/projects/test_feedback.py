@@ -56,7 +56,7 @@ class FeedbackTests(TestCase):
         a.refresh_from_db();self.assertEqual(a.end_date,self.today)
     def test_equipment_label_is_editable_and_back_link_exists(self):
         self.client.force_login(self.leader)
-        self.assertContains(self.client.get(reverse('repairs')),'← Контракты и работы')
+        self.assertContains(self.client.get(reverse('repairs')),'← Выполнение работ')
         item=self.machine();r=self.client.get(reverse('equipment_document_new',args=[item.pk]))
         self.assertContains(r,'Название документа на карточке техники')
     def test_both_leaders_receive_business_notices_independently(self):

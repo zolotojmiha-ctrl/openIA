@@ -30,7 +30,7 @@ from .models import (LegalEntity, ProjectObject, Contract, ContractObject, Objec
                      STATUSES, WORK_KINDS)
 
 TITLES={'objects':'Объекты','contracts':'Контракты','people':'Персонал'}
-BACK={'objects':'objects','contracts':'contracts','people':'people'}
+BACK={'objects':'unassigned_areas','contracts':'contracts','people':'people'}
 OBJECT_FIELDS=['name','kind','location','status','start_date','end_date']
 CONTRACT_FIELDS=['number','date','subject','work_kinds','counterparty','deadline','status']
 PRIVATE_FIELDS=['amount','private_notes']

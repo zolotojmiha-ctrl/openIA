@@ -51,14 +51,28 @@ def register_context(request,scope=None):
         from uuid import UUID
         contract_readonly=visible_contracts(request.user).filter(pk=UUID(params['contract']),status='archived').exists()
     except (ValueError,TypeError):contract_readonly=False
-    return {'return_to':request.get_full_path(),'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':params['contract'],'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':params['object'],'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')}
+    section_choices=visible_sections(request.user)
+    if params['contract']:
+        try:section_choices=section_choices.filter(project_object__contracts=uuid.UUID(params['contract']))
+        except ValueError:section_choices=section_choices.none()
+    if params['object']:
+        try:section_choices=section_choices.filter(project_object_id=uuid.UUID(params['object']))
+        except ValueError:section_choices=section_choices.none()
+    master_scope={k:v for k,v in params.items() if k in ('contract','object','section','legacy')}
+    from projects.access import visible_objects,contract_card
+    area_choices=visible_objects(request.user)
+    if params['contract']:
+        try:area_choices=area_choices.filter(contracts=uuid.UUID(params['contract']))
+        except ValueError:area_choices=area_choices.none()
+    contract_choices=[contract_card(c,request.user) for c in visible_contracts(request.user).order_by('number')]
+    return {'scope_locked':bool(scope),'area_choices':area_choices,'contract_choices':contract_choices,'selected_legacy':params['legacy'],'return_to':request.get_full_path(),'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':section_choices.distinct().order_by('rnu','pipeline','name'),'selected_contract':params['contract'],'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':params['object'],'masters':User.objects.filter(repair_jobs__in=filtered_jobs(request.user,master_scope)).distinct().order_by('full_name')}
 
 @login_required
 def jobs(request):
     return render(request,'repairs/list.html',register_context(request))
 
 class AreaDefectForm(forms.Form):
-    pipeline=forms.CharField(label='Нефтепровод',max_length=200,help_text='Например: ОИ, УБО или ОП. Укажите явно — километры разных нефтепроводов не смешиваются.')
+    pipeline=forms.CharField(label='Нефтепровод',max_length=200,help_text='Например: ОИ, УБО или ОП. Можно изменить для дефекта другого нефтепровода; километры разных нефтепроводов не смешиваются.')
     rnu=forms.CharField(label='РНУ контракта — заполните один раз',max_length=120,required=False,help_text='Сохранится в контракте и будет подставляться для следующих дефектов.')
 
 @prepare_required
@@ -71,9 +85,6 @@ def area_defect(request,contract_id,object_id):
     inherited_rnu=contract.rnu or (existing_rnus[0] if len(existing_rnus)==1 else '')
     pipelines=list(Section.objects.filter(project_object=area).values_list('pipeline',flat=True).distinct())
     header=AreaDefectForm(request.POST or None,initial={'rnu':inherited_rnu,'pipeline':pipelines[0] if len(pipelines)==1 else ''})
-    if len(pipelines)==1:
-        header.fields['pipeline'].disabled=True
-        header.fields['pipeline'].widget=forms.HiddenInput()
     if inherited_rnu:
         header.fields['rnu'].disabled=True
         header.fields['rnu'].widget=forms.HiddenInput()
@@ -119,10 +130,14 @@ def section_new(request):
     if request.GET.get('contract') and request.GET.get('object'):
         contract=get_object_or_404(repair_contracts(request.user),pk=request.GET['contract'])
         area=get_object_or_404(visible_objects(request.user).filter(contracts=contract).exclude(status='archived'),pk=request.GET['object'])
-        initial.update(project_object=area,name=area.name[:200])
+        initial.update(project_object=area,name=area.name[:200],rnu=contract.rnu)
+        if not initial['rnu']:
+            rn=list(Section.objects.filter(project_object__contracts=contract).exclude(rnu='').values_list('rnu',flat=True).distinct())
+            if len(rn)==1:initial['rnu']=rn[0]
     form=SectionForm(request.POST or None,user=request.user,initial=initial)
     if area:
         form.fields['project_object'].disabled=True
+        if initial.get('rnu'):form.fields['rnu'].disabled=True
         form.fields['project_object'].label='Участок работ'
         form.fields['name'].label='Название ведомости'
         form.fields['name'].help_text='Можно оставить название участка. Здесь задаются нефтепровод и РНУ для загрузки дефектов.'
@@ -131,7 +146,7 @@ def section_new(request):
         from django.urls import reverse
         from urllib.parse import urlencode
         if request.GET.get('next')=='import' and contract:
-            return redirect(reverse('repair_import')+'?'+urlencode({'contract':contract.pk,'section':section.pk}))
+            return redirect(reverse('repair_import')+'?'+urlencode({'contract':contract.pk,'section':section.pk,'object':area.pk}))
         return redirect(reverse('repair_new_section_job',args=[section.pk])+'?'+urlencode({'contract':request.GET.get('contract','')}))
     return render(request,'repairs/edit.html',{'form':form,'title':'Подготовить ведомость нефтепровода' if area else 'Добавить ведомость нефтепровода','kind':'section'})
 

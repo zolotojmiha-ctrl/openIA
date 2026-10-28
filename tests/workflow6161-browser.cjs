@@ -7,7 +7,7 @@ const button=p.getByRole('link',{name:'＋ Добавить участок ра�
 await p.getByLabel('Действия с участком Татарская–Омск').click();await p.getByRole('link',{name:'Редактировать участок',exact:true}).waitFor();await p.getByRole('link',{name:'Удалить участок',exact:true}).waitFor();await p.screenshot({path:'/tmp/workflow6161-contract.png',fullPage:true});
 const area='/cabinet/work/contracts/'+f.contract+'/objects/'+f.area+'/';await p.goto(base+area);
 await p.locator('.repair-desktop').waitFor();await p.getByRole('link',{name:'＋ Добавить дефект',exact:true}).click();
-assert.equal(await p.locator('[name=rnu]').getAttribute('type'),'hidden');assert.equal(await p.locator('[name=pipeline]').getAttribute('type'),'hidden');
+assert.equal(await p.locator('[name=rnu]').getAttribute('type'),'hidden');assert.equal(await p.locator('[name=pipeline]').inputValue(),'ОИ');assert.equal(await p.locator('[name=pipeline]').isEnabled(),true);
 await p.locator('[name=method]').selectOption('grind');await p.locator('[name=assigned_to]').selectOption(f.master);await p.locator('[name=open_assignment_access]').check();await p.locator('[name=kilometre]').fill('154');await p.locator('[name=defect_numbers]').fill('1750');await p.locator('[name=pipe_section]').fill('456');await p.getByRole('button',{name:'Сохранить дефект',exact:true}).click();await p.waitForURL(/\/cabinet\/repairs\/[a-f0-9-]+\//);
 await p.getByRole('link',{name:'← К списку дефектов',exact:true}).click();await p.waitForURL(base+area);
 await p.locator('[name=q]').fill('1750');await p.getByRole('button',{name:'Найти',exact:true}).click();await p.waitForURL(u=>u.searchParams.get('q')==='1750');const origin=p.url();

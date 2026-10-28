@@ -17,7 +17,7 @@ class SectionForm(forms.ModelForm):
     class Meta:
         model=Section
         fields=['project_object','rnu','pipeline','name','diameter_mm']
-        labels={'project_object':'Объект'}
+        labels={'project_object':'Участок работ','name':'Название ведомости'}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['project_object'].queryset=visible_objects(user).exclude(status='archived')

@@ -42,7 +42,7 @@ def contract(request,pk):
     qs=visible_jobs(request.user).filter(contract=item)
     from .daily import works as daily_works
     daily_rows=daily_works(request.user).filter(contract=item)
-    return render(request,'projects/work_contract.html',{'card':contract_card(item,request.user),'kinds':item.work_kinds_display,'places':places,'job_count':qs.count(),'daily_count':daily_rows.count(),'review_count':qs.filter(state='reported').count()+daily_rows.filter(state='reported').count(),'work_contract_id':item.pk,'work_types':[{'code':k,'name':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS)]})
+    return render(request,'projects/work_contract.html',{'has_repairs':'repairs' in item.work_kinds,'card':contract_card(item,request.user),'kinds':item.work_kinds_display,'places':places,'job_count':qs.count(),'daily_count':daily_rows.count(),'review_count':qs.filter(state='reported').count()+daily_rows.filter(state='reported').count(),'work_contract_id':item.pk,'work_types':[{'code':k,'name':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS)]})
 
 @login_required
 def place(request,pk,object_id):
