@@ -208,7 +208,7 @@ def _apply_row(actor,kind,v):
             raise ValidationError('Для изменения контракта нужен доступ ко всем связанным объектам.')
         before={f:scalar(getattr(obj,f)) if f!='work_kinds' else list(obj.work_kinds) for f in CONTRACT_FIELDS+PRIVATE_FIELDS} if obj else {}
         before['objects']=sorted(str(i) for i in obj.objects_linked.values_list('pk',flat=True)) if obj else []
-        data=dict(zip(CONTRACT_FIELDS,v[1:8]));data['work_kinds']=[dict((label,key) for key,label in WORK_KINDS).get(x.strip(),x.strip()) for x in v[4].split(';') if x.strip()]
+        data=dict(zip(CONTRACT_FIELDS,v[1:8]));data['rnu']=obj.rnu if obj else ''; data['work_kinds']=[dict((label,key) for key,label in WORK_KINDS).get(x.strip(),x.strip()) for x in v[4].split(';') if x.strip()]
         data['status']=dict((label,key) for key,label in STATUSES).get(data['status'],data['status'])
         data['linked_objects']=[str(uuid.UUID(x.strip())) for x in v[8].split(';') if x.strip()]
         if len(set(data['linked_objects']))!=len(data['linked_objects']):raise ValidationError('Объект повторяется в связях контракта.')

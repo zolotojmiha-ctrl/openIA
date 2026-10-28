@@ -23,6 +23,7 @@ class SectionForm(forms.ModelForm):
         self.fields['project_object'].queryset=visible_objects(user).exclude(status='archived')
 
 class JobForm(forms.ModelForm):
+    open_assignment_access=forms.BooleanField(label='Открыть выбранному мастеру доступ к участку и заданиям контракта',required=False,help_text='Нужно только если доступа ещё нет. Финансы и чужие документы не открываются.')
     expected_version=forms.IntegerField(widget=forms.HiddenInput,initial=0)
     kilometre=forms.CharField(label='Километр',max_length=512,help_text='Округляется до трёх знаков после запятой.',widget=forms.TextInput(attrs={'inputmode':'decimal'}))
     defect_numbers=forms.CharField(label='Номер дефекта',max_length=1000,help_text='Если одна конструкция устраняет несколько дефектов, разделите номера знаком ;')
@@ -52,6 +53,10 @@ class JobForm(forms.ModelForm):
         if not self.instance._state.adding:
             self.fields['contract'].disabled=True
             self.initial['contract']=self.instance.contract_id
+        self.actor=user
+        if not user.is_leader:self.fields.pop('open_assignment_access',None)
+        if user.is_leader:
+            self.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(role='foreman')|Q(leader_slot__isnull=False)|Q(pk=self.instance.assigned_to_id)).exclude(role='customer').order_by('full_name')
         self.fields['assigned_to'].label_from_instance=lambda u:u.full_name
         self.fields['length_m'].min_value=Decimal('.001')
         self.fields['wall_mm']=forms.DecimalField(label='Толщина стенки муфты, мм',max_digits=4,decimal_places=0,min_value=1,required=False,widget=forms.NumberInput(attrs={'step':1}),error_messages={'max_decimal_places':'Толщина стенки муфты — целое число, например 8, 10 или 12.'})
@@ -75,6 +80,11 @@ class JobForm(forms.ModelForm):
         return list(dict.fromkeys(values))
     def clean(self):
         c=super().clean()
+        master=c.get('assigned_to');section=c.get('section');contract=c.get('contract')
+        if master and section and contract:
+            from .assignment_access import has_access
+            if not has_access(master,section,contract) and not (self.actor.is_leader and c.get('open_assignment_access')):
+                self.add_error('assigned_to','У мастера нет доступа к участку или контракту. Отметьте «Открыть выбранному мастеру доступ» либо настройте доступ отдельно.')
         if c.get('contract') and c.get('section'):
             try:validate_contract_place(c['contract'],c['section'])
             except forms.ValidationError as e:self.add_error('contract',e)

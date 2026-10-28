@@ -11,7 +11,7 @@ from repairs.models import Section,Job,Defect,JobDefect
 class CompleteWorkflowBrowser(StaticLiveServerTestCase):
     def test_operations_and_customer_boundary_in_real_browser(self):
         with tempfile.TemporaryDirectory() as tmp,override_settings(PRIVATE_DOCUMENT_ROOT=tmp):
-            entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID)
+            entity=LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID,defaults={'name':'ТЕСТ Компания'})[0]
             leader=User.objects.create_user('+79999981671','123456',leader_slot=1,full_name='ТЕСТ Руководитель',must_change_password=False)
             customer=User.objects.create_user('+79999981672','123456',role='customer',full_name='ТЕСТ Заказчик',must_change_password=False)
             contract=Contract.objects.create(legal_entity=entity,number='ТЕСТ-КОНТРАКТ-616',subject='Дефекты',private_notes='СЕКРЕТ-ФИНАНСОВ',status='active',work_kinds=['repairs'])

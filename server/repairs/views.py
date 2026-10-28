@@ -10,6 +10,7 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 from django.core import signing
 from django import forms
 from accounts.models import User
@@ -19,13 +20,14 @@ from .access import visible_jobs, visible_sections, reportable_jobs, prepare_req
 from .forms import SectionForm, JobForm, ReportForm, CouplingForm, AcceptanceForm
 from .models import Section, Job, Defect, JobDefect, Coupling, Report, Attachment
 from .services import report_work, confirm_work
+from .navigation import detail_url
 from .values import kilometre,get_or_create_defect
 
-@login_required
-def jobs(request):
+def register_context(request,scope=None):
     archived=request.GET.get('archive')=='1' and can_prepare(request.user)
     from .filters import filtered_jobs,filter_values
     params=filter_values(request.GET)
+    if scope:params.update(scope)
     qs=filtered_jobs(request.user,params,apply_state=False)
     sid=params['section'];q=params['q'];state=params['state'];year=params['year'];master=params['master']
     counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').count(),'revision':qs.exclude(review_note='').count()}
@@ -47,13 +49,17 @@ def jobs(request):
     from projects.access import visible_contracts
     try:
         from uuid import UUID
-        contract_readonly=visible_contracts(request.user).filter(pk=UUID(request.GET.get('contract','')),status='archived').exists()
+        contract_readonly=visible_contracts(request.user).filter(pk=UUID(params['contract']),status='archived').exists()
     except (ValueError,TypeError):contract_readonly=False
-    return render(request,'repairs/list.html',{'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':request.GET.get('contract',''),'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':request.GET.get('object',''),'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')})
+    return {'return_to':request.get_full_path(),'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':visible_sections(request.user).order_by('rnu','pipeline','name'),'selected_contract':params['contract'],'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':params['object'],'masters':User.objects.filter(repair_jobs__in=visible_jobs(request.user)).distinct().order_by('full_name')}
+
+@login_required
+def jobs(request):
+    return render(request,'repairs/list.html',register_context(request))
 
 class AreaDefectForm(forms.Form):
     pipeline=forms.CharField(label='Нефтепровод',max_length=200,help_text='Например: ОИ, УБО или ОП. Укажите явно — километры разных нефтепроводов не смешиваются.')
-    rnu=forms.CharField(label='РНУ',max_length=120)
+    rnu=forms.CharField(label='РНУ контракта — заполните один раз',max_length=120,required=False,help_text='Сохранится в контракте и будет подставляться для следующих дефектов.')
 
 @prepare_required
 def area_defect(request,contract_id,object_id):
@@ -61,12 +67,26 @@ def area_defect(request,contract_id,object_id):
     from .access import repair_contracts
     contract=get_object_or_404(repair_contracts(request.user),pk=contract_id)
     area=get_object_or_404(visible_objects(request.user).filter(contracts=contract).exclude(status='archived'),pk=object_id)
-    header=AreaDefectForm(request.POST or None)
+    existing_rnus=list(Section.objects.filter(project_object__contracts=contract).exclude(rnu='').values_list('rnu',flat=True).distinct())
+    inherited_rnu=contract.rnu or (existing_rnus[0] if len(existing_rnus)==1 else '')
+    pipelines=list(Section.objects.filter(project_object=area).values_list('pipeline',flat=True).distinct())
+    header=AreaDefectForm(request.POST or None,initial={'rnu':inherited_rnu,'pipeline':pipelines[0] if len(pipelines)==1 else ''})
+    if len(pipelines)==1:
+        header.fields['pipeline'].disabled=True
+        header.fields['pipeline'].widget=forms.HiddenInput()
+    if inherited_rnu:
+        header.fields['rnu'].disabled=True
+        header.fields['rnu'].widget=forms.HiddenInput()
     job_form=None
     if request.method=='POST' and header.is_valid():
         with transaction.atomic():
+            from projects.models import Contract
+            locked_contract=Contract.objects.select_for_update().get(pk=contract.pk)
+            rnu=locked_contract.rnu or inherited_rnu or header.cleaned_data['rnu']
+            if not locked_contract.rnu and rnu:
+                locked_contract.rnu=rnu;locked_contract.version+=1;locked_contract.save(update_fields=['rnu','version'])
             # Technical Section is a ledger, not another user-created work area.
-            section,_=Section.objects.get_or_create(project_object=area,rnu=header.cleaned_data['rnu'],pipeline=header.cleaned_data['pipeline'],name=area.name[:200])
+            section,_=Section.objects.get_or_create(project_object=area,rnu=rnu,pipeline=header.cleaned_data['pipeline'],name=area.name[:200])
             data=request.POST.copy();data['section']=str(section.pk);data['contract']=str(contract.pk);data['expected_version']='0'
             original=request.POST
             try:
@@ -83,9 +103,12 @@ def area_defect(request,contract_id,object_id):
         job_form=JobForm(user=request.user,initial={'contract':contract.pk})
     if request.method!='POST':
         job_form.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=area,contract_access__contract=contract)).distinct().order_by('full_name')
+    if request.user.is_leader:
+        job_form.fields['assigned_to'].queryset=assignees(None,contract,request.user)
+    job_form.fields['assigned_to'].help_text='Мастер должен иметь активный вход в ЛК с ролью «Мастер / прораб». Если доступа к участку ещё нет, отметьте флажок ниже. Чужие документы и финансы не открываются.'
     for name in ('contract','section','expected_version'):
         job_form.fields[name].widget=forms.HiddenInput()
-    return render(request,'repairs/area_defect.html',{'header':header,'form':job_form,'card_id':contract.pk,'area':area})
+    return render(request,'repairs/area_defect.html',{'header':header,'form':job_form,'card_id':contract.pk,'area':area,'inherited_rnu':inherited_rnu,'inherited_pipeline':pipelines[0] if len(pipelines)==1 else ''})
 
 @prepare_required
 def section_new(request):
@@ -145,6 +168,9 @@ def job_edit(request,pk=None,section_id=None):
                 if not form.errors:
                     before={'method':locked.method,'length':str(locked.length_m or ''),'composition':locked.composition,'assigned_to':str(locked.assigned_to_id or ''),'date':str(locked.planned_date or '')} if locked else {}
                     if locked and saved.assigned_to_id!=locked.assigned_to_id:saved.crew_assignment=None
+                    if form.cleaned_data.get('open_assignment_access'):
+                        from .assignment_access import grant
+                        grant(actor,saved.assigned_to,saved.section,target)
                     saved.created_by=job.created_by if job else request.user;saved.version=(locked.version+1) if locked else 1;saved.save()
                     desired=[]
                     for number in form.cleaned_data['defect_numbers']:
@@ -164,7 +190,9 @@ def detail(request,pk):
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
     from projects.subcontracts import orders as subcontract_orders
     subcontract_open=bool(job.subcontract_order_id and subcontract_orders(request.user,True).filter(pk=job.subcontract_order_id).exists())
-    return render(request,'repairs/detail.html',{'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    from .navigation import return_url
+    back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
+    return render(request,'repairs/detail.html',{'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):
@@ -179,8 +207,8 @@ def report(request,pk,action):
             messages.success(request,'Результат отправлен.' if action in ('result','correction') else 'Сведения сохранены.')
             if request.headers.get('Accept')=='application/json':
                 from django.urls import reverse
-                return JsonResponse({'ok':True,'url':reverse('repair_detail',args=[job.pk])})
-            return redirect('repair_detail',pk=job.pk)
+                return JsonResponse({'ok':True,'url':detail_url(request,job.pk)})
+            return redirect(detail_url(request,job.pk))
         except (ValidationError,Job.DoesNotExist) as e:
             if isinstance(e,ValidationError) and e.code=='already_saved' and request.headers.get('Accept')=='application/json':
                 return JsonResponse({'ok':False,'errors':{'__all__':[{'message':e.messages[0]}]},'new_record_version':e.params['version']},status=409)
@@ -195,7 +223,7 @@ def confirm(request,pk):
     get_object_or_404(visible_jobs(request.user),pk=pk)
     try:confirm_work(request.user,pk,int(request.POST.get('expected_version','0')));messages.success(request,'Выполнение подтверждено. Приёмка заказчиком учитывается отдельно.')
     except (ValidationError,ValueError) as e:messages.error(request,e.messages[0] if isinstance(e,ValidationError) else 'Обновите карточку.')
-    return redirect('repair_detail',pk=pk)
+    return redirect(detail_url(request,pk))
 
 @leader_required
 @require_POST
@@ -214,7 +242,7 @@ def accept(request,pk):
                 audit(request.user,'repair_accepted',entity_id=str(job.pk),date=str(job.accepted_date),basis=job.acceptance_basis)
                 messages.success(request,'Приёмка заказчиком отмечена. Финансовые записи автоматически не создаются.')
     else:messages.error(request,'Проверьте дату приёмки и укажите основание.')
-    return redirect('repair_detail',pk=pk)
+    return redirect(detail_url(request,pk))
 
 @login_required
 def attachment(request,pk):
@@ -237,7 +265,8 @@ def coupling_new(request,pk):
         except (ValidationError,IntegrityError):form.add_error(None,'Проверьте данные. Муфта с этим типом и заводским номером уже может быть добавлена.')
     return render(request,'repairs/edit.html',{'form':form,'title':'Добавить муфту','kind':'coupling'})
 
-def assignees(section,contract=None):
+def assignees(section,contract=None,actor=None):
+    if actor and actor.is_leader:return User.objects.filter(is_active=True).filter(Q(role='foreman')|Q(leader_slot__isnull=False)).order_by('full_name')
     qs=User.objects.filter(is_active=True).filter(Q(leader_slot__isnull=False)|Q(object_assignments__project_object=section.project_object))
     if contract:qs=qs.filter(Q(leader_slot__isnull=False)|Q(contract_access__contract=contract))
     return qs.distinct().order_by('full_name')
@@ -250,7 +279,7 @@ def section_assignees(request,pk):
         from .access import repair_contracts
         contract=get_object_or_404(repair_contracts(request.user),pk=request.GET['contract'])
         if not contract.objects_linked.filter(pk=section.project_object_id).exists():raise Http404
-    return JsonResponse({'users':[{'id':str(u.pk),'name':u.full_name} for u in assignees(section,contract)]})
+    return JsonResponse({'users':[{'id':str(u.pk),'name':u.full_name} for u in assignees(section,contract,request.user)]})
 
 class BatchAssignment(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)
@@ -333,20 +362,33 @@ def defect_visibility(request,pk,restore=False):
     return render(request,'repairs/delete.html',{'defect':defect,'jobs':jobs,'restore':restore,'snapshot':token,'error':error},status=status)
 
 class ReassignmentForm(forms.Form):
+    open_assignment_access=forms.BooleanField(label='Открыть выбранному мастеру доступ к участку и заданиям контракта',required=False)
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     master=forms.ModelChoiceField(label='Новый ответственный мастер',queryset=User.objects.none(),required=False,empty_label='Пока не назначен')
-    def __init__(self,*args,job,**kwargs):
+    def __init__(self,*args,job,user=None,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['master'].queryset=assignees(job.section,job.contract)
+        self.actor=user;self.job=job
+        if not user or not user.is_leader:self.fields.pop('open_assignment_access',None)
+        self.fields['master'].queryset=assignees(job.section,job.contract,user)
+        if user and user.is_leader and job.assigned_to_id:
+            self.fields['master'].queryset=(self.fields['master'].queryset|User.objects.filter(pk=job.assigned_to_id,is_active=True).exclude(role='customer')).distinct()
         self.fields['master'].label_from_instance=lambda user:user.full_name
         self.initial.update(expected_version=job.version,master=job.assigned_to_id)
+    def clean(self):
+        c=super().clean()
+        from .assignment_access import has_access
+        if c.get('master') and self.job.contract_id and not has_access(c['master'],self.job.section,self.job.contract) and not (self.actor and self.actor.is_leader and c.get('open_assignment_access')):
+            self.add_error('master','У мастера нет доступа. Отметьте открытие доступа к участку или настройте его отдельно.')
+        return c
 
 @prepare_required
 def reassign(request,pk):
     job=get_object_or_404(visible_jobs(request.user),pk=pk)
-    form=ReassignmentForm(request.POST or None,job=job);status=200
+    form=ReassignmentForm(request.POST or None,job=job,user=request.user);status=200
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
+            from projects.operations import lock_actor
+            actor=lock_actor(request.user,'repairs.prepare')
             current=Job.objects.select_for_update(no_key=True).get(pk=job.pk)
             if current.version!=form.cleaned_data['expected_version']:
                 form.add_error(None,'Работа изменилась. Обновите страницу перед передачей.');status=409
@@ -354,13 +396,16 @@ def reassign(request,pk):
                 form.add_error(None,'Этот ремонт уже проверен и завершён. Передавайте новому мастеру оставшиеся неустранённые дефекты.');status=409
             else:
                 master=form.cleaned_data['master']
+                if form.cleaned_data.get('open_assignment_access'):
+                    from .assignment_access import grant
+                    grant(actor,master,current.section,current.contract)
                 if current.assigned_to_id!=getattr(master,'pk',None):
                     before=current.assigned_to
                     Report.objects.create(job=current,author=request.user,kind='assignment',performed_date=timezone.localdate(),note='Ответственный мастер: '+(before.full_name if before else 'не назначен')+' → '+(master.full_name if master else 'не назначен')+'. Прежние результаты и авторы сохранены.',context={'from_master':str(current.assigned_to_id or ''),'to_master':str(getattr(master,'pk',''))})
                     current.assigned_to=master;current.crew_assignment=None;current.version+=1;current.save(update_fields=['assigned_to','crew_assignment','version'])
                     audit(request.user,'repair_prepared',entity_id=str(current.pk),kind='reassignment',previous_master=str(before.pk) if before else '',master=str(master.pk) if master else '')
                 messages.success(request,'Ответственный мастер сохранён. Прежние записи остались в истории.')
-                return redirect('repair_detail',pk=current.pk)
+                return redirect(detail_url(request,current.pk))
     return render(request,'repairs/reassign.html',{'job':job,'form':form},status=status)
 
 

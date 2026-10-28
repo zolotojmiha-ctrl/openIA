@@ -52,6 +52,10 @@ def object_detail(request,pk):
 def object_edit(request,pk=None):
     obj=get_object_or_404(visible_objects(request.user),pk=pk) if pk else None
     initial={'expected_version':obj.version} if obj else {}
+    context_contract=None
+    if obj and request.GET.get('contract'):
+        try:context_contract=get_object_or_404(visible_contracts(request.user).filter(objects_linked=obj),pk=UUID(request.GET['contract']))
+        except ValueError:raise Http404
     if not obj and request.GET.get('contract'):
         try:contract_id=UUID(request.GET['contract'])
         except ValueError:raise Http404
@@ -84,9 +88,9 @@ def object_edit(request,pk=None):
                     related.version+=1;related.save(update_fields=['version','updated_at'])
                     audit(actor,'contract_updated',entity_id=str(related.pk),linked=[str(saved.pk)])
                 messages.success(request,'Участок сохранён и добавлен в контракт.' if related else 'Участок сохранён.')
-                if related:return redirect('contract_detail',pk=related.pk)
+                if related or context_contract:return redirect('contract_detail',pk=(related or context_contract).pk)
                 return redirect('object_detail',pk=saved.pk)
-    return render(request,'projects/edit.html',{'parent_contract':initial.get('related_contract'),'form':form,'title':'Редактирование участка работ' if obj else 'Новый участок работ','back':'objects'})
+    return render(request,'projects/edit.html',{'parent_contract':context_contract or initial.get('related_contract'),'form':form,'title':'Редактирование участка работ' if obj else 'Новый участок работ','back':'objects'})
 
 @permission_required('projects.access')
 def assignments(request,pk):

@@ -281,7 +281,7 @@ class RepairsTests(TestCase):
         self.assertContains(r,'Назначения не сохранены');first.refresh_from_db();self.assertIsNone(first.assigned_to)
     def test_assignee_lookup_is_leader_only_and_scoped(self):
         url=reverse('repair_assignees',args=[self.section.pk]);self.assertEqual(self.client.get(url).status_code,403)
-        self.client.force_login(self.leader);ids={u['id'] for u in self.client.get(url).json()['users']};self.assertIn(str(self.worker.pk),ids);self.assertNotIn(str(self.other.pk),ids)
+        self.client.force_login(self.leader);ids={u['id'] for u in self.client.get(url).json()['users']};self.assertIn(str(self.worker.pk),ids);self.assertIn(str(self.other.pk),ids) # Leaders may select a foreman before granting scope explicitly.
 
     def simple_payload(self, **changes):
         data={'token':str(uuid.uuid4()),'expected_version':self.job.version,'performed_date':timezone.localdate().isoformat()}

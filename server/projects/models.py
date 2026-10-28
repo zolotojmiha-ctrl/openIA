@@ -47,6 +47,7 @@ class Contract(ArchiveProtectedModel):
     number = models.CharField('Номер договора', max_length=100)
     date = models.DateField('Дата', null=True, blank=True)
     subject = models.CharField('Предмет договора', max_length=300)
+    rnu = models.CharField('РНУ', max_length=120, blank=True)
     work_kinds = models.JSONField('Виды работ', default=list, blank=True)
     counterparty = models.CharField('Контрагент', max_length=200, blank=True)
     deadline = models.DateField('Срок окончания', null=True, blank=True)

@@ -7,7 +7,7 @@ from accounts import personal,person_accounts,seo
 from projects import views as projects
 from projects import operations,area_actions
 from documents import actions as document_actions
-from projects import agreements
+from projects import agreements,contract_actions
 from projects import daily_views
 from projects import changes_excel,changes,registry_excel,workspace,crew_views,crew_excel,equipment_views,equipment_excel,stock_views,stock_excel,subcontract_views,subcontract_excel
 from documents import views as documents
@@ -31,6 +31,8 @@ urlpatterns=[
  path('cabinet/admissions/',operations.my_admissions,name='my_admissions'),
  path('cabinet/equipment/<uuid:pk>/custody/',operations.custody,name='equipment_custody'),
  path('cabinet/custody/<uuid:pk>/end/',operations.custody_end,name='custody_end'),
+ path('cabinet/contracts/<uuid:pk>/delete/',contract_actions.delete,name='contract_delete'),
+ path('cabinet/agreements/<uuid:pk>/delete/',contract_actions.delete,{'agreement':True},name='agreement_delete'),
  path('cabinet/areas/<uuid:pk>/delete/',area_actions.delete_area,name='area_delete'),
  path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/people/new/',operations.area_person,name='area_person'),
  path('cabinet/brigades/<uuid:brigade_id>/admissions/',operations.admission_list,name='admissions'),

@@ -57,7 +57,9 @@ def place(request,pk,object_id):
     needs=MaterialRequest.objects.filter(contract=item,project_object=obj).order_by('name')
     from django.db.models import Prefetch
     defects=Defect.objects.filter(contract=item,section__project_object=obj,archived_at__isnull=True,jobs__in=visible_jobs(request.user)).distinct().select_related('section').order_by('section__pipeline','kilometre','number').prefetch_related(Prefetch('jobs',queryset=visible_jobs(request.user).filter(contract=item),to_attr='scoped_jobs'))
-    return render(request,'projects/work_place.html',{'material_requests':needs,'defects':list(defects[:50]),'defect_count':defects.count(),'card':contract_card(item,request.user),'object':obj,'rows':rows,'has_repairs':'repairs' in item.work_kinds,'other_types':[{'code':k,'label':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS) and k!='repairs']})
+    from repairs.views import register_context
+    register=register_context(request,{'contract':str(item.pk),'object':str(obj.pk)})
+    return render(request,'projects/work_place.html',{**register,'material_requests':needs,'defects':list(defects[:50]),'defect_count':defects.count(),'card':contract_card(item,request.user),'object':obj,'rows':rows,'has_repairs':'repairs' in item.work_kinds,'other_types':[{'code':k,'label':dict(WORK_KINDS)[k]} for k in item.work_kinds if k in dict(WORK_KINDS) and k!='repairs']})
 
 class AllocationForm(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)

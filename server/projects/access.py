@@ -24,7 +24,7 @@ def contract_card(contract, user):
         return {
             'archived':contract.status=='archived', 'id':contract.pk, 'title':contract.number, 'subject':contract.subject,
             'fields':[('Номер договора',contract.number),('Дата',contract.date),('Предмет',contract.subject),
-                      ('Контрагент',contract.counterparty),('Срок окончания',contract.deadline),
+                      ('Контрагент',contract.counterparty),('РНУ',contract.rnu),('Срок окончания',contract.deadline),
                       ('Состояние',contract.get_status_display()),('Сумма по карточке, ₽',contract.amount),
                       ('Внутренние примечания',contract.private_notes)],
         }

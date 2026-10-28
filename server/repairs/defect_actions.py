@@ -27,6 +27,8 @@ class DefectForm(forms.ModelForm):
 def edit(request,pk):
     defect=get_object_or_404(visible_defects(request.user),pk=pk)
     back=reverse('work_place',args=[defect.contract_id,defect.section.project_object_id]) if defect.contract_id else reverse('repairs')
+    from .navigation import return_url
+    back=return_url(request,back)
     token=signing.dumps({'actor':str(request.user.pk),'defect':str(pk),'values':snapshot(defect)},salt='defect-edit')
     form=DefectForm(request.POST or None,instance=defect,initial={'expected_snapshot':token})
     if request.method=='POST' and form.is_valid():
@@ -48,4 +50,4 @@ def edit(request,pk):
                 audit(request.user,'repair_prepared',kind='defect_edit',defect=str(pk),previous=before,values=snapshot(locked))
         except (signing.BadSignature,ValidationError) as e:form.add_error(None,e if isinstance(e,ValidationError) else 'Форма устарела. Обновите страницу.')
         else:return redirect(back)
-    return render(request,'projects/operation_form.html',{'form':form,'title':'Изменить данные дефекта','back':back,'intro':'Номер, километр и секция меняются до появления результатов. Описание и координаты можно уточнять с записью в истории.'})
+    return render(request,'projects/operation_form.html',{'form':form,'title':'Редактировать дефект: номер, километр, описание и координаты','back':back,'intro':'Номер, километр и секция меняются до появления результатов. Описание и координаты можно уточнять с записью в истории.'})
