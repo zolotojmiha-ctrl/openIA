@@ -2,7 +2,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
 (async()=>{const base=process.env.ARMADA_TEST_URL,f=JSON.parse(process.env.ARMADA_TEST_FIXTURE);
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const p=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];p.on('pageerror',e=>errors.push(String(e)));
 await p.goto(base+'/cabinet/login/');await p.locator('[name=phone]').fill('+79999986161');await p.locator('[name=password]').fill('123456');await p.locator('button[type=submit]').click();await p.waitForURL(base+'/cabinet/');
-await p.goto(base+'/cabinet/contracts/'+f.contract+'/');
+await p.goto(base+'/cabinet/contracts/');await p.getByLabel('Действия с контрактом Тест',{exact:true}).click();await p.getByRole('link',{name:'Удалить контракт',exact:true}).click();await p.getByRole('heading',{name:'Удалить контракт · Тест',exact:true}).waitFor();await p.getByRole('link',{name:'← Назад',exact:true}).click();await p.waitForURL(base+'/cabinet/contracts/');await p.screenshot({path:'/tmp/workflow6162-contract-list.png',fullPage:true});await p.goto(base+'/cabinet/contracts/'+f.contract+'/');
 const button=p.getByRole('link',{name:'＋ Добавить участок работ',exact:true});assert.equal(await button.evaluate(e=>getComputedStyle(e).color),'rgb(255, 255, 255)');
 await p.getByLabel('Действия с участком Татарская–Омск').click();await p.getByRole('link',{name:'Редактировать участок',exact:true}).waitFor();await p.getByRole('link',{name:'Удалить участок',exact:true}).waitFor();await p.screenshot({path:'/tmp/workflow6161-contract.png',fullPage:true});
 const area='/cabinet/work/contracts/'+f.contract+'/objects/'+f.area+'/';await p.goto(base+area);

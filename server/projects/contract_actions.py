@@ -31,6 +31,7 @@ def delete(request,pk,agreement=False):
     scope=model.objects.all() if agreement else visible_contracts(request.user)
     row=get_object_or_404(scope,pk=pk)
     back=reverse('agreement_detail' if agreement else 'contract_detail',args=[pk])
+    if request.GET.get('from')=='list':back=reverse('agreements' if agreement else 'contracts')
     form=DeleteForm(request.POST or None,initial={'expected_version':row.version})
     related=dependencies(row)
     if request.method=='POST' and form.is_valid():
