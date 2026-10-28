@@ -1,3 +1,5 @@
+from projects import stock_exchange
+from projects import stock_group_views
 from projects import stock_planning_views
 from documents import assembly,deadlines
 from postoffice import provider
@@ -87,9 +89,11 @@ urlpatterns=[
  path('cabinet/subcontracts/excel/<str:kind>/import/',subcontract_excel.upload,name='subcontract_import'),
  path('cabinet/stock/',stock_views.home,name='stock'),
  path('cabinet/stock/sections/<uuid:pk>/diameter/',stock_planning_views.diameter,name='stock_diameter'),
+ path('cabinet/stock/distribute/',stock_group_views.distribute,name='stock_distribute'),
  path('cabinet/stock/receive/',stock_planning_views.receipt,name='stock_receive'),
  path('cabinet/stock/inventory/',stock_planning_views.inventory,name='stock_inventory'),
- path('cabinet/stock/inventory/export/',stock_planning_views.inventory_export,name='stock_inventory_export'),
+ path('cabinet/stock/inventory/import/',stock_exchange.upload,name='stock_inventory_import'),
+ path('cabinet/stock/inventory/export/',stock_exchange.export,name='stock_inventory_export'),
  path('cabinet/stock/coverage/',stock_planning_views.coverage,name='stock_coverage'),
  path('cabinet/stock/items/<uuid:pk>/allocate/',stock_planning_views.allocate,name='stock_allocate'),
  path('cabinet/stock/items/<uuid:pk>/delete/',stock_planning_views.delete,name='stock_delete'),

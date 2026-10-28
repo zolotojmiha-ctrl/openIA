@@ -9,7 +9,7 @@ from django.utils import timezone
 from accounts.views import audit
 from repairs.models import Coupling, CouplingUse, METHODS
 from repairs.access import visible_jobs
-from .models import StockItem, StockBalance
+from .models import StockItem, StockBalance, Contract
 from . import stock
 
 
@@ -33,6 +33,7 @@ def receive(user, data, warehouse, count, date, note, token):
             or existing.item.length_mm!=data.get('length_mm') or existing.item.wall_mm!=data.get('wall_mm')
             or existing.item.diameter_mm!=data.get('diameter_mm') or existing.item.unit!=data['unit']
             or existing.item.name!=(data.get('name') or ('Муфта '+dict(METHODS).get(data.get('method'),'') if data['kind']=='coupling' else ''))
+            or existing.item.electrode_brand!=(data.get('electrode_brand') or '') or existing.item.electrode_diameter!=data.get('electrode_diameter')
             or existing.item.receipt_origin!=(data.get('receipt_origin') or '').strip()
             or existing.item.serial!=(data.get('serial') or '') or existing.quantity!=(1 if data['kind']=='coupling' else count)
             or (expected_count>1 and not StockMovement.objects.filter(token=uuid.uuid5(token,str(expected_count-1))).exists())
@@ -75,6 +76,10 @@ def reserve(user, item_id, version, job_id):
     if item.kind!='coupling' or item.archived:raise ValidationError('Выберите действующую муфту.')
     if item.coupling_id and CouplingUse.objects.filter(coupling_id=item.coupling_id).exists():raise ValidationError('Муфта уже смонтирована.')
     if job_id:
+        candidate=visible_jobs(actor).get(pk=job_id)
+        if candidate.contract_id:
+            parent=Contract.objects.select_for_update(no_key=True).get(pk=candidate.contract_id)
+            if parent.status=='archived':raise ValidationError('Контракт находится в архиве.')
         job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job_id)
         if job.state in ('reported','confirmed') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':raise ValidationError('Работа уже выполнена или закрыта.')
         if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта уже закреплена. Сначала снимите назначение.')

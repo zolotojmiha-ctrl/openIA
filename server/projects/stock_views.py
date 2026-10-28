@@ -39,7 +39,7 @@ class ItemForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
     method=forms.ChoiceField(label='Метод ремонта / тип муфты',choices=[('','—'),*METHODS[:5]],required=False)
     class Meta:
-        model=StockItem;fields=[*stock.ITEM_FIELDS,'serial','receipt_origin','coupling']
+        model=StockItem;fields=[*stock.ITEM_FIELDS,'serial','receipt_origin','electrode_brand','electrode_diameter','coupling']
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['coupling'].queryset=Coupling.objects.filter(project_object__in=visible_objects(user))
         self.fields['coupling'].help_text='Необязательно. Конкретная муфта списывается автоматически при установке. Остальные позиции учитываются количеством.'
@@ -81,8 +81,8 @@ def home(request):
 @login_required
 def detail(request,pk):
     wh=get_object_or_404(stock.warehouses(request.user),pk=pk)
-    from .stock_planning_views import inventory_rows
-    rows=inventory_rows(request.user,wh)
+    from .stock_groups import groups
+    rows=groups(request.user,wh)
     history=stock.movements(request.user).filter(Q(source=wh)|Q(destination=wh)).order_by('-created_at','-pk')
     return render(request,'projects/stock_detail.html',{'warehouse':wh,'rows':rows,'page':Paginator(history,30).get_page(request.GET.get('page')),'served_objects':wh.served_objects.filter(pk__in=visible_objects(request.user)).order_by('name'),'served_brigades':wh.served_brigades.filter(pk__in=visible_crews(request.user)).order_by('name'),'object_visible':wh.project_object_id and visible_objects(request.user).filter(pk=wh.project_object_id).exists()})
 

@@ -88,6 +88,9 @@ def save_item(user,pk,version,data):
     row.method=row.method or ''
     if 'serial' in data:row.serial=data['serial'].strip()
     if 'receipt_origin' in data:row.receipt_origin=(data['receipt_origin'] or '').strip()
+    if 'electrode_brand' in data:row.electrode_brand=(data['electrode_brand'] or '').strip()
+    if 'electrode_diameter' in data:row.electrode_diameter=data['electrode_diameter']
+    if row.kind=='electrode' and (row.unit!='kg' or not row.electrode_brand or not row.electrode_diameter or row.electrode_diameter<=0):raise ValidationError('Для электродов нужны марка, диаметр и единица кг.')
     if row.kind in ('composite','sealant') and row.unit!='pcs':raise ValidationError('Композит и герметик учитываются в штуках.')
     if row.kind=='insulation' and row.unit!='m2':raise ValidationError('Изоляция учитывается в квадратных метрах (м²).')
     if row.coupling_id and row.serial!=row.coupling.serial and 'serial' in data:
@@ -102,7 +105,7 @@ def save_item(user,pk,version,data):
         if row.unit!='pcs' or row.method not in ('p1','p2','p3','p4','p5u') or not row.length_mm or not row.wall_mm:raise ValidationError('Для муфты нужны метод П1–П5У, длина и целая толщина стенки; единица — шт.')
     if pk and row.movements.exists():
         previous=StockItem.objects.get(pk=pk)
-        if any(getattr(previous,k)!=getattr(row,k) for k in ('kind','unit','method','diameter_mm','length_mm','wall_mm')):raise ValidationError('Размеры и единицы позиции с историей не меняются. Создайте другую номенклатуру.')
+        if any(getattr(previous,k)!=getattr(row,k) for k in ('kind','unit','method','diameter_mm','length_mm','wall_mm','electrode_brand','electrode_diameter')):raise ValidationError('Размеры и единицы позиции с историей не меняются. Создайте другую номенклатуру.')
     if row.archived and row.balances.filter(quantity__gt=0).exists():raise ValidationError('Номенклатуру с остатками нельзя архивировать.')
     if row.serial and (not pk or row.serial!=before['serial']) and StockItem.objects.filter(legal_entity=company,kind='coupling',method=row.method,serial=row.serial,deleted_at__isnull=True).exclude(pk=row.pk).exists():raise ValidationError('Муфта такого типа с этим заводским номером уже заведена.')
     row.full_clean()

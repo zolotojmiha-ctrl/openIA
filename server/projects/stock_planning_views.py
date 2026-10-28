@@ -123,12 +123,13 @@ def inventory_rows(user,warehouse=None):
     return result
 
 def filtered_inventory(request):
-    rows=inventory_rows(request.user)
+    from .stock_groups import groups
+    rows=groups(request.user)
     q=request.GET.get('q','').strip().casefold();wh=request.GET.get('warehouse','');kind=request.GET.get('kind','');state=request.GET.get('state','')
-    if q:rows=[r for r in rows if q in ' '.join([r['item'].name,r['serial'],r['item'].method_label,r['job_label']]).casefold()]
-    if wh:rows=[r for r in rows if any(str(b.warehouse_id)==wh for b in r['balances'])]
+    if q:rows=[r for r in rows if q in r['search']]
+    if wh:rows=[r for r in rows if r['warehouse'] and str(r['warehouse'].pk)==wh]
     if kind:rows=[r for r in rows if r['item'].kind==kind]
-    if state:rows=[r for r in rows if r['state']==state]
+    if state:rows=[r for r in rows if any(m['state']==state for m in r['members'])]
     return rows
 
 @permission_required('stock.manage')
@@ -172,18 +173,6 @@ def coverage(request):
     return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'scoped':bool(request.GET.get('contract') or request.GET.get('object'))})
 
 
-@permission_required('stock.manage')
-def inventory_export(request):
-    from django.http import HttpResponse
-    from repairs.excel import workbook
-    headers=['№','Наименование','Категория','Тип муфты','Диаметр, мм','Длина, мм','Стенка, мм','Заводской №','Склад получения','Дата получения','Текущий склад','Остаток','Единица','Состояние','Назначение','Дата монтажа']
-    data=[]
-    for n,row in enumerate(filtered_inventory(request),1):
-        i=row['item'];receipt=row['receipt']
-        data.append([n,i.name,i.get_kind_display(),i.method_label,i.diameter_mm or '',i.length_mm or '',i.wall_mm or '',row['serial'],row['receipt_source'],str(row['receipt_date']) if row['receipt_date'] else '', '; '.join(b.warehouse.name for b in row['balances']),row['quantity'],i.get_unit_display(),row['label'],row['job_label'],str(row['installed_date']) if row['installed_date'] else ''])
-    response=HttpResponse(workbook(data,headers,sheet_name='Наличие и назначение'),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition']='attachment; filename="stock-inventory.xlsx"'
-    return response
 
 class DiameterForm(forms.Form):
     expected_diameter=forms.IntegerField(widget=forms.HiddenInput,min_value=0)
