@@ -107,6 +107,7 @@ def save_item(user,pk,version,data):
         previous=StockItem.objects.get(pk=pk)
         if any(getattr(previous,k)!=getattr(row,k) for k in ('kind','unit','method','diameter_mm','length_mm','wall_mm','electrode_brand','electrode_diameter')):raise ValidationError('Размеры и единицы позиции с историей не меняются. Создайте другую номенклатуру.')
     if row.archived and row.balances.filter(quantity__gt=0).exists():raise ValidationError('Номенклатуру с остатками нельзя архивировать.')
+    if row.kind=='coupling' and row.serial and pk and row.serial!=before['serial'] and not row.individual and not row.coupling_id and (row.balances.aggregate(q=Sum('quantity'))['q'] or 0)>1:raise ValidationError('Заводской номер относится к одному изделию. Сначала выделите отдельную муфту или заполните номера отдельными строками Excel.')
     if row.serial and (not pk or row.serial!=before['serial']) and StockItem.objects.filter(legal_entity=company,kind='coupling',method=row.method,serial=row.serial,deleted_at__isnull=True).exclude(pk=row.pk).exists():raise ValidationError('Муфта такого типа с этим заводским номером уже заведена.')
     row.full_clean()
     if pk:row.version+=1

@@ -65,6 +65,11 @@ class Stock619Tests(StockTests):
         self.assertEqual(len(groups.groups(self.leader)),4)
         tables=self.export_tables();exchange.apply(self.leader,tables)
         self.assertEqual(len(groups.groups(self.leader)),4)
+    def test_factory_number_is_not_assigned_to_an_entire_batch(self):
+        wh=self.wh();item=self.item(name='Муфта',kind='coupling',unit='pcs',method='p2',length_mm=1000,wall_mm=8)
+        self.move(item,q=10,dst=wh);data=groups.values(item);data.update(coupling=None,serial='НЕ-НА-ПАРТИЮ')
+        with self.assertRaises(ValidationError):stock.save_item(self.leader,item.pk,item.version,data)
+
     def test_legacy_batch_splits_automatically_on_bulk_allocation(self):
         self.a=self.wh();item=self.item(name='Муфта',kind='coupling',unit='pcs',method='p2',length_mm=1000,wall_mm=8)
         self.move(item,q=10,dst=self.a);j=self.make_job();j.length_m=3;j.composition='1+1+1';j.save()
