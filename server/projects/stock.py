@@ -17,7 +17,7 @@ def warehouses(user):
     return qs if permitted(user,'stock.manage') else qs.filter(access_rules__user=user)
 
 def items(user):
-    qs=StockItem.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
+    qs=StockItem.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID,deleted_at__isnull=True)
     if not permitted(user,'stock.manage'):qs=qs.filter(balances__warehouse__in=warehouses(user)).distinct()
     return qs
 
@@ -83,9 +83,15 @@ def save_item(user,pk,version,data):
     if pk and row.version!=version:raise ValidationError('Номенклатура изменена. Обновите страницу.')
     coupling=data.get('coupling')
     if pk and row.coupling_id!=(coupling.pk if coupling else None):raise ValidationError('Связь с конкретной муфтой не переписывается. Создайте другую позицию.')
-    before={k:str(getattr(row,k)) for k in ITEM_FIELDS} if pk else None
+    before={k:str(getattr(row,k)) for k in (*ITEM_FIELDS,'serial','receipt_origin')} if pk else None
     for k in ITEM_FIELDS:setattr(row,k,data.get(k))
     row.method=row.method or ''
+    if 'serial' in data:row.serial=data['serial'].strip()
+    if 'receipt_origin' in data:row.receipt_origin=(data['receipt_origin'] or '').strip()
+    if row.kind in ('composite','sealant') and row.unit!='pcs':raise ValidationError('Композит и герметик учитываются в штуках.')
+    if row.kind=='insulation' and row.unit!='m2':raise ValidationError('Изоляция учитывается в квадратных метрах (м²).')
+    if row.coupling_id and row.serial!=row.coupling.serial and 'serial' in data:
+        row.coupling.serial=row.serial;row.coupling.full_clean();row.coupling.save(update_fields=['serial'])
     if coupling:
         coupling=Coupling.objects.select_for_update().get(pk=coupling.pk)
         if not visible_objects(actor).filter(pk=coupling.project_object_id).exists():raise ValidationError('Объект муфты недоступен.')
@@ -98,9 +104,10 @@ def save_item(user,pk,version,data):
         previous=StockItem.objects.get(pk=pk)
         if any(getattr(previous,k)!=getattr(row,k) for k in ('kind','unit','method','diameter_mm','length_mm','wall_mm')):raise ValidationError('Размеры и единицы позиции с историей не меняются. Создайте другую номенклатуру.')
     if row.archived and row.balances.filter(quantity__gt=0).exists():raise ValidationError('Номенклатуру с остатками нельзя архивировать.')
+    if row.serial and (not pk or row.serial!=before['serial']) and StockItem.objects.filter(legal_entity=company,kind='coupling',method=row.method,serial=row.serial,deleted_at__isnull=True).exclude(pk=row.pk).exists():raise ValidationError('Муфта такого типа с этим заводским номером уже заведена.')
     row.full_clean()
     if pk:row.version+=1
-    row.save();audit(actor,'stock_updated',kind='item',id=str(row.pk),previous=before,values={k:str(getattr(row,k)) for k in ITEM_FIELDS},coupling=str(row.coupling_id or ''))
+    row.save();audit(actor,'stock_updated',kind='item',id=str(row.pk),previous=before,values={k:str(getattr(row,k)) for k in (*ITEM_FIELDS,'serial','receipt_origin')},coupling=str(row.coupling_id or ''))
     return row
 
 def quantity(raw,item):
@@ -108,7 +115,7 @@ def quantity(raw,item):
     except InvalidOperation:raise ValidationError('Укажите количество числом.')
     if not q.is_finite() or q<=0 or q>=Decimal('1000000000000000') or q.normalize().as_tuple().exponent < -3:raise ValidationError('Количество должно быть положительным, до трёх знаков после запятой.')
     if item.unit=='pcs' and q!=q.to_integral_value():raise ValidationError('Штучные изделия учитываются целым количеством.')
-    if item.coupling_id and q!=1:raise ValidationError('Конкретная муфта учитывается как одно изделие.')
+    if (item.coupling_id or item.individual) and q!=1:raise ValidationError('Конкретная муфта учитывается как одно изделие.')
     return q
 
 def post_locked(actor,item,kind,q,source,destination,date,note,token,job=None,report=None,reverses=None,automatic=False):
@@ -129,7 +136,7 @@ def post_locked(actor,item,kind,q,source,destination,date,note,token,job=None,re
         if balance.quantity+delta>=Decimal('1000000000000000'):raise ValidationError('Остаток превышает допустимую величину.')
         if balance.quantity+delta<0:raise ValidationError('Недостаточный остаток. Операция не сохранена.')
         if wh.archived:raise ValidationError('Склад находится в архиве.')
-    if item.coupling_id:
+    if item.coupling_id or item.individual:
         total=StockBalance.objects.filter(item=item).aggregate(q=Sum('quantity'))['q'] or Decimal(0)
         if total+sum(delta for wh,delta in legs)>1:raise ValidationError('Эта конкретная муфта уже учтена на складе или у бригады.')
     row=StockMovement.objects.create(token=token,digest=digest,item=item,kind=kind,quantity=q,source=source,destination=destination,date=date,note=note,job=job,report=report,reverses=reverses,automatic=automatic,created_by=actor)
@@ -149,6 +156,7 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
     if old:return post_locked(actor,item,kind,q,source,destination,date,note,token,job)
     if item.archived:raise ValidationError('Номенклатура в архиве.')
     if not date or date>timezone.localdate():raise ValidationError('Укажите фактическую дату, не в будущем.')
+    if item.reserved_job_id and (kind in ('consume','loss') or job and job.pk!=item.reserved_job_id):raise ValidationError('Муфта закреплена за другой работой либо зарезервирована. Сначала снимите назначение.')
     if item.coupling_id and kind=='consume':raise ValidationError('Конкретная муфта списывается автоматически при сохранении результата установки.')
     if kind=='receipt':valid=not source and destination and not destination.brigade_assignment_id
     elif kind=='transfer':valid=source and destination and not source.brigade_assignment_id and not destination.brigade_assignment_id
@@ -169,6 +177,7 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
         if kind=='issue' and job and coupling.method!=job.method:raise ValidationError('Метод ремонта не соответствует выданной муфте.')
         if CouplingUse.objects.filter(coupling=coupling).exists():raise ValidationError('Установленная муфта не перемещается и не списывается повторно. Исправьте результат ремонта.')
         target=destination.project_object_id if destination else None
+        if item.reserved_job_id and target and target!=item.reserved_job.section.project_object_id:raise ValidationError('Муфта закреплена за работой другого участка. Сначала снимите назначение.')
         if target and target!=coupling.project_object_id:
             if not visible_objects(actor).filter(pk=target).exists():raise ValidationError('Объект получателя недоступен.')
             coupling.project_object_id=target;coupling.full_clean();coupling.save(update_fields=['project_object'])
@@ -181,6 +190,7 @@ def reverse(user,pk,note,token):
     if previous:
         if previous.reverses_id==row.pk and previous.created_by_id==actor.pk and previous.note==note:return previous
         raise ValidationError('Этот запрос уже использован.')
+    if row.item.reserved_job_id:raise ValidationError('Сначала снимите закрепление муфты за работой.')
     if row.automatic:raise ValidationError('Автоматическое списание меняется через исправление результата ремонта.')
     if row.reverses_id or StockMovement.objects.filter(reverses=row).exists():raise ValidationError('Операция уже отменена либо сама является отменой.')
     if row.item.coupling_id:
@@ -201,9 +211,14 @@ def reconcile_installation(actor,job,report,selected):
         balance=StockBalance.objects.filter(item=item,quantity=1).select_related('warehouse','warehouse__brigade_assignment').first()
         if not balance:raise ValidationError('У выбранной муфты нет складского остатка. Проверьте поступление и выдачу бригаде.')
         wh=balance.warehouse
+        if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта закреплена за другой работой.')
+        if item.reserved_job_id:
+            from .stock_planning import requirements
+            lengths=requirements(job)
+            if lengths is None or item.method!=job.method or item.wall_mm!=job.wall_mm or item.length_mm not in lengths or job.section.diameter_mm and item.diameter_mm!=job.section.diameter_mm:raise ValidationError('Характеристики работы изменились после резервирования. Проверьте закреплённые муфты.')
         latest=StockMovement.objects.filter(item=item).first()
         if latest and latest.kind=='issue' and latest.job_id and latest.job_id!=job.pk:raise ValidationError('Муфта выдана на другую работу. Уточните назначение материала.')
-        if not actor.is_leader and (wh.brigade_assignment_id!=job.crew_assignment_id or not wh.brigade_assignment_id) and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Сначала выдайте муфту бригаде или на склад этого объекта.')
+        if not actor.is_leader and item.reserved_job_id!=job.pk and (wh.brigade_assignment_id!=job.crew_assignment_id or not wh.brigade_assignment_id) and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Сначала выдайте муфту бригаде или на склад этого объекта.')
         if wh.brigade_assignment_id and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Муфта числится у бригады другого объекта.')
         post_locked(actor,item,'consume',Decimal(1),wh,None,report.performed_date,'Установка муфты по результату '+str(report.pk),uuid.uuid5(report.token,'consume:'+str(item.pk)),job,report,automatic=True)
 
@@ -213,5 +228,5 @@ def prepared_couplings(job):
     result=[]
     for item in StockItem.objects.filter(coupling__project_object=job.section.project_object,archived=False,balances__quantity=1).select_related('coupling').distinct():
         latest=StockMovement.objects.filter(item=item).first()
-        if latest and latest.kind=='issue' and latest.job_id==job.pk:result.append(item.coupling)
+        if item.reserved_job_id==job.pk or latest and latest.kind=='issue' and latest.job_id==job.pk:result.append(item.coupling)
     return result

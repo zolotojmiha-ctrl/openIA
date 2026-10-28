@@ -38,7 +38,7 @@ def visible_jobs(user,include_archived=False):
 def selectable_couplings(job,include_historical=False):
     available=Q(installation__isnull=True)
     if not include_historical:available&=Q(source__historical_installation=False)|~Q(source__has_key='historical_installation')
-    return Coupling.objects.filter(project_object=job.section.project_object).filter(available|Q(installation__job=job)).order_by('method','length_mm','serial')
+    return Coupling.objects.filter(project_object=job.section.project_object).filter(Q(stock_item__isnull=True)|Q(stock_item__deleted_at__isnull=True)).filter(Q(stock_item__reserved_job__isnull=True)|Q(stock_item__reserved_job=job)).filter(available|Q(installation__job=job)).order_by('method','length_mm','serial')
 
 
 def reportable_jobs(user):

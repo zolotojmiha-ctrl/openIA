@@ -18,7 +18,7 @@ from repairs.importer import read_book
 
 HEADERS={
  'warehouses':['ID склада','Название','Местоположение','ID объекта','ID назначения бригады','Архив (0/1)','Версия'],
- 'items':['ID позиции','Код','Наименование','Вид (material/coupling)','Ед. (pcs/m/kg/l)','Метод (p1/p2/p3/p4/p5u)','Диаметр мм','Длина мм','Стенка мм','Архив (0/1)','ID конкретной муфты','Версия'],
+ 'items':['ID позиции','Код','Наименование','Вид (material/coupling/composite/sealant/insulation)','Ед. (pcs/m2/m/kg/l)','Метод (p1/p2/p3/p4/p5u)','Диаметр мм','Длина мм','Стенка мм','Архив (0/1)','ID конкретной муфты','Версия'],
  'movements':['ID операции','Вид (receipt/transfer/issue/return/consume/loss)','ID позиции','Количество','ID откуда','ID куда','Дата','Основание','ID работы'],
  'balances':['ID склада','Склад','ID позиции','Код','Наименование','Количество','Ед.'],
 }
@@ -81,7 +81,9 @@ class UploadForm(forms.Form):file=forms.FileField(label='Файл XLSX',widget=f
 def parse_rows(file,kind,user):
     book=read_book(file);cells=book['cells'];headers=HEADERS[kind]
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
-    if [str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]!=headers:raise ValidationError('Столбцы не совпадают с шаблоном.')
+    incoming=[str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]
+    legacy=[h.replace('Вид (material/coupling/composite/sealant/insulation)','Вид (material/coupling)').replace('Ед. (pcs/m2/m/kg/l)','Ед. (pcs/m/kg/l)') for h in headers]
+    if incoming not in (headers,legacy):raise ValidationError('Столбцы не совпадают с шаблоном.')
     rows=[];seen=set()
     for n in sorted({r for r,c in cells if r>1}):
         v=[str(cells.get((n,i+1),'')).strip() for i in range(len(headers))]

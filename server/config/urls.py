@@ -1,3 +1,4 @@
+from projects import stock_planning_views
 from documents import assembly,deadlines
 from postoffice import provider
 from projects.closure import closure
@@ -85,6 +86,14 @@ urlpatterns=[
  path('cabinet/subcontracts/excel/<str:kind>/export/',subcontract_excel.export,name='subcontract_export'),
  path('cabinet/subcontracts/excel/<str:kind>/import/',subcontract_excel.upload,name='subcontract_import'),
  path('cabinet/stock/',stock_views.home,name='stock'),
+ path('cabinet/stock/sections/<uuid:pk>/diameter/',stock_planning_views.diameter,name='stock_diameter'),
+ path('cabinet/stock/receive/',stock_planning_views.receipt,name='stock_receive'),
+ path('cabinet/stock/inventory/',stock_planning_views.inventory,name='stock_inventory'),
+ path('cabinet/stock/inventory/export/',stock_planning_views.inventory_export,name='stock_inventory_export'),
+ path('cabinet/stock/coverage/',stock_planning_views.coverage,name='stock_coverage'),
+ path('cabinet/stock/items/<uuid:pk>/allocate/',stock_planning_views.allocate,name='stock_allocate'),
+ path('cabinet/stock/items/<uuid:pk>/delete/',stock_planning_views.delete,name='stock_delete'),
+ path('cabinet/stock/items/<uuid:pk>/split/<uuid:warehouse_id>/',stock_planning_views.split,name='stock_split'),
  path('cabinet/stock/new/',stock_views.warehouse_edit,name='stock_new'),
  path('cabinet/stock/items/',stock_views.item_list,name='stock_items'),
  path('cabinet/stock/items/new/',stock_views.item_edit,name='stock_item_new'),

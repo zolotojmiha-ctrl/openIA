@@ -74,4 +74,4 @@ class ResourceBrowser(StaticLiveServerTestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual(EquipmentAssignment.objects.count(),2)
         wh=Warehouse.objects.get(name='Володя Барабинск');self.assertEqual(wh.served_objects.count(),2);self.assertEqual(wh.served_brigades.count(),2)
-        self.assertEqual(StockBalance.objects.get(warehouse=wh).quantity,2)
+        self.assertEqual(sum(StockBalance.objects.filter(warehouse=wh).values_list('quantity',flat=True)),2)

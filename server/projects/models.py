@@ -228,8 +228,8 @@ class StockItem(models.Model):
     legal_entity=models.ForeignKey(LegalEntity,on_delete=models.PROTECT)
     sku=models.CharField('Код номенклатуры',max_length=80)
     name=models.CharField('Наименование',max_length=200)
-    kind=models.CharField('Вид',max_length=20,choices=[('material','Материал'),('coupling','Муфта')],default='material')
-    unit=models.CharField('Единица',max_length=10,choices=[('pcs','шт.'),('m','м'),('kg','кг'),('l','л')],default='pcs')
+    kind=models.CharField('Вид',max_length=20,choices=[('material','Материал'),('coupling','Муфта'),('composite','Композит'),('sealant','Герметик'),('insulation','Изоляция')],default='material')
+    unit=models.CharField('Единица',max_length=10,choices=[('pcs','шт.'),('m','м'),('m2','м²'),('kg','кг'),('l','л')],default='pcs')
     method=models.CharField('Метод ремонта / тип муфты',max_length=20,blank=True)
     diameter_mm=models.PositiveIntegerField('Диаметр, мм',null=True,blank=True)
     length_mm=models.PositiveIntegerField('Длина, мм',null=True,blank=True)
@@ -243,7 +243,16 @@ class StockItem(models.Model):
     @property
     def method_label(self):
         return {'p1':'П1','p2':'П2','p3':'П3','p4':'П4','p5u':'П5У'}.get(self.method,self.method)
-    def __str__(self):return f'{self.sku} · {self.name}'
+    receipt_warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    receipt_date=models.DateField(null=True,blank=True)
+    receipt_origin=models.CharField('Склад, откуда получен материал',max_length=200,blank=True)
+    individual=models.BooleanField('Отдельное изделие',default=False)
+    serial=models.CharField('Заводской № (можно внести позже)',max_length=100,blank=True)
+    reserved_job=models.ForeignKey('repairs.Job',on_delete=models.PROTECT,null=True,blank=True,related_name='reserved_stock')
+    deleted_at=models.DateTimeField(null=True,blank=True)
+    def __str__(self):
+        if self.kind=='coupling':return f'{self.name} · {self.method_label} · Ø {self.diameter_mm or "—"} · {self.length_mm or "—"}×{self.wall_mm or "—"} мм · № {self.serial or "пока не указан"} · {self.sku}'
+        return f'{self.name} · {self.get_unit_display()} · {self.sku}'
 
 class StockBalance(models.Model):
     warehouse=models.ForeignKey(Warehouse,on_delete=models.PROTECT,related_name='balances')
