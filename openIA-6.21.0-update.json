@@ -1,0 +1,14 @@
+{
+  "version": "6.21.0",
+  "source": "8c8339c86f5e7a26d03442be8e6978cd2ba20cf9",
+  "sha256": "b4c84aa4fd76525e5b007acb9cbf33316bc258709997317148ec8951987a337c",
+  "size_bytes": 29963765,
+  "folder": "openIA-feature-accounts-foundation/",
+  "verification": {
+    "postgresql_suite": 727,
+    "chromium_scenarios": 26,
+    "targeted_postgresql_repeat": 13,
+    "upgrade_from": "6.20.0",
+    "backup_restore": true
+  }
+}
