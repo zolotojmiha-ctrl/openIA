@@ -1,6 +1,6 @@
 {% extends 'accounts/base.html' %}{% block content %}
 <link rel="stylesheet" href="/static/equipment/equipment.css">
-<h1>Склады · материалы и остатки</h1>
+<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}"><div class="stock-page"><h1>Склады · материалы и остатки</h1>
 {% if mode %}
 <link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
 <form method="post" data-stock-grid data-mode="{{ mode }}" data-return-url="{{ return_url }}">
@@ -23,11 +23,11 @@
 <a class="button secondary" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a>
 <a class="button secondary" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
 <a class="button secondary" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
-<a class="button secondary" href="{% url 'stock_inventory_import' %}">↑ Загрузить изменения Excel</a>
+<a class="button secondary" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>
 <a href="{% url 'stock_warehouses' %}">Настроить склады</a> <a href="{% url 'stock_items' %}">Справочник карточек / архив</a>
 </div>
 <p>Закреплённые муфты остаются в складском остатке до монтажа. Материалы одного типоразмера на разных складах показаны разными строками.</p>
-<form method="get" class="equipment-actions">
+<form method="get" class="equipment-actions stock-filters">
 <input name="q" value="{{ q }}" placeholder="Название, заводской №, км или дефект">
 <select name="warehouse"><option value="">Все склады</option>{% for wh in warehouses %}<option value="{{ wh.pk }}" {% if selected_warehouse == wh.pk|stringformat:'s' %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}</select>
 <select name="kind"><option value="">Все категории</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
@@ -36,4 +36,4 @@
 </form>
 {% include 'projects/stock_inventory_rows.html' %}
 {% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?{{ filter_query }}&amp;page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}
-{% endif %}{% endblock %}
+{% endif %}</div>{% endblock %}

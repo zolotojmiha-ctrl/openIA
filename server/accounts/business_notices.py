@@ -5,7 +5,8 @@ from .models import AuditEvent,BusinessNoticeRead,SupportRequest
 
 NOISE=('login','logout','document_downloaded','document_exported','repair_exported','sessions_ended','mail_read','mail_prepared','mailbox_updated','agreement_updated')
 def events(user):
-    attention=Q(action__in=['repair_reported','work_reported','subcontract_reported','support_updated','document_integrity_error'])|Q(action='mail_sent',details__state__in=['failed','uncertain'])|Q(action='contract_updated',details__kind__in=['closure_request','customer_change_submitted'])
+    repair=Q(action='repair_reported')&(Q(details__kind__in=['complete','partial','problem','correction'])|~Q(details__has_key='kind'))
+    attention=repair|Q(action__in=['work_reported','subcontract_reported','support_updated','document_integrity_error'])|Q(action='mail_sent',details__state__in=['failed','uncertain'])|Q(action='contract_updated',details__kind__in=['closure_request','customer_change_submitted'])
     qs=AuditEvent.objects.filter(attention)
     if not user.is_leader:
         # Employees receive replies to their own support tickets only.
@@ -22,7 +23,11 @@ def destination(event):
     if event.action.startswith('work_'):return reverse('daily_detail',args=[event.details['work']])
     if event.action.startswith(('mail_','mailbox_')):return reverse('mail')
     if event.action=='support_updated':return reverse('support_detail',args=[event.details['request_id']])
-    if event.action.startswith('repair_'):return reverse('repairs')+'?state=reported' if event.action=='repair_reported' else reverse('work_home')
+    if event.action.startswith('repair_'):
+        import uuid
+        try:job_id=uuid.UUID(str(event.details.get('entity_id','')))
+        except (ValueError,TypeError):return reverse('repairs')
+        return reverse('repair_detail',args=[job_id])
     if event.action.startswith('subcontract_'):return reverse('subcontracts')
     if event.action.startswith('equipment_'):return reverse('equipment')
     if event.action.startswith('stock_'):return reverse('stock')
@@ -32,6 +37,8 @@ def destination(event):
     return reverse('audit')
 
 def notice_title(event):
+    if event.action=='repair_reported':
+        return {'complete':'Результат ремонта на проверке','partial':'Частичное выполнение ремонта','problem':'Препятствие при устранении дефекта','correction':'Исправлен результат ремонта'}.get(event.details.get('kind'),'Сведения о ремонте')
     if event.action=='mail_sent':return 'Неясный результат отправки письма' if event.details.get('state')=='uncertain' else 'Ошибка отправки письма'
     if event.action=='contract_updated':return 'Запрос на закрытие контракта' if event.details.get('kind')=='closure_request' else 'Указание заказчика на проверке'
     if event.action=='support_updated':return 'Обращение № '+str(event.details.get('request_id',''))

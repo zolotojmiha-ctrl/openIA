@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 import uuid
 from datetime import date
 from django import forms
@@ -38,7 +39,7 @@ def export_rows(user,kind):
 
 @permission_required('stock.manage')
 def export(request,kind):
-    kind_ok(kind);result=HttpResponse(workbook([] if request.GET.get('template')=='1' else export_rows(request.user,kind),headers=HEADERS[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');result['Content-Disposition']=f'attachment; filename="armada-stock-{kind}.xlsx"';result['Cache-Control']='private, no-store';return result
+    kind_ok(kind);result=HttpResponse(human_xlsx.workbook(request.user,'stock.'+kind,[] if request.GET.get('template')=='1' else export_rows(request.user,kind),HEADERS[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');result['Content-Disposition']=f'attachment; filename="armada-stock-{kind}.xlsx"';result['Cache-Control']='private, no-store';return result
 
 def flag(raw):
     if raw not in ('0','1'):raise ValidationError('Флаг: 0 или 1.')
@@ -79,7 +80,7 @@ def export_rows_for_movement(user,m):
 
 class UploadForm(forms.Form):file=forms.FileField(label='Файл XLSX',widget=forms.FileInput(attrs={'accept':'.xlsx'}))
 def parse_rows(file,kind,user):
-    book=read_book(file);cells=book['cells'];headers=HEADERS[kind]
+    headers=HEADERS[kind];book=human_xlsx.normalize(user,'stock.'+kind,read_book(file),headers);cells=book['cells']
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
     incoming=[str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]
     legacy=[h.replace('Вид (material/coupling/composite/sealant/insulation)','Вид (material/coupling)').replace('Ед. (pcs/m2/m/kg/l)','Ед. (pcs/m/kg/l)') for h in headers]

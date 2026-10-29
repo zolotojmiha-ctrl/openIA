@@ -145,7 +145,7 @@ class StockTests(TestCase):
         from repairs.forms import ReportForm
         c,i=self.concrete();a=self.wh();crew=self.crew();b=self.wh('ТЕСТ Выдано',brigade_assignment=crew);j=self.make_job();self.move(i,q=1,dst=a);self.move(i,'issue',1,a,b,job=j)
         snapshot=ReportForm(job=j,action='repaired',user=self.worker).initial['stock_prepared']
-        form=ReportForm({'stock_prepared':snapshot,'token':str(uuid.uuid4()),'expected_version':j.version,'performed_date':str(self.today),'coordinates':'55.123456, 73.123456','note':''},job=j,action='repaired',user=self.worker)
+        form=ReportForm({'stock_prepared':snapshot,'token':str(uuid.uuid4()),'expected_version':j.version,'performed_date':str(self.today),'coordinates':'55.123456, 73.123456','note':'','serial_'+c.pk.hex:c.serial},job=j,action='repaired',user=self.worker)
         self.assertTrue(form.is_valid(),form.errors);self.assertEqual([x.pk for x in form.cleaned_data['couplings']],[c.pk])
         report_work(self.worker,j.pk,form.action,form.cleaned_data);self.assertEqual(self.balance(b,i),0);self.assertTrue(CouplingUse.objects.filter(coupling=c,job=j).exists())
     def test_returned_issue_invalidates_old_simple_form(self):

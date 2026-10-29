@@ -1,6 +1,6 @@
 import re
 import uuid
-from decimal import Decimal
+from decimal import Decimal,InvalidOperation
 from django import forms
 from django.db.models import Q
 from django.utils import timezone
@@ -9,7 +9,7 @@ from projects.access import visible_objects,contract_card
 from documents.storage import validate_upload
 from .access import visible_sections, selectable_couplings,repair_contracts,validate_contract_place
 from .values import kilometre,identifier,matching_defects
-from .models import Section, Job, Defect, Coupling, METHODS, PROBLEMS
+from .models import Section, Job, Defect, Coupling, Report, METHODS, PROBLEMS
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 
@@ -130,6 +130,11 @@ class ReportForm(forms.Form):
     longitude=forms.DecimalField(max_digits=9,decimal_places=6,min_value=-180,max_value=180,required=False,widget=forms.HiddenInput)
     def __init__(self,*args,job,action,user,**kwargs):
         super().__init__(*args,**kwargs);self.action=action
+        self.previous_report=None
+        if self.is_bound:
+            try:previous_token=forms.UUIDField().clean(self.data.get('token'))
+            except forms.ValidationError:previous_token=None
+            if previous_token:self.previous_report=Report.objects.filter(token=previous_token,job=job,author=user).first()
         self.simple=action in ('repaired','unrepaired');self.job=job
         if self.simple:
             action='result' if action=='repaired' else 'problem'
@@ -159,7 +164,27 @@ class ReportForm(forms.Form):
                 self.fields.pop('latitude');self.fields.pop('longitude')
                 self.fields['coordinates']=forms.CharField(label='Координаты точки ремонта',max_length=100,required=action=='result',
                     widget=forms.TextInput(attrs={'placeholder':'56.123456, 73.123456','autocomplete':'off'}),
-                    help_text='Скопируйте координаты точки из Google Карт и вставьте сюда. Например: 56.123456, 73.123456.')
+                    help_text='Вставьте координаты из карты: 56.123456, 73.123456 или 55°20′22.2″N 77°49′47.4″E.')
+        self.stock_serial_fields=[]
+        if action=='result' and job.method in ('p1','p2','p3','p4','p5u'):
+            from projects.stock import prepared_couplings
+            issued=getattr(self,'prepared_stock_couplings',None)
+            if issued is None:issued=prepared_couplings(job)
+            if self.previous_report and self.previous_report.context.get('installation',{}).get('kind')=='reserved':
+                issued=list(Coupling.objects.filter(pk__in=self.previous_report.context['installation']['serials']))
+            self.prepared_stock_couplings=issued
+            if issued:
+                for name in ('length_m','composition','method','couplings'):self.fields.pop(name,None)
+                for coupling in issued:
+                    name='serial_'+coupling.pk.hex
+                    self.fields[name]=forms.CharField(label=f'{coupling.get_method_display()} · {coupling.length_mm} мм · стенка {coupling.wall_mm or "—"} мм — заводской номер',max_length=100,initial=coupling.serial)
+                    self.stock_serial_fields.append(self[name])
+            else:
+                self.fields['length_m']=forms.DecimalField(label='Фактическая длина ремонтной конструкции, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),initial=job.length_m)
+                self.fields['composition']=forms.CharField(label='Состав из нескольких муфт, м',required=False,max_length=200,initial=job.composition,help_text='Для одной муфты оставьте пустым. Для нескольких: 1.5+1.5; заводские номера укажите в том же порядке.')
+                self.fields['manual_serials']=forms.CharField(label='Заводские номера установленных муфт',required=self.simple,max_length=3030,widget=forms.Textarea(attrs={'rows':2}),help_text='Для одной муфты — один номер. Для нескольких — каждый номер с новой строки, в порядке состава.')
+                installed=list(Coupling.objects.filter(installation__job=job))
+                if installed:self.initial['manual_serials']='\n'.join(p.serial for p in installed)
 
     def clean_coordinates(self):
         text=self.cleaned_data['coordinates'].strip()
@@ -171,14 +196,24 @@ class ReportForm(forms.Form):
         if not match and ';' in text:
             match=re.fullmatch(r'([+-]?\d{1,3}(?:,\d+)?)\s*;\s*([+-]?\d{1,3}(?:,\d+)?)',text)
         if not match:
-            raise forms.ValidationError('Вставьте пару координат, например: 56.123456, 73.123456. Ссылка на карту не подходит.')
-        lat,lon=(Decimal(v.replace(',','.')) for v in match.groups())
+            dms=re.fullmatch(r'''\s*(\d{1,2})\s*[°º]\s*(\d{1,2})\s*['′’]\s*(\d{1,2}(?:[.,]\d+)?)\s*["″”]\s*([NSСЮ])\s*[,;]?\s*(\d{1,3})\s*[°º]\s*(\d{1,2})\s*['′’]\s*(\d{1,2}(?:[.,]\d+)?)\s*["″”]\s*([EWВЗ])\s*''',text,re.I)
+            if not dms:raise forms.ValidationError('Вставьте координаты точки: 56.123456, 73.123456 или 55°20\'22.2"N 77°49\'47.4"E.')
+            parts=dms.groups();coordinates=[]
+            for offset in (0,4):
+                degree=Decimal(parts[offset]);minute=Decimal(parts[offset+1]);second=Decimal(parts[offset+2].replace(',','.'))
+                if minute>=60 or second>=60:raise forms.ValidationError('Минуты и секунды координат должны быть меньше 60.')
+                value=degree+minute/60+second/3600
+                if parts[offset+3].upper() in ('S','W','Ю','З'):value=-value
+                coordinates.append(value)
+            lat,lon=coordinates
+        else:lat,lon=(Decimal(v.replace(',','.')) for v in match.groups())
         if not -90<=lat<=90 or not -180<=lon<=180:
             raise forms.ValidationError('Координаты вне допустимого диапазона: широта от −90 до 90, долгота от −180 до 180.')
         return (lat.quantize(Decimal('.000001')),lon.quantize(Decimal('.000001')))
 
     def clean(self):
         c=super().clean()
+        actual_length=c.get('length_m');actual_composition=c.get('composition','')
         if self.simple and c.get('coordinates'):
             c['latitude'],c['longitude']=c['coordinates']
         if self.simple and self.action=='result':
@@ -187,6 +222,7 @@ class ReportForm(forms.Form):
             from projects.stock import prepared_couplings
             from django.core import signing
             issued=prepared_couplings(self.job)
+            if self.previous_report and self.previous_report.context.get('installation',{}).get('kind')=='reserved':issued=self.prepared_stock_couplings
             token=c.get('stock_prepared','')
             try:
                 payload=signing.loads(token,salt='stock-prepared') if token else {'job':str(self.job.pk),'ids':[]}
@@ -194,6 +230,33 @@ class ReportForm(forms.Form):
             except (signing.BadSignature,ValueError,KeyError,TypeError):self.add_error(None,'Состав выданных муфт изменился. Откройте актуальную форму и проверьте изделия.')
             prepared={coupling.pk:coupling for coupling in [*Coupling.objects.filter(installation__job=self.job),*issued]}
             c.update(outcome='complete',method=self.job.method,length_m=self.job.length_m,composition=self.job.composition,couplings=list(prepared.values()))
+        if self.action=='result' and self.job.method in ('p1','p2','p3','p4','p5u') and (self.prepared_stock_couplings or c.get('method') in ('p1','p2','p3','p4','p5u')):
+            if self.prepared_stock_couplings:
+                from projects.stock import prepared_couplings
+                current=prepared_couplings(self.job)
+                if self.previous_report and self.previous_report.context.get('installation',{}).get('kind')=='reserved':current=self.prepared_stock_couplings
+                if {p.pk for p in current}!={p.pk for p in self.prepared_stock_couplings}:self.add_error(None,'Закрепление муфт изменилось. Откройте актуальную форму.')
+                selected={p.pk:p for p in [*Coupling.objects.filter(installation__job=self.job),*current]}
+                if self.previous_report:selected={p.pk:p for p in Coupling.objects.filter(pk__in=[p['id'] for p in self.previous_report.coupling_snapshot])}
+                lengths=[Decimal(p.length_mm)/1000 for p in selected.values()]
+                c.update(method=self.job.method,length_m=sum(lengths),composition='+'.join(format(length,'f') for length in lengths),couplings=list(selected.values()),installation={'kind':'reserved','serials':{str(p.pk):c.get('serial_'+p.pk.hex,'') for p in current}})
+            else:
+                # Simple reports used to overwrite these fields with the plan.
+                if self.simple:
+                    c['length_m']=actual_length;c['composition']=actual_composition
+                if not self.simple and not c.get('manual_serials') and c.get('couplings') and all(p.serial for p in c['couplings']):pass
+                else:
+                    serials=[value.strip() for value in re.split(r'[\n;]+',c.get('manual_serials','')) if value.strip()]
+                    if not serials and not self.errors.get('manual_serials'):self.add_error('manual_serials','Укажите заводской номер установленной муфты.')
+                    if serials:
+                        try:
+                            parts=[Decimal(value.strip().replace(',','.')) for value in c.get('composition','').split('+')] if c.get('composition') else [c.get('length_m')]
+                            if not c.get('length_m') or any(p is None or not p.is_finite() or p<=0 or p*1000!=(p*1000).to_integral_value() for p in parts) or sum(parts)!=c['length_m']:raise ValueError
+                            if len(parts)!=len(serials) or len(parts)>30 or len(set(serials))!=len(serials) or any(len(serial)>100 for serial in serials):raise ValueError
+                        except (ValueError,InvalidOperation):self.add_error('manual_serials','Укажите по одному номеру для каждой муфты. Длины в составе должны давать фактическую длину конструкции.')
+                        else:
+                            c['installation']={'kind':'manual','pieces':[{'serial':serial,'length_mm':int(part*1000)} for serial,part in zip(serials,parts)]}
+                            if self.simple:c['couplings']=[]
         if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other','existing_coupling','oversize_p1') and not c.get('note','').strip():
             self.add_error('note',{'existing_coupling':'Опишите найденную муфту: тип, состояние и другие известные сведения.','oversize_p1':'Опишите обнаруженную муфту и требуемую П1 увеличенного диаметра; укажите размер, если известен.'}.get(c.get('problem'),'Поясните, какого материала не хватает или укажите другую причину.'))
         if c.get('performed_date') and c['performed_date']>timezone.localdate():self.add_error('performed_date','Фактическая дата не может быть в будущем.')
@@ -202,7 +265,6 @@ class ReportForm(forms.Form):
             if not c.get('method'):self.add_error(None if self.simple else 'method','Выберите фактический способ.')
             if c.get('method') in ['p1','p2','p3','p4','p5u']:
                 if not c.get('length_m'):self.add_error(None if self.simple else 'length_m','В задании не указана длина конструкции. Руководитель должен уточнить задание.' if self.simple else 'Укажите фактическую длину.')
-                if not self.simple and not c.get('couplings') and not c.get('note'):self.add_error('note','Если заводские номера пока неизвестны, укажите это в пояснении.')
             elif c.get('couplings'):self.add_error(None if self.simple else 'couplings','Для этого способа муфты не используются.')
             elif c.get('method')=='grind':c['length_m']=None;c['composition']=''
         if self.action=='correction' and not c.get('note'):self.add_error('note','Укажите причину исправления. Прежний результат останется в истории.')

@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """Versioned spreadsheet editing of objects, contract cards and personnel.
 
 Access and account linking are deliberately handled by the existing explicit workflows.
@@ -90,7 +91,7 @@ def export_rows(user,kind,archived=False):
 @require_registry
 def export(request,kind):
     rows=[] if request.GET.get('template')=='1' else export_rows(request.user,kind,request.GET.get('archive')=='1')
-    response=HttpResponse(workbook(rows,headers=headers(request.user,kind),sheet_name=TITLES[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response=HttpResponse(human_xlsx.workbook(request.user,'registry.'+kind,rows,headers(request.user,kind),sheet_name=TITLES[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']=f'attachment; filename="armada-{kind}.xlsx"'
     response['Cache-Control']='private, no-store'
     audit(request.user,'document_exported',kind='registry-'+kind,count=len(rows),format='xlsx')
@@ -112,7 +113,7 @@ def normalize_date(raw,epoch):
     raise ValidationError('Дата: используйте ГГГГ-ММ-ДД, ДД.ММ.ГГГГ или дату Excel.')
 
 def parse_rows(upload,kind,user):
-    book=read_book(upload)
+    book=human_xlsx.normalize(user,'registry.'+kind,read_book(upload),headers(user,kind))
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
     cells=book['cells'];expected=headers(user,kind)
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(expected))]!=expected or any(c>len(expected) and str(v).strip() for (r,c),v in cells.items()):

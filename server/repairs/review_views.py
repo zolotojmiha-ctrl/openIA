@@ -10,6 +10,8 @@ from .filters import filtered_jobs
 from .access import visible_jobs
 from .review_services import confirm_many,return_for_revision,latest_result,correct_and_accept
 from .forms import ReportForm
+from .navigation import return_url
+from django.urls import reverse
 
 @leader_required
 @require_POST
@@ -21,7 +23,7 @@ def bulk_review(request):
             if payload['actor']!=str(request.user.pk):raise PermissionDenied
             count=confirm_many(request.user,payload['versions'])
             messages.success(request,f'Подтверждено ремонтов: {count}. Проверка сохранена в истории.')
-            return redirect('work_home')
+            return redirect(payload.get('back') or reverse('repairs')+'?state=reported')
         payload=signing.loads(request.POST.get('filter_token',''),salt='repair-review-filter',max_age=3600)
         if payload['actor']!=str(request.user.pk) or payload['filters'].get('archive')=='1':raise PermissionDenied
         qs=filtered_jobs(request.user,payload['filters']).filter(state='reported')
@@ -32,7 +34,7 @@ def bulk_review(request):
         jobs=list(qs.order_by('pk')[:10001])
         if not jobs:raise ValidationError('Выберите результаты на проверке.')
         if len(jobs)>10000:raise ValidationError('За одно действие можно подтвердить до 10000 ремонтов. Уточните фильтр.')
-        snapshot=signing.dumps({'actor':str(request.user.pk),'versions':{str(j.pk):j.version for j in jobs}},salt='repair-review-selection',compress=True)
+        snapshot=signing.dumps({'actor':str(request.user.pk),'versions':{str(j.pk):j.version for j in jobs},'back':return_url(request,reverse('repairs')+'?state=reported')},salt='repair-review-selection',compress=True)
     except (signing.BadSignature,ValidationError,ValueError,KeyError,TypeError) as e:
         error=e.messages[0] if isinstance(e,ValidationError) else 'Выбор устарел или некорректен. Вернитесь к списку.'
     return render(request,'repairs/bulk_review.html',{'jobs':jobs,'snapshot':snapshot,'error':error,'defect_count':sum(len(j.active_defects) for j in jobs)},status=409 if error else 200)

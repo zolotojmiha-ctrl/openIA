@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """Versioned XLSX import: preview is rolled back; applying the snapshot is atomic."""
 import uuid
 from datetime import date
@@ -37,7 +38,7 @@ def export_rows(user,kind):
 
 @permission_required('equipment.manage')
 def export(request,kind):
-    check_kind(kind);data=workbook([] if request.GET.get('template')=='1' else export_rows(request.user,kind),headers=HEADERS[kind])
+    check_kind(kind);data=human_xlsx.workbook(request.user,'equipment.'+kind,[] if request.GET.get('template')=='1' else export_rows(request.user,kind),HEADERS[kind])
     result=HttpResponse(data,content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');result['Content-Disposition']=f'attachment; filename="armada-equipment-{kind}.xlsx"';result['Cache-Control']='private, no-store';return result
 
 def day(value,required=False):
@@ -87,7 +88,7 @@ def apply_rows(user,kind,rows):
             raise ValidationError(f'Строка {row["row"]}: {detail}') from e
 
 def parse_rows(file,kind,user):
-    book=read_book(file);cells=book['cells'];headers=HEADERS[kind]
+    headers=HEADERS[kind];book=human_xlsx.normalize(user,'equipment.'+kind,read_book(file),headers);cells=book['cells']
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
     if kind=='assignments' and not cells.get((1,9)):headers=headers[:8]
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]!=headers:raise ValidationError('Столбцы не совпадают с шаблоном выбранного реестра.')

@@ -83,7 +83,7 @@ def read_book(upload,sheet_name=''):
 
 def parse_work(upload,sheet_name=''):
     book=read_book(upload,sheet_name);cells=book['cells'];merges=book['merges']
-    if any(r==1 and str(v).strip()=='Код ремонта' for (r,c),v in cells.items()):
+    if any(r==1 and str(v).strip()=='Код ремонта' for (r,c),v in cells.items()) or {'Км','№ дефекта','Метод ремонта'}.issubset({str(v).strip() for (r,c),v in cells.items() if r==1}):
         from .excel import parse_standard
         return parse_standard(book)
     def origin(r,c):

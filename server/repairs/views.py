@@ -20,7 +20,7 @@ from .access import visible_jobs, visible_sections, reportable_jobs, prepare_req
 from .forms import SectionForm, JobForm, ReportForm, CouplingForm, AcceptanceForm
 from .models import Section, Job, Defect, JobDefect, Coupling, Report, Attachment
 from .services import report_work, confirm_work
-from .navigation import detail_url
+from .navigation import detail_url,report_return_url
 from .values import kilometre,get_or_create_defect
 
 def register_context(request,scope=None):
@@ -222,15 +222,15 @@ def report(request,pk,action):
             messages.success(request,'Результат отправлен.' if action in ('result','correction') else 'Сведения сохранены.')
             if request.headers.get('Accept')=='application/json':
                 from django.urls import reverse
-                return JsonResponse({'ok':True,'url':detail_url(request,job.pk)})
-            return redirect(detail_url(request,job.pk))
+                return JsonResponse({'ok':True,'url':report_return_url(request,job) if action in ('repaired','unrepaired','result') else detail_url(request,job.pk)})
+            return redirect(report_return_url(request,job) if action in ('repaired','unrepaired','result') else detail_url(request,job.pk))
         except (ValidationError,Job.DoesNotExist) as e:
             if isinstance(e,ValidationError) and e.code=='already_saved' and request.headers.get('Accept')=='application/json':
                 return JsonResponse({'ok':False,'errors':{'__all__':[{'message':e.messages[0]}]},'new_record_version':e.params['version']},status=409)
             form.add_error(None,e.messages[0] if isinstance(e,ValidationError) else 'Назначение изменилось. Откройте список своих работ.');status=409
     if request.method=='POST' and form.errors and request.headers.get('Accept')=='application/json':return JsonResponse({'ok':False,'errors':form.errors.get_json_data()},status=status if status!=200 else 400)
     titles={'repaired':'Устранён','unrepaired':'Не устранён','start':'Начать работу','result':'Внести результат','problem':'Сообщить о проблеме','note':'Добавить фото или пояснение','correction':'Исправить результат','resolve':'Препятствие устранено'}
-    return render(request,'repairs/report.html',{'form':form,'job':job,'action':action,'title':titles[action]},status=status)
+    return render(request,'repairs/report.html',{'form':form,'job':job,'action':action,'title':titles[action],'report_back':report_return_url(request,job)},status=status)
 
 @leader_required
 @require_POST

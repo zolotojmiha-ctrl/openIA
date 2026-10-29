@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 import uuid
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -39,7 +40,7 @@ def registry(request):
     leader(request.user)
     if request.GET.get('export')=='1' or request.GET.get('template')=='1':
         rows=[] if request.GET.get('template')=='1' else [[str(b.pk),b.address,str(b.owner_id or ''),str(b.person_id or ''),b.state,b.version] for b in boxes(request.user)]
-        response=HttpResponse(workbook(rows,headers=HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-mailboxes.xlsx"';return response
+        response=HttpResponse(human_xlsx.workbook(request.user,'mail',rows,HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-mailboxes.xlsx"';return response
     form=UploadForm(request.POST or None,request.FILES or None);preview='';rows=[]
     if request.method=='POST':
         try:
@@ -51,7 +52,7 @@ def registry(request):
                     if not MailboxImportReceipt.objects.filter(token=payload['token'],actor=actor).exists():apply(actor,payload['rows']);MailboxImportReceipt.objects.create(token=payload['token'],actor=actor)
                 return redirect('mail')
             if form.is_valid():
-                book=read_book(form.cleaned_data['file']);cells=book['cells']
+                book=human_xlsx.normalize(request.user,'mail',read_book(form.cleaned_data['file']),HEADERS);cells=book['cells']
                 if book['formulas']:raise ValidationError('Формулы замените значениями.')
                 if [str(cells.get((1,i+1),'')).strip() for i in range(len(HEADERS))]!=HEADERS:raise ValidationError('Используйте шаблон реестра почты.')
                 seen=set()

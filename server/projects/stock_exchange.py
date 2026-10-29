@@ -20,10 +20,10 @@ from . import stock,stock_groups as groups,stock_planning as planning
 from .models import StockItem,StockImportReceipt
 
 HEADERS={
- 'Остатки':['Код строки','Версия строки (не менять)','Склад','Наименование','Категория','Единица','Тип муфты','Диаметр, мм','Длина, мм','Стенка, мм','Марка электродов','Диаметр электрода, мм','На складе (справочно)','Закреплено (справочно)','Свободно (справочно)','Смонтировано (справочно)','Новый остаток','Обновить распределение (да/нет)','Дата получения','Откуда получено','Количество нового поступления','Дата нового поступления','Откуда новая поставка'],
- 'Распределение':['Код строки','Работа (скопировать с листа Работы)','Количество, шт.','Склад (справочно)'],
- 'Изделия':['Код строки','ID позиции (не менять)','Версия (не менять)','Заводской №','Состояние (справочно)','Склад','Количество (справочно)','Дата получения (справочно)','Откуда получено','Назначение','Дата монтажа (справочно)'],
- 'Перемещения':['Код строки','На какой склад','Количество','Дата','Перемещать резервы (да/нет)','Основание'],
+ 'Остатки':['Код строки','Версия строки (не менять)','Склад','Наименование','Категория','Единица','Тип муфты','Диаметр, мм','Длина, мм','Стенка, мм','Марка электродов','Диаметр электрода, мм','На складе (справочно)','Закреплено (справочно)','Свободно (справочно)','Смонтировано (справочно)','Новый остаток','Обновить распределение (да/нет)','Дата получения','Откуда получено','Количество нового поступления','Дата нового поступления','Откуда новая поставка','Материал со склада'],
+ 'Распределение':['Код строки','Работа (скопировать с листа Работы)','Количество, шт.','Склад (справочно)','Материал со склада'],
+ 'Изделия':['Код строки','ID позиции (не менять)','Версия (не менять)','Заводской №','Состояние (справочно)','Склад','Количество (справочно)','Дата получения (справочно)','Откуда получено','Назначение','Дата монтажа (справочно)','Материал со склада'],
+ 'Перемещения':['Код строки','На какой склад','Количество','Дата','Перемещать резервы (да/нет)','Основание','Материал со склада'],
  'Работы':['Работа','Контракт','Участок','Нефтепровод','Км','№ дефектов'],
 }
 KIND=dict(StockItem._meta.get_field('kind').choices);UNIT=dict(StockItem._meta.get_field('unit').choices)
@@ -38,7 +38,9 @@ def book(sheets):
     stream=io.BytesIO()
     with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as out:
         for n,(name,headers,rows) in enumerate(sheets,1):
-            with zipfile.ZipFile(io.BytesIO(workbook(rows,headers,sheet_name=name))) as one:
+            hidden={'Остатки':(0,1),'Распределение':(0,),'Изделия':(0,1,2),'Перемещения':(0,)}.get(name,())
+            options={1:list(KIND.values()),2:['П1','П2','П3','П4','П5У'],7:list(UNIT.values())} if name=='Поступление' else None
+            with zipfile.ZipFile(io.BytesIO(workbook(rows,headers,sheet_name=name,hidden_columns=hidden,column_choices=options))) as one:
                 out.writestr(f'xl/worksheets/sheet{n}.xml',one.read('xl/worksheets/sheet1.xml'))
             ET.SubElement(nodes,'sheet',name=name,sheetId=str(n),attrib={'{'+rel+'}id':f'rId{n}'})
             ET.SubElement(rels,'Relationship',Id=f'rId{n}',Type=rel+'/worksheet',Target=f'worksheets/sheet{n}.xml')
@@ -47,9 +49,15 @@ def book(sheets):
         out.writestr('_rels/.rels',f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="{rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>')
     return stream.getvalue()
 
+def material_label(row):
+    if row[4]=='Муфта':return f'{row[6]} · Ø{row[7]} · {row[8]} × {row[9]} мм · {row[2]}'
+    return f'{row[3]} · {row[4]} · {row[5]} · {row[2]}'
+
+
 def main_row(g):
     i=g['item'];dates={str(m['receipt_date'] or '') for m in g['members']};sources={m['receipt_source'] for m in g['members']}
-    return [g['id'],g['token'],g['warehouse'].name if g['warehouse'] else '',i.name,KIND[i.kind],UNIT[i.unit],i.method_label,i.diameter_mm or '',i.length_mm or '',i.wall_mm or '',i.electrode_brand,str(i.electrode_diameter or ''),str(g['quantity']),str(g['reserved']),str(g['free']),str(g['installed']),str(g['quantity']),'да' if i.kind=='coupling' and g['warehouse'] and sum(d['quantity'] for d in g['distribution'] if d['state']=='reserved')==g['reserved'] else 'нет',next(iter(dates)) if len(dates)==1 else 'Разные',next(iter(sources)) if len(sources)==1 else 'Разные','','','']
+    row=[g['id'],g['token'],g['warehouse'].name if g['warehouse'] else '',i.name,KIND[i.kind],UNIT[i.unit],i.method_label,i.diameter_mm or '',i.length_mm or '',i.wall_mm or '',i.electrode_brand,str(i.electrode_diameter or ''),str(g['quantity']),str(g['reserved']),str(g['free']),str(g['installed']),str(g['quantity']),'да' if i.kind=='coupling' and g['warehouse'] and sum(d['quantity'] for d in g['distribution'] if d['state']=='reserved')==g['reserved'] else 'нет',next(iter(dates)) if len(dates)==1 else 'Разные',next(iter(sources)) if len(sources)==1 else 'Разные','','','']
+    return row+[material_label(row)]
 
 def closed_label(job):return planning.job_label(job)+f' · Завершено / закрыто: только снятие · ID {job.pk}'
 
@@ -60,23 +68,35 @@ def work_choices(user):
 
 @permission_required('stock.manage')
 def export(request):
+    if request.GET.get('template')=='1':
+        from .stock_receipt_excel import HEADERS as receipt_headers
+        response=HttpResponse(book([('Поступление',receipt_headers,[])]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition']='attachment; filename="armada-stock-receipts.xlsx"'
+        response['Cache-Control']='private, no-store'
+        return response
     from .stock_planning_views import filtered_inventory
     data=filtered_inventory(request);main=[];alloc=[];pieces=[]
     available=work_choices(request.user);work_labels={str(j.pk):label for j,label in available}
     for g in data:
         main.append(main_row(g))
         for d in g['distribution']:
-            if d['state']=='reserved':alloc.append([g['id'],work_labels.get(str(d['job'].pk),closed_label(d['job'])),str(d['quantity']),g['warehouse'].name if g['warehouse'] else ''])
+            if d['state']=='reserved':alloc.append([g['id'],work_labels.get(str(d['job'].pk),closed_label(d['job'])),str(d['quantity']),g['warehouse'].name if g['warehouse'] else '',material_label(main_row(g))])
         for m in g['members']:
-            pieces.append([g['id'],str(m['item'].pk),m['item'].version,m['serial'],m['label'],g['warehouse'].name if g['warehouse'] else '',str(m['quantity']),str(m['receipt_date'] or ''),m['receipt_source'],work_labels.get(str(m['job'].pk),closed_label(m['job'])) if m['job'] else '',str(m['installed_date'] or '')])
+            pieces.append([g['id'],str(m['item'].pk),m['item'].version,m['serial'],m['label'],g['warehouse'].name if g['warehouse'] else '',str(m['quantity']),str(m['receipt_date'] or ''),m['receipt_source'],work_labels.get(str(m['job'].pk),closed_label(m['job'])) if m['job'] else '',str(m['installed_date'] or ''),material_label(main_row(g))])
     if len(main)>2000 or len(pieces)>2000:return HttpResponse('Для обмена за один раз — до 2000 строк / изделий. Уточните фильтры склада и категории.',status=400)
     jobs=[[label,j.contract.number if j.contract else '',j.section.project_object.name,j.section.pipeline,', '.join(d.km for d in j.active_defects),', '.join(d.number for d in j.active_defects)] for j,label in available]
-    guide=[['Остатки','Новый остаток — корректировка. Для повторной поставки заполните количество/дату/источник нового поступления или добавьте НОВАЯ-1 с датой и источником. Одинаковые типоразмеры разрешены. Изменение склада переносит всю строку. Карточке без склада можно указать склад и начальное количество.'],['Распределение','Для строк с «Обновить распределение = да» задайте полный список назначений. Пустой список снимет прежние резервы. Работа копируется с листа «Работы».'],['Изделия','Меняйте заводской номер и источник. Для нескольких номеров старой групповой позиции добавьте строки: тот же код группы, пустые ID/версия/состояние/дата/назначение, количество 1, заводской №. Общий остаток не изменится. Склад и назначение конкретного изделия можно менять; одновременно не меняйте групповое распределение этой строки.'],['Перемещения','Для частичного перемещения укажите код исходной строки, склад получателя, количество, дату и явно да/нет для перемещения резервов.'],['Защита','Не меняйте коды и версии. Срок файла не ограничен, но при изменении данных в ЛК нужна свежая версия. Импорт сначала показывает проверку; все изменения сохраняются вместе.'],['Единицы','Изоляция м²; электроды кг, с маркой и диаметром. Смонтированные изделия нельзя менять через остатки.']]
-    response=HttpResponse(book([('Остатки',HEADERS['Остатки'],main),('Распределение',HEADERS['Распределение'],alloc),('Изделия',HEADERS['Изделия'],pieces),('Работы',HEADERS['Работы'],jobs),('Перемещения',HEADERS['Перемещения'],[]),('Инструкция',['Лист','Как заполнить'],guide)]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    guide=[['Остатки','Новый остаток — корректировка. Для повторной поставки заполните количество/дату/источник нового поступления или используйте простой шаблон поступления. Одинаковые типоразмеры разрешены. Изменение склада переносит всю строку. Карточке без склада можно указать склад и начальное количество.'],['Распределение','Для строк с «Обновить распределение = да» задайте полный список назначений. Пустой список снимет прежние резервы. Работа копируется с листа «Работы».'],['Изделия','Меняйте заводской номер и источник. Для нескольких номеров старой групповой позиции добавьте строки: выбранный материал с листа «Материалы», количество 1 и заводской №; служебные поля оставляются автоматическими. Общий остаток не изменится. Склад и назначение конкретного изделия можно менять; одновременно не меняйте групповое распределение этой строки.'],['Перемещения','Для частичного перемещения скопируйте материал с листа «Материалы», укажите склад получателя, количество, дату и да/нет для перемещения резервов.'],['Защита','Служебные поля скрыты и передаются автоматически. Новые назначения выбираются по колонке «Материал со склада», которую можно скопировать с листа «Материалы». Срок файла не ограничен, но при изменении данных в ЛК нужна свежая версия. Импорт сначала показывает проверку; все изменения сохраняются вместе.'],['Единицы','Изоляция м²; электроды кг, с маркой и диаметром. Смонтированные изделия нельзя менять через остатки.']]
+    response=HttpResponse(book([('Остатки',HEADERS['Остатки'],main),('Распределение',HEADERS['Распределение'],alloc),('Изделия',HEADERS['Изделия'],pieces),('Работы',HEADERS['Работы'],jobs),('Перемещения',HEADERS['Перемещения'],[]),('Материалы',['Материал со склада','Склад','На складе','Свободно'],[[material_label(r),r[2],r[12],r[14]] for r in main]),('Инструкция',['Лист','Как заполнить'],guide)]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']='attachment; filename="stock-exchange.xlsx"'
     return response
 
 def parse(upload):
+    try:simple=read_book(upload,'Поступление')
+    except ValidationError as exc:
+        if not any('Не найден выбранный лист' in message for message in exc.messages):raise
+    else:
+        from .stock_receipt_excel import parse as parse_receipts
+        return parse_receipts(simple)
     tables={}
     for name in ['Остатки','Распределение','Изделия','Перемещения']:
         try:sheet=read_book(upload,name)
@@ -87,14 +107,29 @@ def parse(upload):
         if sheet['formulas']:raise ValidationError(f'Лист «{name}»: замените формулы значениями.')
         incoming=[str(cells.get((1,c),'')).strip() for c in range(1,len(headers)+1)]
         if name=='Изделия':incoming=[{'Склад (справочно)':'Склад','Назначение (справочно)':'Назначение'}.get(v,v) for v in incoming]
-        legacy=headers[:20]+['']*3 if name=='Остатки' else headers
-        if incoming not in [headers,legacy]:raise ValidationError(f'Лист «{name}»: столбцы не совпадают с выгруженным шаблоном.')
+        old_count={'Остатки':23,'Распределение':4,'Изделия':11,'Перемещения':6}[name]
+        legacy=headers[:old_count]+['']*(len(headers)-old_count)
+        oldest=headers[:20]+['']*(len(headers)-20) if name=='Остатки' else legacy
+        if incoming not in [headers,legacy,oldest]:raise ValidationError(f'Лист «{name}»: столбцы не совпадают с выгруженным шаблоном.')
         rows=[]
         for n in sorted({r for r,c in cells if r>1}):
             values=[str(cells.get((n,c),'')).strip() for c in range(1,len(headers)+1)]
             if any(values):rows.append({'row':n,'values':values})
         if len(rows)>2000:raise ValidationError(f'Лист «{name}»: максимум 2000 строк за импорт.')
         tables[name]=rows
+    labels={}
+    for entry in tables['Остатки']:
+        row=entry['values']
+        if not row[0] and not row[1]:row[0]='НОВАЯ-'+str(entry['row'])
+        if not row[17]:row[17]='нет'
+        for label in {material_label(row),row[-1]}- {''}:labels.setdefault(label,set()).add(row[0])
+    for name in ('Распределение','Изделия','Перемещения'):
+        for entry in tables[name]:
+            row=entry['values'];label=row[-1]
+            if label and (not row[0] or name!='Изделия'):
+                matches=labels.get(label,set())
+                if len(matches)!=1:raise ValidationError(f'{name}, строка {entry["row"]}: выберите материал и склад с листа «Материалы».')
+                row[0]=next(iter(matches))
     return tables
 
 def amount(value,whole=False):
@@ -103,11 +138,8 @@ def amount(value,whole=False):
     return number
 
 def date_value(value):
-    try:return date.fromisoformat(value)
-    except ValueError:
-        n=numeric(value)
-        if n is not None and n==n.to_integral_value() and 0<n<100000:return date(1899,12,30)+timedelta(days=int(n))
-        raise ValidationError('Дата получения: используйте ГГГГ-ММ-ДД.')
+    from accounts.xlsx import normal_date
+    return date.fromisoformat(normal_date(value,date(1899,12,30)))
 
 def label_job(user,label):
     matches=[j for j,text in work_choices(user) if text==label]

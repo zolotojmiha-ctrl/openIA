@@ -1,6 +1,7 @@
 """Small, explicit XLSX interchange format. One repair code is one construction."""
 import io
 import re
+import uuid
 import zipfile
 from decimal import Decimal
 from xml.etree import ElementTree as ET
@@ -11,11 +12,15 @@ from .importer import numeric, method
 from .values import kilometre,identifier
 
 HEADERS=['Код ремонта','Км','№ секции','№ дефекта','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Мастер (телефон)','ID участка','Объект','Участок','Состояние','Координаты результата','Причина','Пояснение','ID контракта']
+SIMPLE_HEADERS=['Км','№ дефекта','№ секции','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Состав конструкции, м','Плановая дата','Мастер','Общая конструкция (необязательно)']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-def workbook(rows,headers=None,sheet_name='Дефекты'):
+def workbook(rows,headers=None,sheet_name='Дефекты',hidden_columns=(),column_choices=None):
     ET.register_namespace('',NS)
     sheet=ET.Element('{'+NS+'}worksheet')
+    if hidden_columns:
+        cols=ET.SubElement(sheet,'{'+NS+'}cols')
+        for n in sorted(hidden_columns):ET.SubElement(cols,'{'+NS+'}col',min=str(n+1),max=str(n+1),hidden='1')
     data=ET.SubElement(sheet,'{'+NS+'}sheetData')
     for r,values in enumerate([HEADERS if headers is None else headers,*rows],1):
         row=ET.SubElement(data,'{'+NS+'}row',r=str(r))
@@ -25,6 +30,15 @@ def workbook(rows,headers=None,sheet_name='Дефекты'):
             cell=ET.SubElement(row,'{'+NS+'}c',r=f'{letters}{r}',t='inlineStr')
             text=re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]','',str(value) if value is not None else '')
             ET.SubElement(ET.SubElement(cell,'{'+NS+'}is'),'{'+NS+'}t').text=text
+    if column_choices:
+        validations=ET.SubElement(sheet,'{'+NS+'}dataValidations')
+        for n,options in column_choices.items():
+            letters='';number=n+1
+            while number:number,k=divmod(number-1,26);letters=chr(65+k)+letters
+            formula='"'+','.join(options)+'"'
+            if len(formula)>255:continue
+            validation=ET.SubElement(validations,'{'+NS+'}dataValidation',type='list',allowBlank='1',sqref=f'{letters}2:{letters}2001',showErrorMessage='1',errorTitle='Проверьте значение',error='Выберите значение из списка.')
+            ET.SubElement(validation,'{'+NS+'}formula1').text=formula
     stream=io.BytesIO()
     with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('[Content_Types].xml','<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
@@ -50,14 +64,14 @@ def parse_standard(book):
     cells=book['cells'];header={str(v).strip():c for (r,c),v in cells.items() if r==1}
     for old,new in [('Тип конструкции','Метод ремонта'),('Толщина стенки, мм','Толщина стенки муфты, мм')]:
         if new not in header and old in header:header[new]=header[old]
-    if not set(HEADERS[:8]).issubset(header):
-        raise ValidationError('Не найдены обязательные столбцы шаблона openIA. Скачайте шаблон Excel.')
+    if not {'Км','№ дефекта','Метод ремонта'}.issubset(header):
+        raise ValidationError('Нужны столбцы «Км», «№ дефекта» и «Метод ремонта».')
     if book['formulas']:
         raise ValidationError('В шаблоне используйте значения, а не формулы: скопируйте и вставьте как значения.')
     def value(row,name):return str(cells.get((row,header.get(name)), '')).strip()
     groups={};seen=set()
     for row in sorted({r for r,c in cells if r>1}):
-        if not any(value(row,h) for h in HEADERS[:8]):continue
+        if not any(value(row,h) for h in ['Км','№ дефекта','Метод ремонта']):continue
         code=value(row,'Код ремонта');number=value(row,'№ дефекта');pipe=value(row,'№ секции')
         try:
             km=kilometre(value(row,'Км'))
@@ -65,7 +79,7 @@ def parse_standard(book):
         except ValidationError as e:raise ValidationError(f'Строка {row}: '+e.messages[0])
         m=method(value(row,'Метод ремонта'))
         if value(row,'Метод ремонта').lower() in ('другой способ','other'):m='other'
-        if not code:raise ValidationError(f'Строка {row}: не заполнен «Код ремонта». Для отдельных ремонтов укажите разные номера, например 1, 2, 3.')
+        code=code or value(row,'Общая конструкция (необязательно)') or 'Новая-'+uuid.uuid4().hex[:16]
         if len(code)>80:raise ValidationError(f'Строка {row}: код ремонта должен быть не длиннее 80 символов.')
         if not number:raise ValidationError(f'Строка {row}: не заполнен «№ дефекта».')
         if len(number)>80:raise ValidationError(f'Строка {row}: номер дефекта должен быть не длиннее 80 символов.')
@@ -85,8 +99,13 @@ def parse_standard(book):
         if m.startswith('p') and not specs[0]:raise ValidationError(f'Строка {row}: укажите длину конструкции.')
         phone=value(row,'Мастер (телефон)')
         if phone:phone=normalize_phone(phone)
-        signature=(km,m,*specs,phone,value(row,'ID участка'),value(row,'ID контракта'))
+        signature=(km,m,*specs,phone,value(row,'ID участка'),value(row,'ID контракта'),value(row,'Мастер'),value(row,'Состав конструкции, м'),value(row,'Плановая дата'))
         item=groups.setdefault(code,{'signature':signature,'code':code,'rows':[],'defects':[],'method':m,'length_m':specs[0],'wall_mm':specs[1],'master_phone':phone,'section_id':value(row,'ID участка'),'contract_id':value(row,'ID контракта'),'composition':'','planned_date':'','note':'','raw':[]})
+        item['master_name']=value(row,'Мастер')
+        item['composition']=value(row,'Состав конструкции, м')
+        if value(row,'Плановая дата'):
+            from accounts.xlsx import normal_date
+            item['planned_date']=normal_date(value(row,'Плановая дата'),book['epoch'])
         if item['signature']!=signature:
             raise ValidationError(f'Строка {row}: в группе «{code}» различаются километр, конструкция, размеры, участок или мастер. Для другого ремонта укажите другой код.')
         if len(item['defects'])>=30:raise ValidationError('В одной группе допускается до 30 дефектов.')

@@ -1,0 +1,1 @@
+<div class="table-wrap"><table><thead><tr><th>Строка</th><th>Действие</th>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.number }}</td><td>{{ row.action }}</td>{% for value in row.values %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>

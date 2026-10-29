@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """Leader-only supporting agreement register; no financial postings are created."""
 import uuid
 from django import forms
@@ -108,7 +109,7 @@ def excel(request):
                     value=getattr(r,field+'_id') if field in ('customer_contract','project_object','equipment') else getattr(r,field)
                     values.append(('1' if value else '0') if field=='archived' else str(value) if value is not None else '')
                 rows.append(values)
-        response=HttpResponse(workbook(rows,headers=HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-counterparty-agreements.xlsx"';return response
+        response=HttpResponse(human_xlsx.workbook(request.user,'agreements',rows,HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-counterparty-agreements.xlsx"';return response
     form=UploadForm(request.POST or None,request.FILES or None);preview='';rows=[]
     if request.method=='POST':
         try:
@@ -121,7 +122,7 @@ def excel(request):
                     if not AgreementImportReceipt.objects.filter(token=payload['token']).exists():apply(actor,payload['rows']);AgreementImportReceipt.objects.create(token=payload['token'],actor=actor)
                 return redirect('agreements')
             if form.is_valid():
-                book=read_book(form.cleaned_data['file']);cells=book['cells']
+                book=human_xlsx.normalize(request.user,'agreements',read_book(form.cleaned_data['file']),HEADERS);cells=book['cells']
                 if book['formulas']:raise ValidationError('Замените формулы значениями.')
                 if [str(cells.get((1,i+1),'')).strip() for i in range(len(HEADERS))]!=HEADERS:raise ValidationError('Используйте шаблон договоров с контрагентами.')
                 seen=set()

@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """Spreadsheet editing submits requests, never approves or changes contract money."""
 import uuid
 from django.contrib.auth.decorators import login_required
@@ -33,7 +34,7 @@ def export(request,contract_id):
     for row in rows:
         row[4]=';'.join(i for i in row[4].split(';') if i in object_ids)
         if row[10] not in docs:row[10]=''
-    response=HttpResponse(workbook(rows,headers=HEADERS,sheet_name='Указания заказчика'),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response=HttpResponse(human_xlsx.workbook(request.user,'changes',rows,HEADERS,sheet_name='Указания заказчика'),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']='attachment; filename="armada-customer-changes.xlsx"';response['Cache-Control']='private, no-store'
     from accounts.views import audit
     audit(request.user,'document_exported',kind='customer_changes',contract=str(contract.pk),count=len(rows),format='xlsx')
@@ -78,7 +79,7 @@ def upload(request,contract_id):
                 messages.success(request,'Указания сохранены. Подтверждение и оформление договора выполняются отдельно.')
                 return redirect('contract_changes',contract_id=contract.pk)
             elif form.is_valid():
-                book=read_book(form.cleaned_data['file']);cells=book['cells']
+                book=human_xlsx.normalize(request.user,'changes',read_book(form.cleaned_data['file']),HEADERS);cells=book['cells']
                 if any(c>len(HEADERS) and str(v).strip() for (r,c),v in cells.items()):raise ValidationError('В файле есть лишние столбцы. Используйте актуальный шаблон.')
                 if book['formulas'] or [str(cells.get((1,c+1),'')) for c in range(len(HEADERS))]!=HEADERS:raise ValidationError('Используйте шаблон реестра и значения без формул.')
                 rows=[]

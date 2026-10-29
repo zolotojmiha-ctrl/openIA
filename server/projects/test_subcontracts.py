@@ -171,6 +171,32 @@ class SubcontractTests(TestCase):
         form=ReportForm(job=job,action='result',user=self.rep);self.assertFalse(form.fields['couplings'].queryset.filter(pk=coupling.pk).exists())
         with self.assertRaises(PermissionDenied):report_work(self.rep,job.pk,'result',dict(token=uuid.uuid4(),expected_version=job.version,performed_date=timezone.localdate(),outcome='complete',method='p2',length_m=1,note='ТЕСТ',couplings=[coupling],files=[]))
         self.assertFalse(job.reports.exclude(kind='assignment').exists())
+    def manual_coupling_report(self,serial):
+        from repairs.forms import ReportForm
+        order=self.order(kind='repairs');self.grant(order);job=self.job()
+        job.method='p2';job.wall_mm=8;job.length_m=Decimal('1');job.save()
+        s.link_repairs(self.leader,order.pk,{str(job.pk):job.version});job.refresh_from_db()
+        form=ReportForm(data={'token':str(uuid.uuid4()),'expected_version':job.version,
+            'performed_date':str(timezone.localdate()),'coordinates':'55.5, 77.5',
+            'length_m':'1.5','manual_serials':serial},job=job,action='repaired',user=self.rep)
+        self.assertTrue(form.is_valid(),form.errors)
+        return job,form
+
+    def test_repair_representative_can_report_actual_new_coupling_without_stock(self):
+        from repairs.models import Coupling
+        job,form=self.manual_coupling_report('ПОДРЯДЧИК-НОВАЯ')
+        report_work(self.rep,job.pk,form.action,form.cleaned_data)
+        coupling=Coupling.objects.get(serial='ПОДРЯДЧИК-НОВАЯ')
+        self.assertEqual((coupling.length_mm,coupling.installation.job_id),(1500,job.pk))
+
+    def test_manual_input_does_not_allow_representative_to_take_existing_registry_coupling(self):
+        from repairs.models import Coupling
+        coupling=Coupling.objects.create(project_object=self.obj,method='p2',length_mm=1500,wall_mm=8,serial='ЧУЖАЯ-ИЗ-РЕЕСТРА')
+        job,form=self.manual_coupling_report(coupling.serial)
+        with self.assertRaisesMessage(ValidationError,'уже есть в реестре'):
+            report_work(self.rep,job.pk,form.action,form.cleaned_data)
+        self.assertFalse(job.reports.exclude(kind='assignment').exists())
+
     def test_service_denies_submission_after_order_access_is_revoked(self):
         order=self.order();rep,grant=self.grant(order);s.grant_order(self.leader,order.pk,rep.pk,False,False,grant.version)
         with self.assertRaises(PermissionDenied):s.submit_result(self.rep,order.pk,self.data(order))

@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """Optional document expiry monitoring, always bounded by the file ACL."""
 from datetime import timedelta,date
 import uuid
@@ -78,14 +79,16 @@ HEADERS=['ID документа','Название (для справки)','Д�
 def export(request):
     if not has_permission(request.user,'document.export'):raise PermissionDenied
     rows=[[str(d.pk),d.title,str(d.expires_on or ''),int(d.remind),d.days_before,d.revision] for d in visible_documents(request.user).filter(archived=False).order_by('pk')]
-    response=HttpResponse(workbook(rows,headers=HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response=HttpResponse(human_xlsx.workbook(request.user,'documents.deadlines',rows,HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']='attachment; filename="armada-document-deadlines.xlsx"';response['Cache-Control']='no-store'
     audit(request.user,'document_exported',format='xlsx',kind='deadlines',count=len(rows));return response
 
 class UploadForm(forms.Form):file=forms.FileField(label='Сроки документов XLSX')
 
-def rows_from_file(file):
-    book=read_book(file);cells=book['cells']
+def rows_from_file(file,user=None):
+    book=read_book(file)
+    if user:book=human_xlsx.normalize(user,'documents.deadlines',book,HEADERS)
+    cells=book['cells']
     if book['formulas']:raise ValidationError('Вставьте значения вместо формул.')
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(HEADERS))]!=HEADERS:raise ValidationError('Используйте столбцы из выгрузки сроков.')
     result=[];seen=set()
@@ -129,7 +132,7 @@ def upload(request):
                         apply_rows(actor,payload['rows']);DocumentDeadlineBatch.objects.create(actor=actor,token=payload['token'])
                 return redirect('document_deadlines')
             elif form.is_valid():
-                rows=rows_from_file(form.cleaned_data['file'])
+                rows=rows_from_file(form.cleaned_data['file'],request.user)
                 with transaction.atomic():apply_rows(request.user,rows);transaction.set_rollback(True)
                 preview=signing.dumps({'actor':str(request.user.pk),'token':str(uuid.uuid4()),'rows':rows},salt='document-deadlines',compress=True)
         except signing.BadSignature:form.add_error(None,'Предварительный просмотр устарел. Проверьте файл заново.')

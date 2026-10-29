@@ -50,7 +50,7 @@ def apply(user,tables,token=None,dry=False,source_label='Excel'):
             if not r[3] or len(r[3])>200:raise ValidationError('Наименование: от 1 до 200 символов.')
             g=groups.current(actor,r[1],initial) if r[1] else None
             if g:
-                if g['id']!=key:raise ValidationError('Версия не соответствует коду строки.')
+                if g['id']!=key:raise ValidationError('Служебные данные этой строки не совпадают с исходной выгрузкой. Скачайте актуальный список и перенесите в него изменения обычных полей; служебные колонки заполняются автоматически.')
                 x.validate_existing(r,g)
             elif not key.startswith('НОВАЯ-'):raise ValidationError('Новая строка должна иметь код НОВАЯ-1 и т.д.')
             dest=g['warehouse'] if g and g['warehouse'] and r[2]==g['warehouse'].name else (warehouse(r[2]) if r[2] else None)

@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 """XLSX round-trip for crews, membership periods and place assignments."""
 import uuid
 from datetime import date
@@ -34,13 +35,13 @@ def export_rows(user,kind):
 
 @permission_required('personnel.manage')
 def export(request,kind):
-    kind_or_404(kind);data=workbook([] if request.GET.get('template')=='1' else export_rows(request.user,kind),headers=HEADERS[kind])
+    kind_or_404(kind);data=human_xlsx.workbook(request.user,'crews.'+kind,[] if request.GET.get('template')=='1' else export_rows(request.user,kind),HEADERS[kind])
     response=HttpResponse(data,content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']=f'attachment; filename="armada-{kind}.xlsx"';response['Cache-Control']='private, no-store';return response
 
 class UploadForm(forms.Form):file=forms.FileField(label='Книга XLSX',widget=forms.FileInput(attrs={'accept':'.xlsx'}))
 
 def parse_rows(file,kind,user):
-    book=read_book(file)
+    book=human_xlsx.normalize(user,'crews.'+kind,read_book(file),HEADERS[kind])
     if book['formulas']:raise ValidationError('Формулы не поддерживаются. Вставьте значения.')
     cells=book['cells'];headers=HEADERS[kind]
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]!=headers:raise ValidationError('Столбцы не совпадают с шаблоном выбранного реестра.')

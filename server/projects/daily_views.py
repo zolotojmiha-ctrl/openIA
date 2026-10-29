@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 import uuid
 from decimal import Decimal
 from django import forms
@@ -105,8 +106,9 @@ def apply_rows(user,contract,obj,kind,rows):
         try:daily.submit(user,contract.pk,obj.pk,kind,data)
         except ValidationError as e:raise ValidationError(f'Строка {number}: '+ '; '.join(e.messages)) from e
 
-def parse(file):
+def parse(file,user=None):
     book=read_book(file)
+    if user:book=human_xlsx.normalize(user,'daily',book,HEADERS)
     if book['formulas']:raise ValidationError('Замените формулы значениями.')
     cells=book['cells']
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(HEADERS))]!=HEADERS:raise ValidationError('Используйте шаблон выбранной ведомости.')
@@ -126,7 +128,7 @@ def excel(request,pk,object_id,kind):
     contract,obj=scope(request,pk,object_id,kind)
     if request.GET.get('export')=='1' or request.GET.get('template')=='1':
         rows=[] if request.GET.get('template')=='1' else [[str(r.pk),r.version,*[r.current_revision.data.get(k,'') for k in daily.FIELDS]] for r in daily.works(request.user).filter(contract=contract,project_object=obj,kind=kind)]
-        response=HttpResponse(workbook(rows,headers=HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-daily-works.xlsx"';return response
+        response=HttpResponse(human_xlsx.workbook(request.user,'daily',rows,HEADERS),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="armada-daily-works.xlsx"';return response
     form=UploadForm(request.POST or None,request.FILES or None);preview='';rows=[]
     if request.method=='POST':
         try:
@@ -140,7 +142,7 @@ def excel(request,pk,object_id,kind):
                         apply_rows(actor,contract,obj,kind,payload['rows']);DailyWorkImportReceipt.objects.create(token=payload['token'],actor=actor)
                 messages.success(request,'Ведомость перенесена на проверку.');return redirect(link(contract,obj,kind))
             if form.is_valid():
-                rows=parse(form.cleaned_data['file'])
+                rows=parse(form.cleaned_data['file'],request.user)
                 with transaction.atomic():apply_rows(request.user,contract,obj,kind,rows);transaction.set_rollback(True)
                 preview=signing.dumps({'actor':str(request.user.pk),'session':request.user.session_version,'scope':[str(pk),str(object_id),kind],'rows':rows,'token':str(uuid.uuid4())},salt='daily-excel',compress=True)
         except (signing.BadSignature,ValidationError,ValueError,KeyError) as e:form.add_error(None,e if isinstance(e,ValidationError) else 'Проверьте файл или повторите предварительный просмотр.')

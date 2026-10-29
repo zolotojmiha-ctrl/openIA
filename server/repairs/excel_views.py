@@ -3,14 +3,14 @@ from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.core.exceptions import ValidationError
 from .access import prepare_required,can_prepare
-from .models import Report
-from .excel import workbook
+from .models import Report,METHODS
+from .excel import workbook,SIMPLE_HEADERS
 from accounts.views import audit
 
 MIME='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-def download(rows,filename):
-    response=HttpResponse(workbook(rows),content_type=MIME)
+def download(rows,filename,headers=None):
+    response=HttpResponse(workbook(rows,headers=headers,hidden_columns=() if headers else (0,8,15),column_choices={3:[label for _,label in METHODS]} if headers else None),content_type=MIME)
     response['Content-Disposition']=f'attachment; filename="{filename}"'
     response['Cache-Control']='private, no-store'
     response['X-Content-Type-Options']='nosniff'
@@ -18,7 +18,7 @@ def download(rows,filename):
 
 @prepare_required
 def template(request):
-    return download([],'openIA-defects-template.xlsx')
+    return download([],'openIA-defects-template.xlsx',SIMPLE_HEADERS)
 
 @login_required
 def export(request):

@@ -114,6 +114,11 @@ def upload(request):
                     raise ValidationError('В файле есть строки другого участка. Перед экспортом выберите нужный участок или подготовьте отдельную ведомость.')
                 item['candidates']=[str(j.pk) for j in matches(section,item,form.cleaned_data['contract'])]
                 item['assigned_to']=None
+                if item.get('master_name'):
+                    from .views import assignees
+                    masters=assignees(section,form.cleaned_data['contract']).filter(full_name__iexact=item['master_name'])
+                    if masters.count()!=1:raise ValidationError('Мастер «'+item['master_name']+'»: укажите ФИО доступного мастера; совпадение должно быть единственным.')
+                    item['assigned_to']=str(masters.get().pk)
                 if item.get('master_phone'):
                     from .views import assignees
                     master=assignees(section,form.cleaned_data['contract']).filter(phone=item['master_phone']).first()

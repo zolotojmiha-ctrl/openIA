@@ -1,3 +1,4 @@
+from accounts import xlsx as human_xlsx
 import uuid
 from datetime import date
 from decimal import Decimal,InvalidOperation
@@ -41,7 +42,7 @@ def export_rows(user,kind):
 
 @permission_required('subcontract.manage')
 def export(request,kind):
-    kind_ok(kind);response=HttpResponse(workbook([] if request.GET.get('template')=='1' else export_rows(request.user,kind),headers=HEADERS[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']=f'attachment; filename="armada-subcontract-{kind}.xlsx"';response['Cache-Control']='private, no-store';return response
+    kind_ok(kind);response=HttpResponse(human_xlsx.workbook(request.user,'subcontracts.'+kind,[] if request.GET.get('template')=='1' else export_rows(request.user,kind),HEADERS[kind]),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']=f'attachment; filename="armada-subcontract-{kind}.xlsx"';response['Cache-Control']='private, no-store';return response
 
 def flag(v):
     if v not in ('0','1'):raise ValidationError('Флаг: 0 или 1.')
@@ -76,7 +77,7 @@ def apply_rows(user,kind,rows):
 
 class UploadForm(forms.Form):file=forms.FileField(label='Книга XLSX',widget=forms.FileInput(attrs={'accept':'.xlsx'}))
 def parse_rows(file,kind,user):
-    book=read_book(file);cells=book['cells'];headers=HEADERS[kind]
+    headers=HEADERS[kind];book=human_xlsx.normalize(user,'subcontracts.'+kind,read_book(file),headers);cells=book['cells']
     if book['formulas']:raise ValidationError('Формулы не исполняются. Вставьте значения.')
     if [str(cells.get((1,i+1),'')).strip() for i in range(len(headers))]!=headers:raise ValidationError('Столбцы не совпадают с шаблоном.')
     rows=[];seen=set()

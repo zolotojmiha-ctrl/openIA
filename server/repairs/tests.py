@@ -168,10 +168,11 @@ class RepairsTests(TestCase):
         available=set(selectable_couplings(self.job).values_list('pk',flat=True));self.assertNotIn(self.c1.pk,available);self.assertIn(self.c2.pk,available)
         self.client.force_login(self.leader)
         r=self.client.get(reverse('repair_report',args=[self.job.pk,'result']));self.assertIn(self.c1,r.context['form'].fields['couplings'].queryset)
-    def test_future_date_and_unknown_numbers_need_explicit_explanation(self):
+    def test_future_date_and_missing_factory_numbers_are_rejected(self):
         self.assertEqual(self.send(performed_date=(timezone.localdate()+timedelta(days=1)).isoformat()).status_code,200)
         self.assertEqual(self.send(couplings=[]).status_code,200);self.assertEqual(Report.objects.count(),0)
-        self.assertEqual(self.send(couplings=[],note='Номера нужно добавить по паспортам').status_code,302)
+        self.assertEqual(self.send(couplings=[],note='Номера нужно добавить по паспортам').status_code,200)
+        self.assertEqual(self.send(couplings=[],manual_serials='ФАКТ-1\nФАКТ-2').status_code,302)
     def test_attachment_acl_integrity_and_non_execution(self):
         content=b'%PDF-1.7\nsynthetic\n%%EOF';f=SimpleUploadedFile('паспорт.pdf',content)
         self.assertEqual(self.send(files=f).status_code,302);a=Attachment.objects.get()
@@ -284,7 +285,9 @@ class RepairsTests(TestCase):
         self.client.force_login(self.leader);ids={u['id'] for u in self.client.get(url).json()['users']};self.assertIn(str(self.worker.pk),ids);self.assertIn(str(self.other.pk),ids) # Leaders may select a foreman before granting scope explicitly.
 
     def simple_payload(self, **changes):
-        data={'token':str(uuid.uuid4()),'expected_version':self.job.version,'performed_date':timezone.localdate().isoformat()}
+        token=str(uuid.uuid4())
+        parts=self.job.composition.split('+') if self.job.composition else [self.job.length_m]
+        data={'token':token,'expected_version':self.job.version,'performed_date':timezone.localdate().isoformat(),'length_m':str(self.job.length_m or ''),'composition':self.job.composition,'manual_serials':'\n'.join('ФАКТ-'+token[:8]+'-'+str(n) for n in range(len(parts)))}
         data.update(changes)
         if 'latitude' in data and 'longitude' in data:
             data['coordinates']=str(data.pop('latitude'))+', '+str(data.pop('longitude'))
@@ -295,14 +298,14 @@ class RepairsTests(TestCase):
         for text in ['№ секции','№ дефекта','Метод ремонта','Толщина стенки','1001','001','002','10','Устранён','Не устранён']:
             self.assertContains(response,text)
         self.assertNotContains(response,'999999')
-    def test_simple_result_requires_coordinates_and_uses_plan_not_posted_engineering(self):
+    def test_simple_result_requires_coordinates_uses_actual_length_and_keeps_method(self):
         response=self.send('repaired',self.simple_payload())
         self.assertIn('coordinates',response.context['form'].errors)
         self.assertEqual(Report.objects.count(),0)
-        response=self.send('repaired',self.simple_payload(latitude='56.123456',longitude='73.123456',method='cut',length_m='999',outcome='partial'))
+        response=self.send('repaired',self.simple_payload(latitude='56.123456',longitude='73.123456',method='cut',length_m='4',composition='2+2',outcome='partial'))
         self.assertEqual(response.status_code,302)
         report=Report.objects.get(job=self.job)
-        self.assertEqual(report.kind,'complete');self.assertEqual(report.method,'p1');self.assertEqual(report.length_m,3)
+        self.assertEqual(report.kind,'complete');self.assertEqual(report.method,'p1');self.assertEqual(report.length_m,4)
         self.assertEqual(report.latitude,Decimal('56.123456'));self.assertEqual(report.attachments.count(),0)
         self.job.refresh_from_db();self.assertEqual(self.job.state,'reported')
     def test_simple_problem_reasons_and_required_explanations(self):
@@ -381,7 +384,7 @@ class RepairsTests(TestCase):
         self.assertEqual(jobs[0].wall_mm,Decimal('10'))
         self.client.force_login(self.worker)
         for job,coordinates in zip(jobs,['56.1, 73.1','57.2, 74.2']):
-            data=self.simple_payload(coordinates=coordinates);data['expected_version']=job.version
+            data=self.simple_payload(coordinates=coordinates);data.update(expected_version=job.version,length_m=str(job.length_m),composition=job.composition,manual_serials='ИМПОРТ-'+str(job.pk))
             self.assertEqual(self.send('repaired',data,job=job).status_code,302)
         self.assertEqual(jobs[0].reports.get().latitude,Decimal('56.1'))
         self.assertEqual(jobs[1].reports.get().latitude,Decimal('57.2'))
@@ -471,9 +474,10 @@ class RepairsTests(TestCase):
         for column,value in [(1,'101.1237'),(5,'3.0001'),(6,'10.251')]:
             changed=[list(r) for r in rows];changed[0][column]=value
             with self.assertRaises(Exception):parse_work(self.standard_file(changed))
-    def test_standard_excel_reports_missing_code_and_bad_method_separately(self):
+    def test_standard_excel_generates_missing_code_and_reports_invalid_parameters(self):
         rows=self.standard_rows();rows[0][0]=''
-        with self.assertRaisesMessage(Exception,'не заполнен «Код ремонта»'):parse_work(self.standard_file(rows))
+        parsed=parse_work(self.standard_file(rows))
+        self.assertTrue(parsed['jobs'][0]['code'].startswith('Новая-'))
         rows=self.standard_rows();rows[0][4]='П99'
         with self.assertRaisesMessage(Exception,'неизвестный метод ремонта'):parse_work(self.standard_file(rows))
         rows=self.standard_rows();rows[0][1]='не число'
