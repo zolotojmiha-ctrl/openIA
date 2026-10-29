@@ -136,6 +136,10 @@ class InstallationInputTests(TestCase):
         self.assertTrue(form.is_valid(),form.errors)
         self.assertEqual(form.cleaned_data['method'],'grind')
         self.assertNotIn('installation',form.cleaned_data)
+        response=self.client.post(reverse('repair_report',args=[self.job.pk,'result']),data|{'outcome':'partial'},follow=True)
+        self.job.refresh_from_db();self.assertEqual(self.job.state,'partial')
+        self.assertContains(response,'Сведения сохранены.')
+        self.assertNotContains(response,'Он отмечен зелёным в ведомости.')
 
 
 class InstallationInputBrowser(StaticLiveServerTestCase):

@@ -229,7 +229,7 @@ def report(request,pk,action):
     if request.method=='POST' and form.is_valid():
         try:
             result=report_work(request.user,job.pk,'unrepaired' if action=='unrepaired' else form.action,form.cleaned_data)
-            messages.success(request,'Ремонт отправлен на проверку руководителю. Он отмечен зелёным в ведомости.' if form.action=='result' else 'Сведения сохранены.')
+            messages.success(request,'Ремонт отправлен на проверку руководителю. Он отмечен зелёным в ведомости.' if form.action=='result' and result.outcome=='complete' else 'Сведения сохранены.')
             if request.headers.get('Accept')=='application/json':
                 from django.urls import reverse
                 return JsonResponse({'ok':True,'url':report_return_url(request,job) if action in ('repaired','unrepaired','result') else detail_url(request,job.pk)})

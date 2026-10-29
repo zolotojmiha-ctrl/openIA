@@ -25,6 +25,9 @@ expected=next((a.split('=',1)[1] for a in sys.argv if a.startswith('--expected-v
 if expected:
  VERIFY += "\nclient=Client(HTTP_HOST='app.armada-sibir.ru',HTTP_X_FORWARDED_PROTO='https')\nclient.force_login(u)\nresponse=client.get('/cabinet/stock/inventory/')\nassert response.status_code==200,(response.status_code,response.get('Location'))\nassert "+repr(expected)+".encode() in response.content\nassert b'stock-compact.css' in response.content\nfrom repairs.importer import read_book\nimport io\nresponse=client.get('/cabinet/stock/inventory/export/?template=1')\nassert response.status_code==200,(response.status_code,response.get('Location'))\nbook=read_book(io.BytesIO(response.content),'Поступление')\nassert book['cells'][(1,1)]=='Склад'\nassert not any(str(v).startswith('ID ') for (r,c),v in book['cells'].items() if r==1)\nprint('New version, compact stock page and simple receipt XLSX verified in production image.')\n"
 
+if expected=='6.22.1':
+ VERIFY += "\nfrom django.db.migrations.recorder import MigrationRecorder\nassert MigrationRecorder.Migration.objects.filter(app='repairs',name='0011_problem_review_state').exists()\nassert Job.objects.get().state=='planned' and Job.objects.get().version==1\nassert 'unrepairable' in dict(Job._meta.get_field('state').choices)\nfrom django.urls import reverse\nassert client.get(reverse('repair_stock_choose',args=[Job.objects.get().pk])).status_code==200\nassert b'field.js?v=6.22.1' in client.get(reverse('repair_report',args=[Job.objects.get().pk,'repaired'])).content\nprint('Repair decision migration, preserved job state, direct stock page and versioned submission script verified.')\n"
+
 try:
  if upgrade:
   with tempfile.NamedTemporaryFile(mode='w',suffix='.yml') as override:
