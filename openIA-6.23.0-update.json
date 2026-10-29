@@ -1,0 +1,20 @@
+{
+  "version": "6.23.0",
+  "source_commit": "5ebfdf1c7e44fb85f45a9b08c3fc2598506aec09",
+  "archive": "openIA-6.23.0-update.zip",
+  "archive_sha256": "9edd911e08baa6accfbd3b686910d9dc91dd253f8c00277bc72c729461721c1a",
+  "archive_size": 30100907,
+  "source_files": 665,
+  "installer": "install-6.23.0.sh",
+  "installer_sha256": "bcc584e8593c28c82f04984cc138af1775281e27974f20f7782c12758cc79a41",
+  "validation": {
+    "postgresql_tests": 875,
+    "postgresql_result": "OK",
+    "upgrade_from": "6.22.2",
+    "backup_and_restore": "passed on isolated synthetic installation",
+    "production_installed": false,
+    "mail_delivery": "local SMTP/TLS verified; production info not verified"
+  },
+  "image_id": "sha256:591053bda82f9598eedfc9aa76e4775f255f1b11beb4d5696245d7ed7d1353a7",
+  "image_source": "Built from the verified release ZIP; 541 packaged application/static file hashes checked against image"
+}
