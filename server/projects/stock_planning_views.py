@@ -189,29 +189,40 @@ def coverage(request):
         if request.GET.get('contract'):jobs=jobs.filter(contract_id=uuid.UUID(request.GET['contract']))
         if request.GET.get('object'):jobs=jobs.filter(section__project_object_id=uuid.UUID(request.GET['object']))
     except ValueError:raise Http404
+    from . import stock_fit as fit
+    jobs=jobs.select_related('section__project_object','contract').prefetch_related('defects','installed_couplings__coupling')
     demand=Counter();reserved=Counter();unknown=[]
     all_items=list(stock.items(request.user).filter(kind='coupling',archived=False).prefetch_related('balances'))
-    supply=Counter()
+    supply=Counter();held_by_job={}
     for item in all_items:
-        if not item.reserved_job_id:
+        quantity=sum(b.quantity for b in item.balances.all() if b.quantity>0)
+        if item.reserved_job_id:
+            if quantity>0:held_by_job.setdefault(item.reserved_job_id,[]).append(item)
+        else:
             key=(item.method,item.diameter_mm,item.length_mm,Decimal(item.wall_mm or 0))
-            supply[key]+=sum(b.quantity for b in item.balances.all() if b.quantity>0)
+            supply[key]+=quantity
     for job in jobs:
         lengths=planning.requirements(job)
-        if not lengths: 
+        if not lengths:
             if lengths is None:unknown.append({'label':planning.job_label(job),'job':job,'reason':'Уточните длину и состав конструкции (например 1+1.5).'})
             continue
         if not job.section.diameter_mm or not job.wall_mm:
             unknown.append({'label':planning.job_label(job),'job':job,'section':job.section if not job.section.diameter_mm else None,'reason':'Не указан диаметр нефтепровода или толщина стенки.'});continue
-        remaining=Counter(lengths)
-        for use in job.installed_couplings.select_related('coupling'):
-            if use.coupling.method==job.method and use.coupling.wall_mm==job.wall_mm:remaining[use.coupling.length_mm]=max(0,remaining[use.coupling.length_mm]-1)
-        for length,count in remaining.items():demand[(job.method,job.section.diameter_mm,length,job.wall_mm)]+=count
-        for item in all_items:
-            if item.reserved_job_id==job.pk and any(b.quantity>0 for b in item.balances.all()):reserved[(item.method,item.diameter_mm,item.length_mm,Decimal(item.wall_mm or 0))]+=1
+        installations=list(job.installed_couplings.all())
+        remaining=fit.consume(job,[use.coupling for use in installations],check_diameter=False)
+        installed_ids={use.coupling_id for use in installations}
+        held=[item for item in held_by_job.get(job.pk,[]) if item.coupling_id not in installed_ids]
+        uncovered=fit.consume(job,held,remaining)
+        for length,count in remaining.items():
+            if not count:continue
+            key=(job.method,job.section.diameter_mm,length,job.wall_mm)
+            demand[key]+=count;reserved[key]+=count-uncovered[length]
+    # Allocate the shared free stock once across all requirements. A larger
+    # piece that fits several rows must not make every row look covered.
+    available=fit.allocate(Counter({key:need-reserved[key] for key,need in demand.items()}),supply)
     rows=[]
     for key,need in sorted(demand.items()):
-        held=reserved[key];free=supply[key];left=max(0,need-held);missing=max(0,left-free)
+        held=reserved[key];free=available[key];missing=max(0,need-held-free)
         rows.append({'method':dict(METHODS)[key[0]],'diameter':key[1],'length':key[2],'wall':key[3],'need':need,'reserved':held,'free':free,'missing':missing})
     return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'scoped':bool(request.GET.get('contract') or request.GET.get('object'))})
 

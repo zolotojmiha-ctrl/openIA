@@ -221,15 +221,23 @@ def reconcile_installation(actor,job,report,selected):
     for row in active:
         if row.item.coupling_id in selected_ids:kept.add(row.item.coupling_id);continue
         post_locked(actor,row.item,'reversal',row.quantity,None,row.source,timezone.localdate(),'Исправлен состав установленных муфт: '+str(report.pk),uuid.uuid5(report.token,'reverse:'+str(row.pk)),job,report,reverses=row,automatic=True)
-    for item in StockItem.objects.filter(coupling_id__in=selected_ids-kept):
+    new_items=list(StockItem.objects.filter(coupling_id__in=selected_ids-kept))
+    reserved=[item for item in new_items if item.reserved_job_id==job.pk]
+    if reserved:
+        from . import stock_fit as fit
+        remaining=fit.consume(job,[coupling for coupling in selected if coupling.pk in kept],check_diameter=False)
+        if remaining is None or sum(remaining.values())-sum(fit.consume(job,reserved,remaining).values())!=len(reserved):
+            raise ValidationError('Закреплённые муфты не соответствуют текущему составу конструкции. Проверьте задание и распределение.')
+    for item in new_items:
         balance=StockBalance.objects.filter(item=item,quantity=1).select_related('warehouse','warehouse__brigade_assignment').first()
         if not balance:raise ValidationError('У выбранной муфты нет складского остатка. Проверьте поступление и выдачу бригаде.')
         wh=balance.warehouse
         if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта закреплена за другой работой.')
         if item.reserved_job_id:
             from .stock_planning import requirements
+            from . import stock_fit as fit
             lengths=requirements(job)
-            if lengths is None or item.method!=job.method or item.wall_mm!=job.wall_mm or item.length_mm not in lengths or job.section.diameter_mm and item.diameter_mm!=job.section.diameter_mm:raise ValidationError('Характеристики работы изменились после резервирования. Проверьте закреплённые муфты.')
+            if lengths is None or fit.reason(item,job) or not any(fit.length_fits(job.method,item.length_mm,length) for length in lengths):raise ValidationError('Характеристики работы изменились после резервирования. Проверьте закреплённые муфты.')
         if not actor.is_leader and item.reserved_job_id!=job.pk and (wh.brigade_assignment_id!=job.crew_assignment_id or not wh.brigade_assignment_id) and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Сначала выдайте муфту бригаде или на склад этого объекта.')
         if wh.brigade_assignment_id and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Муфта числится у бригады другого объекта.')
         post_locked(actor,item,'consume',Decimal(1),wh,None,report.performed_date,'Установка муфты по результату '+str(report.pk),uuid.uuid5(report.token,'consume:'+str(item.pk)),job,report,automatic=True)

@@ -1,6 +1,5 @@
 """Physical receipts and explicit reservations, serialized with the stock ledger."""
 import re, uuid
-from collections import Counter
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -9,7 +8,7 @@ from accounts.views import audit
 from repairs.models import Coupling, CouplingUse, METHODS
 from repairs.access import visible_jobs
 from .models import StockItem, StockBalance, Contract
-from . import stock
+from . import stock, stock_fit as fit
 
 
 def job_label(job):
@@ -83,15 +82,12 @@ def reserve(user, item_id, version, job_id):
         job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job_id)
         if job.state in ('reported','confirmed') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':raise ValidationError('Работа уже выполнена или закрыта.')
         if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта уже закреплена. Сначала снимите назначение.')
-        if item.method!=job.method or Decimal(item.wall_mm or 0)!=job.wall_mm:raise ValidationError('Тип или толщина стенки муфты не соответствуют работе.')
-        if job.section.diameter_mm and item.diameter_mm!=job.section.diameter_mm:raise ValidationError('Диаметр муфты не соответствует нефтепроводу.')
+        incompatibility=fit.reason(item,job)
+        if incompatibility:raise ValidationError(incompatibility)
         lengths=requirements(job)
-        if lengths is None or item.length_mm not in lengths:raise ValidationError('Длина не соответствует составу конструкции. Уточните состав в карточке работы.')
-        held_items=list(StockItem.objects.filter(reserved_job=job,deleted_at__isnull=True).exclude(pk=item.pk))
-        held=[i.length_mm for i in held_items]
-        held_couplings={i.coupling_id for i in held_items}
-        held.extend(use.coupling.length_mm for use in job.installed_couplings.select_related('coupling') if use.coupling_id not in held_couplings)
-        if Counter(held)[item.length_mm]>=Counter(lengths)[item.length_mm]:raise ValidationError('Для этой длины уже закреплено нужное количество муфт.')
+        if lengths is None or not any(fit.length_fits(job.method,item.length_mm,length) for length in lengths):raise ValidationError('Длина не соответствует составу конструкции. Уточните состав в карточке работы.')
+        held,installed=fit.occupied(job,exclude=[item.pk])
+        if not fit.capacity(job,item,held,installed):raise ValidationError('Для этой конструкции уже закреплено нужное количество муфт.')
         if item.deleted_at:raise ValidationError('Позиция удалена.')
         balances=list(item.balances.filter(quantity__gt=0).select_related('warehouse'))
         if not balances or not item.individual and (len(balances)!=1 or balances[0].quantity!=1):

@@ -1,6 +1,5 @@
 """Visible defect table for assigning a group or a particular factory number."""
 import json,uuid
-from collections import Counter
 from decimal import Decimal
 from django import forms
 from django.contrib import messages
@@ -9,7 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import render,redirect
 from repairs.access import visible_jobs
-from . import stock,stock_groups as groups,stock_planning as planning
+from . import stock,stock_groups as groups,stock_planning as planning,stock_fit as fit
 
 def selection(group,item_id):
     if not item_id:return group
@@ -44,15 +43,11 @@ def job_rows(user,group):
     for job in jobs:
         parts=planning.requirements(job);current=held.get(str(job.pk),0);reason=''
         if job.state in ('reported','confirmed') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':reason='Работа завершена или закрыта.'
-        elif job.method!=i.method:reason='Другой тип конструкции.'
-        elif job.wall_mm!=Decimal(i.wall_mm or 0):reason='Другая толщина стенки.'
-        elif job.section.diameter_mm and job.section.diameter_mm!=i.diameter_mm:reason='Другой диаметр.'
+        elif fit.reason(i,job):reason=fit.reason(i,job)
         elif parts is None:reason='Нужно уточнить длину и состав конструкции.'
-        elif i.length_mm not in parts:reason='Для конструкции нужна другая длина муфты.'
-        others=[s for s in job.reserved_stock.all() if s.pk not in own and s.deleted_at is None]
-        counted={s.coupling_id for s in others};used=sum(s.length_mm==i.length_mm for s in others)
-        used+=sum(u.coupling.length_mm==i.length_mm for u in job.installed_couplings.all() if u.coupling_id not in counted)
-        need=max(0,Counter(parts or [])[i.length_mm]-used)
+        elif not any(fit.length_fits(job.method,i.length_mm,length) for length in parts):reason='Для конструкции нужна другая длина муфты.'
+        others,installed=fit.occupied(job,exclude=own)
+        need=fit.capacity(job,i,others,installed)
         if not reason and not need and not current:reason='Потребность уже закрыта.'
         defects=job.active_defects
         rows.append({'job':job,'defects':defects,'current':current,'maximum':max(current,need) if not reason else current,'reason':reason,'compatible':not reason,'search':' '.join([planning.job_label(job),job.get_method_display(),str(job.length_m or ''),job.composition,*(d.pipe_section for d in defects)]).casefold()})

@@ -4,6 +4,7 @@
 <h1>Закрепить муфты за дефектами</h1>
 <p><strong>{{ group.item.method_label }} · Ø {{ group.item.diameter_mm|default_if_none:'—' }} мм · длина {{ group.item.length_mm }} мм · стенка {{ group.item.wall_mm }} мм</strong> · {{ group.warehouse.name }}.</p>
 <p>На складе {{ group.quantity|floatformat:'-3' }} шт., закреплено {{ group.reserved|floatformat:'-3' }}, свободно {{ group.free|floatformat:'-3' }}.</p>
+<p>Для П1 и П2 можно выбрать муфту того же типа и диаметра с длиной и стенкой не меньше требуемых. Одна муфта заменяет одну часть конструкции.</p>
 <form method="post" data-stock-assignment {% if item_id %}data-single="1"{% endif %}>
 {% csrf_token %}<input type="hidden" name="group" value="{{ token }}"><input type="hidden" name="item" value="{{ item_id }}"><input type="hidden" name="targets" value="">
 {% if item_id %}<label>Заводской номер выбранной муфты <input name="serial" value="{{ serial }}" maxlength="100" placeholder="Необязательно"></label>{% endif %}
