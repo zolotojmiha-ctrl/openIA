@@ -250,6 +250,7 @@ class StockItem(models.Model):
     receipt_origin=models.CharField('Склад, откуда получен материал',max_length=200,blank=True)
     individual=models.BooleanField('Отдельное изделие',default=False)
     serial=models.CharField('Заводской №',max_length=100,blank=True)
+    reservation_origin=models.CharField(max_length=20,blank=True,default='')
     reserved_job=models.ForeignKey('repairs.Job',on_delete=models.PROTECT,null=True,blank=True,related_name='reserved_stock')
     deleted_at=models.DateTimeField(null=True,blank=True)
     def __str__(self):
@@ -554,3 +555,9 @@ class AgreementImportReceipt(models.Model):
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
 
 from .operations_models import EquipmentCustody,Admission,AdmissionRevision,AdmissionFile,CustomerAccess,CustomerPublication,MaterialRequest
+
+
+class StockActionReceipt(models.Model):
+    token=models.UUIDField(primary_key=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    digest=models.CharField(max_length=64)

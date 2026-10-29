@@ -74,6 +74,9 @@ def reserve(user, item_id, version, job_id):
     item=stock.items(actor).get(pk=item_id)
     if item.version!=version:raise ValidationError('Карточка изменена. Обновите страницу.')
     if item.kind!='coupling' or item.archived:raise ValidationError('Выберите действующую муфту.')
+    if item.reserved_job_id and not visible_jobs(actor,include_archived=True).filter(pk=item.reserved_job_id).exists():
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied('Нет доступа к текущему назначению муфты.')
     if item.coupling_id and CouplingUse.objects.filter(coupling_id=item.coupling_id).exists():raise ValidationError('Муфта уже смонтирована.')
     if job_id:
         candidate=visible_jobs(actor).get(pk=job_id)
@@ -102,8 +105,8 @@ def reserve(user, item_id, version, job_id):
             coupling=Coupling(project_object=area,method=item.method,length_mm=item.length_mm,wall_mm=item.wall_mm,serial=item.serial,warehouse=balances[0].warehouse.name,source={'stock_created':True});coupling.full_clean();coupling.save();item.coupling=coupling
         elif item.coupling.project_object_id!=area.pk:
             item.coupling.project_object=area;item.coupling.full_clean();item.coupling.save(update_fields=['project_object'])
-        item.individual=True;item.reserved_job=job
-    else:item.reserved_job=None
+        item.individual=True;item.reserved_job=job;item.reservation_origin='manual'
+    else:item.reserved_job=None;item.reservation_origin=''
     item.version+=1;item.save()
     audit(actor,'stock_reserved',item=str(item.pk),job=str(item.reserved_job_id or ''))
     return item
@@ -130,18 +133,35 @@ def split(user,item_id,version,warehouse_id):
     return piece
 
 
+def delete_snapshot(user,item,warehouse_id=None):
+    from django.core import signing
+    state=[str(item.pk),item.version,str(warehouse_id or ''),sorted((str(b.warehouse_id),str(b.quantity)) for b in item.balances.all()),str(item.movements.order_by('-created_at','-pk').values_list('pk',flat=True).first() or '')]
+    return signing.dumps({'actor':str(user.pk),'state':state},salt='stock-delete-v620')
+
 @transaction.atomic
-def delete(user,item_id,version,note):
+def delete(user,item_id,version,note,warehouse_id=None,all_warehouses=False,snapshot=None):
     actor=stock.manager(user);stock.lock();item=stock.items(actor).get(pk=item_id)
     if item.version!=version:raise ValidationError('Позиция изменена. Обновите страницу.')
+    if snapshot and snapshot!=delete_snapshot(actor,item,warehouse_id):
+        from django.core import signing
+        try:
+            a=signing.loads(snapshot,salt='stock-delete-v620');b=signing.loads(delete_snapshot(actor,item,warehouse_id),salt='stock-delete-v620')
+            if a!=b:raise ValueError
+        except (signing.BadSignature,ValueError):raise ValidationError('Остатки изменились после открытия подтверждения. Откройте его заново.')
     if not note.strip():raise ValidationError('Укажите причину удаления.')
     if item.reserved_job_id:raise ValidationError('Сначала снимите закрепление за работой.')
     if item.coupling_id and CouplingUse.objects.filter(coupling_id=item.coupling_id).exists():raise ValidationError('Муфта смонтирована. Исправьте результат ремонта перед удалением.')
     balances=list(item.balances.filter(quantity__gt=0).select_related('warehouse'))
+    if warehouse_id:
+        if not stock.warehouses(actor).filter(pk=warehouse_id).exists():raise ValidationError('Склад недоступен.')
+        balances=[b for b in balances if b.warehouse_id==warehouse_id]
+        if not balances:raise ValidationError('На выбранном складе этой позиции уже нет.')
+    elif len(balances)>1 and not all_warehouses:raise ValidationError('Укажите склад или явно подтвердите удаление со всех складов.')
     for balance in balances:
         if not stock.warehouses(actor).filter(pk=balance.warehouse_id).exists():raise ValidationError('Склад недоступен.')
         stock.post_locked(actor,item,'loss',balance.quantity,balance.warehouse,None,timezone.localdate(),'Удаление ошибочной позиции: '+note,uuid.uuid4(),automatic=True)
-    item.deleted_at=timezone.now();item.archived=True;item.version+=1;item.save(update_fields=['deleted_at','archived','version'])
+    if not item.balances.filter(quantity__gt=0).exists():item.deleted_at=timezone.now();item.archived=True
+    item.version+=1;item.save(update_fields=['deleted_at','archived','version'])
     audit(actor,'stock_item_deleted',item=str(item.pk),note=note,balances_removed=[str(b.quantity) for b in balances])
 
 
@@ -159,3 +179,13 @@ def requirements(job):
         if any(x<=0 or x*1000!=(x*1000).to_integral_value() for x in parts):return None
         return [int(x*1000) for x in parts]
     except (InvalidOperation,ValueError):return None
+
+
+@transaction.atomic
+def bind_issued(user,item_id,warehouse_id,job_id,count):
+    actor=stock.manager(user);stock.lock()
+    for _ in range(count):
+        item=stock.items(actor).get(pk=item_id)
+        positive=list(item.balances.filter(quantity__gt=0))
+        if len(positive)!=1 or positive[0].quantity!=1:item=split(actor,item.pk,item.version,warehouse_id)
+        item=reserve(actor,item.pk,item.version,job_id);item.reservation_origin='issue';item.save(update_fields=['reservation_origin'])

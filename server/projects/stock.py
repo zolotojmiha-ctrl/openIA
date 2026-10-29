@@ -150,7 +150,7 @@ def post_locked(actor,item,kind,q,source,destination,date,note,token,job=None,re
     return row
 
 @transaction.atomic
-def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=None):
+def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=None,allow_holders=False):
     from repairs.models import Coupling,CouplingUse
     from repairs.access import visible_jobs
     actor=manager(user);lock();item=items(actor).get(pk=item_id);q=quantity(raw,item)
@@ -163,7 +163,7 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
     if item.reserved_job_id and (kind in ('consume','loss') or job and job.pk!=item.reserved_job_id):raise ValidationError('Муфта закреплена за другой работой либо зарезервирована. Сначала снимите назначение.')
     if item.coupling_id and kind=='consume':raise ValidationError('Конкретная муфта списывается автоматически при сохранении результата установки.')
     if kind=='receipt':valid=not source and destination and not destination.brigade_assignment_id
-    elif kind=='transfer':valid=source and destination and not source.brigade_assignment_id and not destination.brigade_assignment_id
+    elif kind=='transfer':valid=source and destination and (allow_holders or not source.brigade_assignment_id and not destination.brigade_assignment_id)
     elif kind=='issue':valid=source and destination and not source.brigade_assignment_id and destination.brigade_assignment_id
     elif kind=='return':valid=source and destination and source.brigade_assignment_id and not destination.brigade_assignment_id
     elif kind=='consume':valid=source and not destination and job
@@ -185,7 +185,17 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
         if target and target!=coupling.project_object_id:
             if not visible_objects(actor).filter(pk=target).exists():raise ValidationError('Объект получателя недоступен.')
             coupling.project_object_id=target;coupling.full_clean();coupling.save(update_fields=['project_object'])
-    return post_locked(actor,item,kind,q,source,destination,date,note,token,job)
+    if item.kind=='coupling' and kind=='issue' and job and q>500:raise ValidationError('За одну выдачу на работу — до 500 муфт.')
+    row=post_locked(actor,item,kind,q,source,destination,date,note,token,job)
+    if item.kind=='coupling' and kind=='issue' and job and not item.coupling_id:
+        from .stock_planning import bind_issued
+        bind_issued(actor,item.pk,destination.pk,job.pk,int(q))
+    elif item.kind=='coupling' and item.coupling_id:
+        from .stock_planning import reserve
+        if kind=='issue' and job:
+            item=reserve(actor,item.pk,item.version,job.pk);item.reservation_origin='issue';item.save(update_fields=['reservation_origin'])
+        elif kind=='return' and item.reservation_origin=='issue':reserve(actor,item.pk,item.version,None)
+    return row
 
 @transaction.atomic
 def reverse(user,pk,note,token):
@@ -220,17 +230,11 @@ def reconcile_installation(actor,job,report,selected):
             from .stock_planning import requirements
             lengths=requirements(job)
             if lengths is None or item.method!=job.method or item.wall_mm!=job.wall_mm or item.length_mm not in lengths or job.section.diameter_mm and item.diameter_mm!=job.section.diameter_mm:raise ValidationError('Характеристики работы изменились после резервирования. Проверьте закреплённые муфты.')
-        latest=StockMovement.objects.filter(item=item).first()
-        if latest and latest.kind=='issue' and latest.job_id and latest.job_id!=job.pk:raise ValidationError('Муфта выдана на другую работу. Уточните назначение материала.')
         if not actor.is_leader and item.reserved_job_id!=job.pk and (wh.brigade_assignment_id!=job.crew_assignment_id or not wh.brigade_assignment_id) and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Сначала выдайте муфту бригаде или на склад этого объекта.')
         if wh.brigade_assignment_id and wh.project_object_id!=job.section.project_object_id:raise ValidationError('Муфта числится у бригады другого объекта.')
         post_locked(actor,item,'consume',Decimal(1),wh,None,report.performed_date,'Установка муфты по результату '+str(report.pk),uuid.uuid5(report.token,'consume:'+str(item.pk)),job,report,automatic=True)
 
 
 def prepared_couplings(job):
-    """Only an explicit issue to this job prepares a coupling for the simple form."""
-    result=[]
-    for item in StockItem.objects.filter(coupling__project_object=job.section.project_object,archived=False,balances__quantity=1).select_related('coupling').distinct():
-        latest=StockMovement.objects.filter(item=item).first()
-        if item.reserved_job_id==job.pk or latest and latest.kind=='issue' and latest.job_id==job.pk:result.append(item.coupling)
-    return result
+    """Use the same authoritative reservation as the stock inventory."""
+    return [item.coupling for item in StockItem.objects.filter(coupling__project_object=job.section.project_object,reserved_job=job,archived=False,balances__quantity=1).select_related('coupling').distinct()]

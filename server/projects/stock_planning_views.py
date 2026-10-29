@@ -4,14 +4,14 @@ from decimal import Decimal
 from django import forms
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db.models import Q
+from django.db.models import Q,Prefetch
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from accounts.permissions import permission_required, permitted
 from repairs.access import visible_jobs
 from repairs.models import Job, METHODS
-from .models import StockItem
+from .models import StockItem,StockMovement
 from .stock_views import ItemForm, DATE
 from . import stock, stock_planning as planning
 
@@ -81,18 +81,34 @@ def allocate(request,pk):
     return render(request,'projects/stock_form.html',{'form':form,'title':'Заводской номер и назначение муфты','item_summary':item},status=status)
 
 class DeleteForm(forms.Form):
+    snapshot=forms.CharField(widget=forms.HiddenInput)
+    warehouse_id=forms.UUIDField(required=False,widget=forms.HiddenInput)
+    all_warehouses=forms.BooleanField(label='Подтверждаю удаление со ВСЕХ перечисленных складов',required=False)
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     note=forms.CharField(label='Причина удаления ошибочной позиции',max_length=1200,widget=forms.Textarea)
 
 @permission_required('stock.manage')
 def delete(request,pk):
     item=get_object_or_404(stock.items(request.user),pk=pk);status=200
-    form=DeleteForm(request.POST or None,initial={'expected_version':item.version})
+    raw=request.POST.get('warehouse_id') if request.method=='POST' else request.GET.get('warehouse')
+    warehouse=None
+    if raw:
+        from django.http import Http404
+        try:wid=uuid.UUID(raw)
+        except ValueError:raise Http404
+        warehouse=get_object_or_404(stock.warehouses(request.user),pk=wid)
+    balances=item.balances.filter(quantity__gt=0).select_related('warehouse')
+    if warehouse:balances=balances.filter(warehouse=warehouse)
+    balances=list(balances)
+    form=DeleteForm(request.POST or None,initial={'expected_version':item.version,'warehouse_id':warehouse.pk if warehouse else None,'snapshot':planning.delete_snapshot(request.user,item,warehouse.pk if warehouse else None)})
+    if warehouse or len(balances)<=1:form.fields.pop('all_warehouses')
     if request.method=='POST' and form.is_valid():
-        try:planning.delete(request.user,pk,form.cleaned_data['expected_version'],form.cleaned_data['note'])
+        try:planning.delete(request.user,pk,form.cleaned_data['expected_version'],form.cleaned_data['note'],warehouse.pk if warehouse else None,form.cleaned_data.get('all_warehouses',False),form.cleaned_data['snapshot'])
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
-        else:messages.success(request,'Позиция удалена из действующих списков. Остаток скорректирован, история сохранена.');return redirect('stock_inventory')
-    return render(request,'projects/stock_form.html',{'form':form,'title':'Удалить ошибочную складскую позицию','item_summary':item,'deletion':True},status=status)
+        else:
+            messages.success(request,'Позиция удалена с выбранного склада. Остальные склады и история сохранены.' if warehouse else 'Позиция удалена. История сохранена.')
+            return redirect('stock_detail',pk=warehouse.pk) if warehouse else redirect('stock_inventory')
+    return render(request,'projects/stock_form.html',{'form':form,'title':'Удалить со склада '+warehouse.name if warehouse else 'Удалить карточку со всех складов','item_summary':item,'deletion':True,'delete_balances':balances,'warehouse':warehouse},status=status)
 
 @permission_required('stock.manage')
 def split(request,pk,warehouse_id):
@@ -104,12 +120,15 @@ def split(request,pk,warehouse_id):
     return render(request,'projects/stock_form.html',{'form':form,'title':'Выделить 1 муфту из группового остатка','item_summary':item,'split_piece':True},status=status)
 
 
-def inventory_rows(user,warehouse=None):
+def inventory_rows(user,warehouse=None,include_archived=False):
     result=[]
     visible_movement_ids=set(stock.movements(user).values_list('pk',flat=True)) if not permitted(user,'stock.manage') else None
     allowed_warehouses=set(stock.warehouses(user).values_list('pk',flat=True))
     allowed_jobs=set(visible_jobs(user,include_archived=True).values_list('pk',flat=True))
-    for item in stock.items(user).select_related('coupling','receipt_warehouse','reserved_job__section__project_object','reserved_job__contract').prefetch_related('balances__warehouse','movements__destination','reserved_job__defects').order_by('name','method','length_mm','serial','sku'):
+    qs=stock.items(user)
+    if not include_archived:qs=qs.filter(Q(archived=False)|Q(coupling__installation__isnull=False))
+    qs=qs.select_related('coupling__installation__report','coupling__installation__job__section__project_object','coupling__installation__job__contract','receipt_warehouse','reserved_job__section__project_object','reserved_job__contract').prefetch_related('balances__warehouse',Prefetch('movements',queryset=StockMovement.objects.select_related('source','destination')),'reserved_job__defects','coupling__installation__job__defects')
+    for item in qs.order_by('name','method','length_mm','serial','sku'):
         balances=[b for b in item.balances.all() if b.quantity>0 and (warehouse is None or b.warehouse_id==warehouse.pk)]
         moves=[m for m in item.movements.all() if visible_movement_ids is None or m.pk in visible_movement_ids];receipts=[m for m in reversed(moves) if m.kind=='receipt']
         install=item.coupling.installation if item.coupling_id and hasattr(item.coupling,'installation') else None
@@ -119,12 +138,12 @@ def inventory_rows(user,warehouse=None):
         # Do not reveal a repair assignment to warehouse-only viewers.
         if job and job.pk not in allowed_jobs:job=None
         receipt=receipts[0] if receipts else None
-        result.append({'item':item,'balances':balances,'quantity':sum(b.quantity for b in balances),'receipt':receipt,'receipt_warehouse':item.receipt_warehouse if item.receipt_warehouse_id in allowed_warehouses else (receipt.destination if receipt else None),'receipt_source':item.receipt_origin or (item.receipt_warehouse.name if item.receipt_warehouse_id in allowed_warehouses else (receipt.destination.name if receipt and receipt.destination else '')),'receipt_date':item.receipt_date if item.receipt_warehouse_id in allowed_warehouses else (receipt.date if receipt else None),'state':state,'label':{'installed':'Смонтирована','reserved':'Закреплена','free':'Свободна','catalogue':'Нет на складе'}[state],'job':job,'job_label':planning.job_label(job) if job else '', 'installed_date':install.report.performed_date if install else None,'serial':item.serial or (item.coupling.serial if item.coupling_id else '')})
+        result.append({'item':item,'movements':moves,'balances':balances,'quantity':sum(b.quantity for b in balances),'receipt':receipt,'receipt_warehouse':item.receipt_warehouse if item.receipt_warehouse_id in allowed_warehouses else (receipt.destination if receipt else None),'receipt_source':item.receipt_origin or (item.receipt_warehouse.name if item.receipt_warehouse_id in allowed_warehouses else (receipt.destination.name if receipt and receipt.destination else '')),'receipt_date':item.receipt_date if item.receipt_warehouse_id in allowed_warehouses else (receipt.date if receipt else None),'state':state,'label':{'installed':'Смонтирована','reserved':'Закреплена','free':'Свободна','catalogue':'Нет на складе'}[state],'job':job,'job_label':planning.job_label(job) if job else '', 'installed_date':install.report.performed_date if install else None,'serial':item.serial or (item.coupling.serial if item.coupling_id else '')})
     return result
 
 def filtered_inventory(request):
     from .stock_groups import groups
-    rows=groups(request.user)
+    rows=groups(request.user,include_archived=request.GET.get('archive')=='1')
     q=request.GET.get('q','').strip().casefold();wh=request.GET.get('warehouse','');kind=request.GET.get('kind','');state=request.GET.get('state','')
     if q:rows=[r for r in rows if q in r['search']]
     if wh:rows=[r for r in rows if r['warehouse'] and str(r['warehouse'].pk)==wh]

@@ -89,6 +89,7 @@ urlpatterns=[
  path('cabinet/subcontracts/excel/<str:kind>/import/',subcontract_excel.upload,name='subcontract_import'),
  path('cabinet/stock/',stock_views.home,name='stock'),
  path('cabinet/stock/sections/<uuid:pk>/diameter/',stock_planning_views.diameter,name='stock_diameter'),
+ path('cabinet/stock/group-transfer/',stock_group_views.transfer,name='stock_group_transfer'),
  path('cabinet/stock/distribute/',stock_group_views.distribute,name='stock_distribute'),
  path('cabinet/stock/receive/',stock_planning_views.receipt,name='stock_receive'),
  path('cabinet/stock/inventory/',stock_planning_views.inventory,name='stock_inventory'),
