@@ -44,6 +44,7 @@ class Stock6201Browser(StaticLiveServerTestCase):
         base.StockTests.setUpTestData.__func__(type(self));self.leader.set_password('123456');self.leader.save()
         wh=stock.save_warehouse(self.leader,None,None,{'name':'Володя Барабинск'})
         item=stock.save_item(self.leader,None,None,{'sku':'LEGACY-6201','name':'Старая муфта','kind':'coupling','unit':'pcs','method':'p1','diameter_mm':720,'length_mm':1500,'wall_mm':10,'archived':False,'coupling':None})
-        result=subprocess.run(['node',str(settings.BASE_DIR/'tests/stock6201-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_STOCK6201':json.dumps({'warehouse':str(wh.pk),'item':str(item.pk)})},capture_output=True,text=True,timeout=100)
+        job=base.StockTests.make_job(self);job.method='p1';job.length_m='1.5';job.wall_mm=10;job.save()
+        result=subprocess.run(['node',str(settings.BASE_DIR/'tests/stock6201-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_STOCK6201':json.dumps({'warehouse':str(wh.pk),'item':str(item.pk),'job':str(job.pk)})},capture_output=True,text=True,timeout=100)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         item.refresh_from_db();self.assertEqual(item.name,'Муфта исправлена');self.assertEqual(StockItem.objects.count(),1);self.assertEqual(StockBalance.objects.get(item=item,warehouse=wh).quantity,0)

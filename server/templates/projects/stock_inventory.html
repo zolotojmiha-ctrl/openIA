@@ -1,1 +1,39 @@
-{% extends 'accounts/base.html' %}{% block content %}<link rel="stylesheet" href="/static/equipment/equipment.css"><h1>Склады · материалы и остатки</h1><div class="equipment-actions"><a class="button" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a><a class="button secondary" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a><a class="button secondary" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a><a class="button secondary" href="{% url 'stock_inventory_import' %}">↑ Загрузить изменения Excel</a><a href="{% url 'stock_warehouses' %}">Настроить склады</a> <a href="{% url 'stock_items' %}">Справочник карточек / архив</a></div><p>Свободна — можно распределить. Закреплена — остаётся на складе до монтажа. Смонтирована — исключена из остатка. Один материал одного типоразмера на одном складе — одна строка. Распределение по километрам и отдельные заводские номера раскрываются внутри строки.</p><form method="get" class="equipment-actions"><input name="q" value="{{ q }}" placeholder="Название, заводской №, км или дефект"><select name="warehouse"><option value="">Все склады</option>{% for wh in warehouses %}<option value="{{ wh.pk }}" {% if selected_warehouse == wh.pk|stringformat:'s' %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}</select><select name="kind"><option value="">Все категории</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><select name="state"><option value="">Все состояния</option><option value="free" {% if selected_state == 'free' %}selected{% endif %}>Свободна</option><option value="reserved" {% if selected_state == 'reserved' %}selected{% endif %}>Закреплена</option><option value="installed" {% if selected_state == 'installed' %}selected{% endif %}>Смонтирована</option><option value="catalogue" {% if selected_state == 'catalogue' %}selected{% endif %}>Нет на складе</option></select><label><input type="checkbox" name="archive" value="1" {% if request.GET.archive == '1' %}checked{% endif %}> Показать архив</label><button class="button">Найти</button><a href="{% url 'stock_inventory' %}">Сбросить</a></form>{% include 'projects/stock_inventory_rows.html' %}{% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?{{ filter_query }}&amp;page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}{% endblock %}
+{% extends 'accounts/base.html' %}{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css">
+<h1>Склады · материалы и остатки</h1>
+{% if mode %}
+<link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
+<form method="post" data-stock-grid data-mode="{{ mode }}" data-return-url="{{ return_url }}">
+{% csrf_token %}<input type="hidden" name="operation" value="{{ operation }}">
+<div class="equipment-actions stock-grid-toolbar">
+<button class="button" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button>
+<a class="button secondary" href="{{ return_url }}" data-grid-cancel>Отмена</a>
+<span data-grid-count>{% if mode == 'edit' %}Изменяйте поля прямо в таблице.{% else %}Выберите позиции для удаления.{% endif %}</span>
+</div>
+<div class="notice" role="alert" data-grid-errors hidden></div>
+{% if page.has_other_pages %}<p>Страница {{ page.number }} из {{ page.paginator.num_pages }}. Изменения этой страницы сохраняются вместе.</p>{% endif %}
+{% include 'projects/stock_inline_rows.html' %}
+<div class="equipment-actions"><button class="button" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button><a href="{{ return_url }}" data-grid-cancel>Отмена</a></div>
+</form>
+<script src="/static/accounts/stock-inline.js?v={{ release_version }}" defer></script>
+{% else %}
+<div class="equipment-actions">
+<a class="button" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=edit">Редактировать список</a>
+<a class="button secondary" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить</a>
+<a class="button secondary" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a>
+<a class="button secondary" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
+<a class="button secondary" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
+<a class="button secondary" href="{% url 'stock_inventory_import' %}">↑ Загрузить изменения Excel</a>
+<a href="{% url 'stock_warehouses' %}">Настроить склады</a> <a href="{% url 'stock_items' %}">Справочник карточек / архив</a>
+</div>
+<p>Закреплённые муфты остаются в складском остатке до монтажа. Материалы одного типоразмера на разных складах показаны разными строками.</p>
+<form method="get" class="equipment-actions">
+<input name="q" value="{{ q }}" placeholder="Название, заводской №, км или дефект">
+<select name="warehouse"><option value="">Все склады</option>{% for wh in warehouses %}<option value="{{ wh.pk }}" {% if selected_warehouse == wh.pk|stringformat:'s' %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}</select>
+<select name="kind"><option value="">Все категории</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<select name="state"><option value="">Все состояния</option><option value="free" {% if selected_state == 'free' %}selected{% endif %}>Свободна</option><option value="reserved" {% if selected_state == 'reserved' %}selected{% endif %}>Закреплена</option><option value="installed" {% if selected_state == 'installed' %}selected{% endif %}>Смонтирована</option><option value="catalogue" {% if selected_state == 'catalogue' %}selected{% endif %}>Нет на складе</option></select>
+<label><input type="checkbox" name="archive" value="1" {% if request.GET.archive == '1' %}checked{% endif %}> Показать архив</label><button class="button">Найти</button><a href="{% url 'stock_inventory' %}">Сбросить</a>
+</form>
+{% include 'projects/stock_inventory_rows.html' %}
+{% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?{{ filter_query }}&amp;page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}
+{% endif %}{% endblock %}

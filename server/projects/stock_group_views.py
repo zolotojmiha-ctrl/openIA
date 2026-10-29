@@ -28,6 +28,9 @@ class DistributionRow(forms.Form):
 
 @permission_required('stock.manage')
 def distribute(request):
+    if request.method=='GET' or 'targets' in request.POST:
+        from .stock_assignment import view
+        return view(request)
     token=request.POST.get('group','') if request.method=='POST' else request.GET.get('group','')
     try:group=service.current(request.user,token)
     except ValidationError as e:

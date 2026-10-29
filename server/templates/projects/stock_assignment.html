@@ -1,0 +1,27 @@
+{% extends 'accounts/base.html' %}{% load l10n %}{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css"><link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
+<a class="back-link" href="{% url 'stock_inventory' %}">← Материалы и остатки</a>
+<h1>Закрепить муфты за дефектами</h1>
+<p><strong>{{ group.item.method_label }} · Ø {{ group.item.diameter_mm|default_if_none:'—' }} мм · длина {{ group.item.length_mm }} мм · стенка {{ group.item.wall_mm }} мм</strong> · {{ group.warehouse.name }}.</p>
+<p>На складе {{ group.quantity|floatformat:'-3' }} шт., закреплено {{ group.reserved|floatformat:'-3' }}, свободно {{ group.free|floatformat:'-3' }}.</p>
+<form method="post" data-stock-assignment {% if item_id %}data-single="1"{% endif %}>
+{% csrf_token %}<input type="hidden" name="group" value="{{ token }}"><input type="hidden" name="item" value="{{ item_id }}"><input type="hidden" name="targets" value="">
+{% if item_id %}<label>Заводской номер выбранной муфты <input name="serial" value="{{ serial }}" maxlength="100" placeholder="Необязательно"></label>{% endif %}
+{% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
+<div class="equipment-actions"><input type="search" data-assignment-search aria-label="Поиск дефектов" placeholder="Контракт, участок, км, № дефекта или секции"><label><input type="checkbox" data-assignment-compatible> Только подходящие конструкции</label></div>
+<div class="equipment-actions"><button class="button" type="submit">Сохранить закрепление</button><a class="button secondary" href="{% url 'stock_inventory' %}">Отмена</a><span data-assignment-total>Выбрано: 0 шт.</span></div>
+{% if item_id %}<p><label><input type="radio" name="chosen-job" value="" data-assignment-free> Свободна — снять закрепление</label></p>{% endif %}
+<div class="stock-grid-scroll"><table class="equipment-table stock-grid-table"><thead><tr><th>Выбрать</th><th>Контракт / участок / нефтепровод</th><th>Км / № дефектов / секции</th><th>Тип / длина / состав конструкции</th><th>Диаметр / стенка</th><th>Мастер / план / состояние</th><th>Закрепить, шт.</th></tr></thead><tbody>
+{% for row in rows %}<tr data-assignment-row data-job="{{ row.job.pk }}" data-search="{{ row.search }}" data-compatible="{% if row.compatible %}1{% else %}0{% endif %}">
+<td data-label="Выбрать"><input {% if item_id %}type="radio" name="chosen-job" value="{{ row.job.pk }}"{% else %}type="checkbox"{% endif %} data-assignment-selected aria-label="Выбрать {{ row.job.section.pipeline }} {% for d in row.defects %}км {{ d.km }} № {{ d.number }} {% endfor %}" {% if row.current %}checked{% endif %} {% if not row.maximum and not row.current %}disabled{% endif %}></td>
+<td data-label="Контракт / участок / нефтепровод"><strong>{{ row.job.contract.number|default:'—' }}</strong><small>{{ row.job.section.project_object.name }}</small><p>{{ row.job.section.pipeline }} · {{ row.job.section.name }}</p></td>
+<td data-label="Км / № дефектов / секции">{% for d in row.defects %}<p><strong>км {{ d.km }} · № {{ d.number }}</strong><small>Секция {{ d.pipe_section|default:'—' }}</small>{% if d.description %}<small>{{ d.description }}</small>{% endif %}{% endfor %}</td>
+<td data-label="Тип / длина / состав конструкции"><strong>{{ row.job.get_method_display }}</strong><p>Длина: {{ row.job.length_m|floatformat:'-3'|default:'—' }} м</p><p>Состав: {{ row.job.composition|default:'—' }}</p></td>
+<td data-label="Диаметр / стенка">Ø {{ row.job.section.diameter_mm|default_if_none:'—' }} мм<p>Стенка {{ row.job.wall_display }} мм</p></td>
+<td data-label="Мастер / план / состояние">{{ row.job.assigned_to.full_name|default:'Не назначен' }}<small>{{ row.job.planned_date|date:'d.m.Y'|default:'Дата не задана' }}</small><small>{{ row.job.get_state_display }}</small>{% if row.reason %}<p>{{ row.reason }}</p>{% endif %}</td>
+<td data-label="Закрепить, шт."><input type="number" data-assignment-quantity value="{{ row.current|unlocalize }}" min="0" max="{% if item_id %}1{% else %}{{ row.maximum }}{% endif %}" step="1" aria-label="Количество для {% for d in row.defects %}км {{ d.km }} № {{ d.number }} {% endfor %}" {% if not row.maximum and not row.current %}disabled{% endif %}><small>Можно закрепить: {{ row.maximum }}</small></td>
+</tr>{% empty %}<tr><td colspan="7">Доступных дефектов для закрепления нет.</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="equipment-actions"><button class="button" type="submit">Сохранить закрепление</button><a href="{% url 'stock_inventory' %}">Отмена</a></div>
+</form><script src="/static/accounts/stock-assignment.js?v={{ release_version }}" defer></script>
+{% endblock %}

@@ -9,7 +9,7 @@ from . import stock,stock_groups as groups,stock_planning as planning
 from .models import StockItem,StockImportReceipt,StockMovement
 
 @transaction.atomic
-def apply(user,tables,token=None,dry=False):
+def apply(user,tables,token=None,dry=False,source_label='Excel'):
     from . import stock_exchange as x
     actor=stock.manager(user);stock.lock()
     if token:
@@ -132,7 +132,7 @@ def apply(user,tables,token=None,dry=False):
                     probe=StockItem(**{k:v for k,v in data.items() if k in [*stock.ITEM_FIELDS,'electrode_brand','electrode_diameter']})
                     gid=groups.identity(probe,dest.pk)
                     before=next((xg for xg in groups.groups(actor) if xg['id']==gid),None);before_ids={m['item'].pk for m in before['members']} if before else set()
-                    planning.receive(actor,data,dest,target,x.date_value(r[18] or str(timezone.localdate())), 'Поступление из Excel',uuid.uuid4())
+                    planning.receive(actor,data,dest,target,x.date_value(r[18] or str(timezone.localdate())), 'Поступление из '+source_label,uuid.uuid4())
                     g=next(xg for xg in groups.groups(actor) if xg['id']==gid);new_ids[key]={m['item'].pk for m in g['members']}-before_ids
                     changes.append(f'{r[3]}: поступление {target} {r[5]} на {dest.name}, дата {r[18] or timezone.localdate()}, источник {r[19] or "—"}')
                     if r[17].casefold()=='да':
@@ -149,7 +149,7 @@ def apply(user,tables,token=None,dry=False):
             if do_bulk and g['item'].kind=='coupling' and (delta<0 or moved and dict(targets[key])!=old_alloc):
                 groups.distribute(actor,g['token'],{} if moved else targets[key]);g=fresh(g)
             if delta:
-                groups.correct_quantity(actor,g['token'],g['quantity']+delta);changes.append(f'{r[3]} · {g["warehouse"].name}: остаток {g["quantity"]} → {target}');g=fresh(g)
+                groups.correct_quantity(actor,g['token'],g['quantity']+delta,note='Корректировка остатка из '+source_label);changes.append(f'{r[3]} · {g["warehouse"].name}: остаток {g["quantity"]} → {target}');g=fresh(g)
             if moved and target:
                 whole_moves.append((key,g['id'],{m['item'].pk for m in g['members'] if m['quantity']>0},dest,target,dict(targets[key]) if do_bulk and dict(targets[key])!=old_alloc else None))
             elif do_bulk:

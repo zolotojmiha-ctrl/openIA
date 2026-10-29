@@ -125,9 +125,9 @@ def validate_existing(row,g):
 def fresh_group(user,key):
     return next((g for g in groups.groups(user) if g['id']==key),None)
 
-def apply(user,tables,token=None,dry=False):
+def apply(user,tables,token=None,dry=False,source_label='Excel'):
     from .stock_exchange_apply import apply as perform
-    return perform(user,tables,token,dry)
+    return perform(user,tables,token,dry,source_label)
 
 class Upload(forms.Form):
     file=forms.FileField(label='Изменённый файл обмена XLSX',widget=forms.FileInput(attrs={'accept':'.xlsx'}))

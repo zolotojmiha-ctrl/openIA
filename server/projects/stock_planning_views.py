@@ -73,6 +73,17 @@ class AllocationForm(forms.Form):
 @permission_required('stock.manage')
 def allocate(request,pk):
     item=get_object_or_404(stock.items(request.user),pk=pk)
+    if request.method=='GET':
+        from .stock_groups import groups
+        from django.urls import reverse
+        from urllib.parse import urlencode
+        group=next((g for g in groups(request.user) if any(m['item'].pk==pk for m in g['members'])),None)
+        if not group or not group['warehouse'] or group['quantity']<=0:
+            messages.error(request,'Сначала укажите склад и количество в режиме «Редактировать список».');return redirect('stock_inventory')
+        member=next(m for m in group['members'] if m['item'].pk==pk)
+        query={'group':group['token']}
+        if member['quantity']==1:query['item']=str(pk)
+        return redirect(reverse('stock_distribute')+'?'+urlencode(query))
     form=AllocationForm(request.POST or None,user=request.user,initial={'expected_version':item.version,'serial':item.serial or (item.coupling.serial if item.coupling_id else ''),'job':item.reserved_job_id});status=200
     if request.method=='POST' and form.is_valid():
         from django.db import transaction
@@ -159,9 +170,16 @@ def filtered_inventory(request):
 
 @permission_required('stock.manage')
 def inventory(request):
+    from . import stock_inline
+    if request.method=='POST':return stock_inline.save(request)
     page=Paginator(filtered_inventory(request),50).get_page(request.GET.get('page'))
-    query=request.GET.copy();query.pop('page',None)
-    return render(request,'projects/stock_inventory.html',{'rows':page,'page':page,'filter_query':query.urlencode(),'warehouses':stock.warehouses(request.user).order_by('name'),'q':request.GET.get('q',''),'selected_warehouse':request.GET.get('warehouse',''),'selected_kind':request.GET.get('kind',''),'selected_state':request.GET.get('state',''),'kinds':StockItem._meta.get_field('kind').choices})
+    mode=request.GET.get('mode','')
+    if mode not in ('edit','delete'):mode=''
+    if mode:stock_inline.prepare(request.user,page,mode)
+    query=request.GET.copy();query.pop('page',None);query.pop('mode',None)
+    back=request.GET.copy();back.pop('mode',None)
+    from django.urls import reverse
+    return render(request,'projects/stock_inventory.html',{'rows':page,'page':page,'mode':mode,'operation':uuid.uuid4(),'return_url':reverse('stock_inventory')+('?' + back.urlencode() if back else ''),'filter_query':query.urlencode(),'warehouses':stock.warehouses(request.user).order_by('name'),'q':request.GET.get('q',''),'selected_warehouse':request.GET.get('warehouse',''),'selected_kind':request.GET.get('kind',''),'selected_state':request.GET.get('state',''),'kinds':StockItem._meta.get_field('kind').choices})
 
 @permission_required('stock.manage')
 def coverage(request):

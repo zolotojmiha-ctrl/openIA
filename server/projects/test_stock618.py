@@ -90,7 +90,7 @@ class Stock618Tests(StockTests):
     def test_visible_routes_and_forms(self):
         wh,i=self.receive_piece();self.client.force_login(self.leader)
         for name,args in [('stock_inventory',[]),('stock_coverage',[]),('stock_inventory_export',[]),('stock_receive',[]),('stock_allocate',[i.pk]),('stock_delete',[i.pk]),('stock_detail',[wh.pk])]:
-            res=self.client.get(reverse(name,args=args));self.assertEqual(res.status_code,200,(name,res.content[:1000]))
+            res=self.client.get(reverse(name,args=args),follow=True);self.assertEqual(res.status_code,200,(name,res.content[:1000]))
         self.assertContains(self.client.get(reverse('stock_detail',args=[wh.pk])),'Добавить на этот склад')
         res=self.client.post(reverse('stock_receive'),{'warehouse':wh.pk,'quantity':2,'date':str(self.today),'note':'Тест','token':uuid.uuid4(),'name':'','kind':'coupling','unit':'pcs','method':'p1','length_mm':1500,'wall_mm':10,'diameter_mm':720,'serial':''})
         self.assertEqual(res.status_code,302,res.context['form'].errors if res.status_code!=302 else '')

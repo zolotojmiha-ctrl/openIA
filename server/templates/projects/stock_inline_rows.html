@@ -1,0 +1,19 @@
+{% load l10n %}<div class="stock-grid-scroll"><table class="equipment-table stock-grid-table"><thead><tr>
+<th>{% if mode == 'delete' %}<label><input type="checkbox" data-grid-select-all> Выбрать все</label>{% else %}№{% endif %}</th><th>Материал / категория</th><th>Характеристики</th><th>Склад</th><th>На складе</th><th>Закреплено</th><th>Получение / заводские номера</th>
+</tr></thead><tbody>
+{% for row in rows %}<tr data-grid-row data-group="{{ row.id }}" data-token="{{ row.token }}" data-delete-label="{{ row.item.name }} · {{ row.warehouse.name|default:'Склад не указан' }} · {{ row.quantity|floatformat:'-3' }} {{ row.item.get_unit_display }}">
+<td data-label="№">{% if mode == 'delete' %}<input type="checkbox" data-grid-selected aria-label="Выбрать {{ row.item.name }} со склада {{ row.warehouse.name }}" {% if not row.can_delete or row.reserved %}disabled{% endif %}>{% endif %} {{ forloop.counter }}</td>
+<td data-label="Материал / категория">{% if mode == 'edit' %}{{ row.editor.name }}{{ row.editor.kind }}{{ row.editor.unit }}{% else %}{{ row.item.name }}<small>{{ row.item.get_kind_display }}</small>{% endif %}</td>
+<td data-label="Характеристики">{% if mode == 'edit' %}
+<div data-grid-kind="coupling"><label>Тип {{ row.editor.method }}</label><label>Диаметр, мм {{ row.editor.diameter_mm }}</label><label>Длина, мм {{ row.editor.length_mm }}</label><label>Стенка, мм {{ row.editor.wall_mm }}</label></div>
+<div data-grid-kind="electrode"><label>Марка {{ row.editor.electrode_brand }}</label><label>Диаметр, мм {{ row.editor.electrode_diameter }}</label></div>
+{% if not row.editor.mutable_spec %}<small>Характеристики позиции с историей сохранены.</small>{% endif %}
+{% else %}{{ row.item.method_label }}{% if row.item.length_mm %} · {{ row.item.length_mm }} мм · стенка {{ row.item.wall_mm }} мм{% endif %}{% endif %}</td>
+<td data-label="Склад">{% if mode == 'edit' %}{{ row.editor.warehouse }}{% else %}{{ row.warehouse.name|default:'Не указан' }}{% endif %}</td>
+<td data-label="На складе">{% if mode == 'edit' %}{{ row.editor.quantity }}{% else %}{{ row.quantity|floatformat:'-3' }} {{ row.item.get_unit_display }}{% endif %}</td>
+<td data-label="Закреплено">{{ row.reserved|floatformat:'-3' }}{% if row.reserved and mode == 'delete' %}<small>Сначала снимите закрепление.</small>{% endif %}{% if row.installed %}<small>Смонтировано: {{ row.installed }}. История монтажа сохраняется.</small>{% endif %}</td>
+<td data-label="Получение / заводские номера">{% if mode == 'edit' %}<label>Дата получения {{ row.editor.receipt_date }}</label><label>Откуда получено {{ row.editor.receipt_origin }}</label>
+{% if row.serial_members %}<details><summary>Заводские номера ({{ row.serial_members|length }})</summary>{% for m in row.serial_members %}<label>№ {{ forloop.counter }} <input data-grid-serial="{{ m.item.pk }}" value="{{ m.serial }}" maxlength="100" aria-label="Заводской номер {{ forloop.counter }}" placeholder="—"></label>{% endfor %}</details>{% endif %}
+{% else %}{% for d in row.distribution %}<p>{{ d.label }} — {{ d.quantity|floatformat:'-3' }} шт.</p>{% empty %}Назначений нет.{% endfor %}{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="7">Позиций по выбранным условиям нет.</td></tr>{% endfor %}
+</tbody></table></div>
