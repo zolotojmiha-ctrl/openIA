@@ -85,7 +85,8 @@ def reserve(user, item_id, version, job_id):
         incompatibility=fit.reason(item,job)
         if incompatibility:raise ValidationError(incompatibility)
         lengths=requirements(job)
-        if lengths is None or not any(fit.length_fits(job.method,item.length_mm,length) for length in lengths):raise ValidationError('Длина не соответствует составу конструкции. Уточните состав в карточке работы.')
+        if lengths is None:raise ValidationError(requirements_issue(job))
+        if not any(fit.length_fits(job.method,item.length_mm,length) for length in lengths):raise ValidationError('Длина муфты не соответствует требуемой длине конструкции.')
         held,installed=fit.occupied(job,exclude=[item.pk])
         if not fit.capacity(job,item,held,installed):raise ValidationError('Для этой конструкции уже закреплено нужное количество муфт.')
         if item.deleted_at:raise ValidationError('Позиция удалена.')
@@ -172,6 +173,19 @@ def requirements(job):
         if any(x<=0 or x*1000!=(x*1000).to_integral_value() for x in parts):return None
         return [int(x*1000) for x in parts]
     except (InvalidOperation,ValueError):return None
+
+
+def requirements_issue(job):
+    """Explain invalid planned data without treating it as a small stock piece."""
+    if requirements(job) is not None:return ''
+    text=job.composition.strip().replace(',','.')
+    if text and re.fullmatch(r'\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*',text):
+        total=sum(Decimal(p.strip()) for p in text.split('+'))
+        if job.length_m is not None and total!=job.length_m:
+            length=format(Decimal(job.length_m).normalize(),'f').replace('.',',')
+            composition=format(total.normalize(),'f').replace('.',',')
+            return f'В карточке дефекта длина {length} м, а сумма состава {composition} м. Уточните плановую длину или состав в карточке дефекта.'
+    return 'В карточке дефекта нужно уточнить длину и состав: укажите общую длину и длины отдельных муфт, например 1+1,5 м.'
 
 
 @transaction.atomic

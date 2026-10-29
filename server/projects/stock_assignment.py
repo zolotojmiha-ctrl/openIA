@@ -44,7 +44,7 @@ def job_rows(user,group):
         parts=planning.requirements(job);current=held.get(str(job.pk),0);reason=''
         if job.state in ('reported','confirmed') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':reason='Работа завершена или закрыта.'
         elif fit.reason(i,job):reason=fit.reason(i,job)
-        elif parts is None:reason='Нужно уточнить длину и состав конструкции.'
+        elif parts is None:reason=planning.requirements_issue(job)
         elif not any(fit.length_fits(job.method,i.length_mm,length) for length in parts):reason='Для конструкции нужна другая длина муфты.'
         others,installed=fit.occupied(job,exclude=own)
         need=fit.capacity(job,i,others,installed)

@@ -3,6 +3,7 @@
 <a class="back-link" href="{{ back }}">← К ведомости дефектов</a>
 <h1>Муфты для дефекта</h1><p>{{ job.contract.number }} · {{ job.section.project_object.name }} · {{ job.section.pipeline }}{% for defect in job.active_defects %} · км {{ defect.km }} № {{ defect.number }}{% endfor %}</p>
 <p><strong>Требуется: {{ job.get_method_display }} · {{ job.length_m }} м · стенка {{ job.wall_display }} мм</strong>{% if job.composition %} · состав {{ job.composition }} м{% endif %}{% if job.section.diameter_mm %} · Ø{{ job.section.diameter_mm }} мм{% endif %}</p>
+{% if requirements_issue %}<div class="notice" role="alert">{{ requirements_issue }}{% if can_correct_requirements %} <a href="{% url 'repair_edit' job.pk %}">Уточнить параметры задания</a>{% endif %}</div>{% endif %}
 <p>Укажите количество из нужных строк и сохраните. Закреплённые муфты остаются на складе до монтажа. Ноль снимает закрепление. Для П1 и П2 можно выбрать муфту большей длины и толщины стенки.</p>
 {% if job.active_defects|length > 1 %}<p class="notice">Это общий комплект для всех перечисленных дефектов под одной конструкцией.</p>{% endif %}
 <form method="post" class="repair-stock-picker">{% csrf_token %}{{ form.snapshot }}{{ form.operation }}<input type="hidden" name="return_to" value="{{ back }}">

@@ -11,7 +11,7 @@ from django.urls import reverse
 from accounts.permissions import permission_required,permitted
 from projects import stock,stock_groups,stock_planning,stock_fit
 from projects.models import StockItem,StockActionReceipt,Contract
-from .access import visible_jobs
+from .access import visible_jobs,can_prepare
 from .models import CouplingUse
 from .navigation import return_url
 
@@ -53,7 +53,8 @@ def candidates(user,job):
         free=sum(int(m['quantity']) for m in members if m['item'].reserved_job_id is None and not m['item'].archived)
         if not own and (not free or wh.archived or item.archived):continue
         reason=stock_fit.reason(item,job)
-        if not reason and (lengths is None or not any(stock_fit.length_fits(job.method,item.length_mm,n) for n in lengths)):reason='Недостаточная длина или другой состав конструкции.'
+        if not reason and lengths is None:reason=stock_planning.requirements_issue(job)
+        if not reason and not any(stock_fit.length_fits(job.method,item.length_mm,n) for n in lengths):reason='Недостаточная длина муфты.' if job.method in stock_fit.OVERSIZE else 'Требуется другая длина муфты.'
         if wh.archived or item.archived:reason='Склад или материал в архиве: можно только снять закрепление.'
         if wh.brigade_assignment_id and wh.project_object_id!=job.section.project_object_id:reason='Муфта у бригады другого участка: сначала оформите перемещение.'
         result.append({'group':group,'members':members,'own':own,'free':free,'reason':reason})
@@ -127,4 +128,4 @@ def choose(request,pk):
         except ValidationError as exc:form.add_error(None,exc);status=409
         else:messages.success(request,'Муфты закреплены. Они остаются на складе до монтажа.');return redirect(back)
     if request.method=='POST' and form.errors and status==200:status=400
-    return render(request,'repairs/stock_choose.html',{'job':job,'rows':rows,'form':form,'back':back,'stock_summary':summaries(request.user,[job])[job.pk]},status=status)
+    return render(request,'repairs/stock_choose.html',{'requirements_issue':stock_planning.requirements_issue(job),'can_correct_requirements':can_prepare(request.user) and job.state not in ('reported','confirmed','unrepairable'),'job':job,'rows':rows,'form':form,'back':back,'stock_summary':summaries(request.user,[job])[job.pk]},status=status)

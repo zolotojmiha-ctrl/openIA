@@ -35,6 +35,28 @@ class DefectStockTests(TestCase):
         self.assertEqual(self.client.post(self.url,self.choice({self.a.name:1})).status_code,302)
         response=self.client.get(reverse('repairs'));self.assertContains(response,'1500 мм · стенка 10');self.assertContains(response,self.a.name)
         self.assertContains(response,'Изменить муфты');self.assertEqual(self.held().count(),1)
+    def test_conflicting_length_and_composition_explains_card_data_and_blocks_reservation(self):
+        for method in ('p1','p2'):
+            with self.subTest(method=method):
+                self.job.method=method;self.job.length_m=Decimal('1');self.job.composition='1,5';self.job.save()
+                self.receive(method=method)
+                response=self.client.get(self.url)
+                self.assertContains(response,'длина 1 м, а сумма состава 1,5 м')
+                self.assertContains(response,reverse('repair_edit',args=[self.job.pk]))
+                rows=[r for r in response.context['rows'] if r['group']['item'].method==method]
+                self.assertTrue(rows)
+                for row in rows:self.assertIn('сумма состава 1,5 м',row['reason'])
+                item=StockItem.objects.filter(method=method).first()
+                with self.assertRaisesMessage(ValidationError,'сумма состава 1,5 м'):
+                    stock_planning.reserve(self.leader,item.pk,item.version,self.job.pk)
+                self.assertFalse(self.held().exists())
+                self.job.composition='';self.job.save()
+                row=next(r for r in service.candidates(self.leader,self.job) if r['group']['item'].method==method)
+                self.assertEqual(row['reason'],'')
+                item=stock_planning.reserve(self.leader,item.pk,item.version,self.job.pk)
+                self.assertEqual(item.length_mm,1500)
+                stock_planning.reserve(self.leader,item.pk,item.version,None)
+
     def test_reservation_does_not_consume_stock_and_retry_does_not_duplicate(self):
         self.receive(n=3);data=self.choice({self.a.name:1})
         for _ in range(2):self.assertEqual(self.client.post(self.url,data).status_code,302)
