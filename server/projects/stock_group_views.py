@@ -17,7 +17,7 @@ class DistributionRow(forms.Form):
     def __init__(self,*args,user,group=None,**kwargs):
         super().__init__(*args,**kwargs)
         from django.db.models import Q
-        active=visible_jobs(user).exclude(state__in=['reported','confirmed']).exclude(contract__status='archived').values('pk')
+        active=visible_jobs(user).exclude(state__in=['reported','confirmed','unrepairable']).exclude(contract__status='archived').values('pk')
         held=[d['job'].pk for d in group['distribution']] if group else []
         self.fields['job'].queryset=visible_jobs(user,include_archived=True).filter(Q(pk__in=active)|Q(pk__in=held))
         self.fields['job'].label_from_instance=planning.job_label

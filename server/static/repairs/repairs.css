@@ -17,3 +17,7 @@
 @media(max-width:1100px){.repair-desktop{display:none}.repair-mobile-list{display:block}.repair-bulk-toolbar{align-items:stretch}.repair-bulk-toolbar .button{font-size:12px;white-space:normal}.repair-filters{margin:12px 0}.repair-counters{margin:12px 0;gap:6px}.repair-counters a{padding:8px 10px}.repair-mobile-item .repair-row-actions{flex-wrap:wrap}.repair-actions-inline{justify-content:space-between}.repair-mobile-list{max-width:100%}}
 
 .repair-more[open]>div{position:fixed;left:var(--menu-left,10px);top:var(--menu-top,10px);right:auto;width:235px;max-height:calc(100vh - 20px);overflow:auto;z-index:50}
+
+.repair-stock-summary{font-size:12px;min-width:155px;max-width:260px}.repair-stock-summary p{margin:0 0 5px}.repair-stock-summary small{display:block;font-size:11px;overflow-wrap:anywhere}.repair-stock-summary .button.small{font-size:11px;padding:6px 8px;min-height:30px}.repair-mobile-list .repair-stock-summary{max-width:none;padding:8px 0;border-top:1px solid #ddd}
+
+.repair-register tbody.repair-tone-unrepairable,.repair-mobile-item.repair-tone-unrepairable{background:#eceef2;color:#424752}.repair-tone-unrepairable .repair-status-label{color:#424752}.repair-state.unrepairable{background:#eceef2;color:#424752}

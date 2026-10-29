@@ -66,3 +66,38 @@ def correct_and_accept(user,job_id,data):
     except Exception:
         for key in new_files:private_path(key).unlink(missing_ok=True)
         raise
+
+
+@transaction.atomic
+def decide_problem(user,job_id,version,decision,note):
+    actor=leader(user)
+    from projects import stock,stock_planning
+    from projects.models import Contract,StockItem
+    stock.lock()
+    scope=visible_jobs(actor).get(pk=job_id)
+    if scope.contract_id:Contract.objects.select_for_update(no_key=True).get(pk=scope.contract_id)
+    job=visible_jobs(actor).select_for_update(no_key=True,of=('self',)).get(pk=job_id)
+    if job.version!=version:raise ValidationError('Карточка изменилась. Проверьте актуальное сообщение.')
+    if job.contract_id and job.contract.status=='archived':raise ValidationError('Контракт в архиве — только просмотр.')
+    note=note.strip()
+    if not note or len(note)>3000:raise ValidationError('Укажите основание решения, до 3000 символов.')
+    if decision=='reopen':
+        if job.state!='unrepairable':raise ValidationError('Этот дефект не закрыт как неустранимый.')
+        Report.objects.create(job=job,author=actor,kind='reopen',performed_date=timezone.localdate(),note=note,context={'previous_reason':job.problem_note})
+        job.state='progress';job.problem='';job.problem_note=''
+    else:
+        if decision not in ('acknowledge','unrepairable') or not job.problem or job.state in ('reported','confirmed','unrepairable'):raise ValidationError('Нет актуального препятствия для рассмотрения.')
+        report=job.reports.filter(kind='problem').first()
+        if not report or report.confirmed_at:raise ValidationError('Сообщение уже рассмотрено или отсутствует. Обновите карточку.')
+        released=[]
+        if decision=='unrepairable':
+            for item in StockItem.objects.filter(reserved_job=job,deleted_at__isnull=True).exclude(coupling__installation__isnull=False):
+                stock_planning.reserve(actor,item.pk,item.version,None);released.append(str(item.pk))
+            job.state='unrepairable';job.problem_note=note[:1000]
+        Report.objects.create(job=job,author=actor,kind='problem_review',performed_date=timezone.localdate(),note=note,problem=job.problem,context={'decision':decision,'problem_report':str(report.pk),'released_stock':released})
+        report.confirmed_by=actor;report.confirmed_at=timezone.now();report.save(update_fields=['confirmed_by','confirmed_at'])
+        from accounts.business_notices import mark_repair_read
+        mark_repair_read(actor,job,report)
+    job.version+=1;job.save(update_fields=['state','problem','problem_note','version'])
+    audit(actor,'repair_corrected',entity_id=str(job.pk),kind='problem_review',decision=decision,reason=note)
+    return job

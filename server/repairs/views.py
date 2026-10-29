@@ -30,7 +30,7 @@ def register_context(request,scope=None):
     if scope:params.update(scope)
     qs=filtered_jobs(request.user,params,apply_state=False)
     sid=params['section'];q=params['q'];state=params['state'];year=params['year'];master=params['master']
-    counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').count(),'revision':qs.exclude(review_note='').count()}
+    counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').exclude(state='unrepairable').count(),'unrepairable':qs.filter(state='unrepairable').count(),'revision':qs.exclude(review_note='').count()}
     qs=filtered_jobs(request.user,params)
     review_filter=signing.dumps({'actor':str(request.user.pk),'filters':params},salt='repair-review-filter',compress=True) if request.user.is_leader and not archived else ''
     ordered=qs.annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=not archived))).order_by('first_km','created_at','pk')
@@ -46,6 +46,15 @@ def register_context(request,scope=None):
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
         if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows),'can_report':job.pk in reportable})
+    from .stock_assignment import summaries
+    stock_summaries=summaries(request.user,[group['job'] for group in groups])
+    problem_reports={}
+    for report in Report.objects.filter(job_id__in=[g['job'].pk for g in groups],kind='problem').order_by('-created_at','-pk'):
+        problem_reports.setdefault(report.job_id,report)
+    for group in groups:
+        group['stock']=stock_summaries[group['job'].pk]
+        problem=problem_reports.get(group['job'].pk)
+        group['problem_pending']=bool(group['job'].problem and problem and not problem.confirmed_at)
     from projects.access import visible_contracts
     try:
         from uuid import UUID
@@ -207,7 +216,8 @@ def detail(request,pk):
     subcontract_open=bool(job.subcontract_order_id and subcontract_orders(request.user,True).filter(pk=job.subcontract_order_id).exists())
     from .navigation import return_url
     back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
-    return render(request,'repairs/detail.html',{'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    problem_report=job.reports.filter(kind='problem').first()
+    return render(request,'repairs/detail.html',{'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):
@@ -219,7 +229,7 @@ def report(request,pk,action):
     if request.method=='POST' and form.is_valid():
         try:
             result=report_work(request.user,job.pk,'unrepaired' if action=='unrepaired' else form.action,form.cleaned_data)
-            messages.success(request,'Результат отправлен.' if action in ('result','correction') else 'Сведения сохранены.')
+            messages.success(request,'Ремонт отправлен на проверку руководителю. Он отмечен зелёным в ведомости.' if form.action=='result' else 'Сведения сохранены.')
             if request.headers.get('Accept')=='application/json':
                 from django.urls import reverse
                 return JsonResponse({'ok':True,'url':report_return_url(request,job) if action in ('repaired','unrepaired','result') else detail_url(request,job.pk)})

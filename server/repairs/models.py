@@ -7,7 +7,7 @@ from django.db import models
 from .values import kilometre
 
 METHODS = [('p1','П1'),('p2','П2'),('p3','П3'),('p4','П4'),('p5u','П5У'),('grind','Шлифовка'),('cut','Вырезка'),('other','Другой способ')]
-STATES = [('planned','Не устранён'),('progress','Не устранён — в работе'),('partial','Не устранён — частично выполнено'),('reported','Устранён — на проверке'),('confirmed','Устранён')]
+STATES = [('planned','Не устранён'),('progress','Не устранён — в работе'),('partial','Не устранён — частично выполнено'),('reported','Устранён — на проверке'),('confirmed','Устранён'),('unrepairable','Не подлежит устранению')]
 PROBLEMS = [('','Нет открытой проблемы'),('materials','Нет материалов'),('access','Нет проезда / доступа'),('water','Котлован затоплен'),('other','Другая причина'),('swamp','Болото'),('coupling','Нет муфты'),('material_other','Нет другого материала'),('not_started','Ещё не выполняли'),('winter','Нет проезда — доступ зимой'),('existing_coupling','Обнаружена ранее установленная муфта'),('oversize_p1','Нет муфты П1 увеличенного диаметра')]
 
 class Section(models.Model):
@@ -69,17 +69,19 @@ class Job(ArchiveProtectedModel):
     class Meta:
         constraints=[models.CheckConstraint(condition=models.Q(length_m__isnull=True)|models.Q(length_m__gt=0),name='repair_length_positive')]
     @property
-    def defect_status(self):return 'Устранён' if self.state in ('reported','confirmed') else 'Не устранён'
+    def defect_status(self):return 'Не подлежит устранению' if self.state=='unrepairable' else 'Устранён' if self.state in ('reported','confirmed') else 'Не устранён'
     @property
     def status_tone(self):
+        if self.state=='unrepairable':return 'unrepairable'
         if self.state in ('reported','confirmed'):return 'resolved'
         if self.problem in ('materials','coupling','material_other','oversize_p1'):return 'materials'
         if self.problem in ('access','water','swamp','winter'):return 'blocked'
         return 'neutral'
     @property
-    def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем'}.get(self.state,'')
+    def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем','unrepairable':'Решение руководителя: ремонт невозможен'}.get(self.state,'')
     @property
     def reason_display(self):
+        if self.state=='unrepairable':return self.problem_note or 'Ремонт признан невозможным руководителем'
         if self.review_note:return 'Возвращён на доработку: '+self.review_note
         if self.problem:return self.get_problem_display()
         return {'planned':'Ещё не выполняли','progress':'Работы продолжаются','partial':'Выполнено частично'}.get(self.state,'')
@@ -125,7 +127,7 @@ class Report(ArchiveProtectedModel):
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     token=models.UUIDField(default=uuid.uuid4,unique=True)
     request_digest=models.CharField(max_length=64,blank=True)
-    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера'),('revision','Возвращено на доработку')])
+    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера'),('revision','Возвращено на доработку'),('problem_review','Решение по препятствию'),('reopen','Возвращено в работу')])
     performed_date=models.DateField('Дата')
     method=models.CharField('Фактический способ',max_length=20,choices=METHODS,blank=True)
     length_m=models.DecimalField('Фактическая длина, м',max_digits=9,decimal_places=3,null=True,blank=True)

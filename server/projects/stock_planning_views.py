@@ -67,7 +67,7 @@ class AllocationForm(forms.Form):
     serial=forms.CharField(label='Заводской № (необязательно)',max_length=100,required=False)
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['job'].queryset=visible_jobs(user).exclude(state__in=['reported','confirmed']).exclude(contract__status='archived')
+        self.fields['job'].queryset=visible_jobs(user).exclude(state__in=['reported','confirmed','unrepairable']).exclude(contract__status='archived')
         self.fields['job'].label_from_instance=planning.job_label
 
 @permission_required('stock.manage')
@@ -183,7 +183,7 @@ def inventory(request):
 
 @permission_required('stock.manage')
 def coverage(request):
-    jobs=visible_jobs(request.user).exclude(state__in=['reported','confirmed']).exclude(contract__status='archived')
+    jobs=visible_jobs(request.user).exclude(state__in=['reported','confirmed','unrepairable']).exclude(contract__status='archived')
     from django.http import Http404
     try:
         if request.GET.get('contract'):jobs=jobs.filter(contract_id=uuid.UUID(request.GET['contract']))

@@ -38,6 +38,7 @@ def report_work(user,job_id,action,data):
                 raise ValidationError('Этот запрос уже использован для другой записи.')
             if job.version!=data['expected_version']:raise ValidationError('Работу уже изменили. Ваш черновик сохранён. Откройте актуальную карточку, сравните данные и повторите отправку.')
             if action=='correction' and not current.is_leader:raise ValidationError('Исправление доступно руководителю.')
+            if job.state=='unrepairable' and action!='note':raise ValidationError('Руководитель признал дефект не подлежащим устранению. Сначала требуется решение о возвращении в работу.')
             if job.state=='confirmed' and action not in ('note','correction') and not (action=='resolve' and current.is_leader):raise ValidationError('Результат уже подтверждён. Исправление вносит руководитель с указанием причины.')
             if action=='resolve' and not job.problem:raise ValidationError('Открытого препятствия уже нет. Обновите карточку.')
             if action=='start' and job.state not in ('planned','progress'):raise ValidationError('Результат уже внесён. Откройте карточку.')
@@ -98,5 +99,7 @@ def confirm_work(user,job_id,version):
     if job.state!='reported' or not report or report.outcome!='complete':raise ValidationError('Нет завершённого результата для подтверждения.')
     report.confirmed_by=user;report.confirmed_at=timezone.now();report.save(update_fields=['confirmed_by','confirmed_at'])
     job.state='confirmed';job.version+=1;job.save(update_fields=['state','version'])
+    from accounts.business_notices import mark_repair_read
+    mark_repair_read(user,job,report)
     audit(user,'repair_confirmed',entity_id=str(job.pk),report_id=str(report.pk))
     return job

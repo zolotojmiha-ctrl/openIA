@@ -29,7 +29,7 @@ def filtered_jobs(user,params,apply_state=True):
     if year.isdigit() and 1900<=int(year)<=2200:qs=qs.filter(planned_date__year=int(year))
     if apply_state:
         state=params.get('state','')
-        if state=='problems':qs=qs.exclude(problem='')
+        if state=='problems':qs=qs.exclude(problem='').exclude(state='unrepairable')
         elif state=='revision':qs=qs.exclude(review_note='')
         elif state in dict(Job._meta.get_field('state').choices):qs=qs.filter(state=state)
         elif state=='materials':qs=qs.filter(materials='missing')

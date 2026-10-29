@@ -80,7 +80,7 @@ def reserve(user, item_id, version, job_id):
             parent=Contract.objects.select_for_update(no_key=True).get(pk=candidate.contract_id)
             if parent.status=='archived':raise ValidationError('Контракт находится в архиве.')
         job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job_id)
-        if job.state in ('reported','confirmed') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':raise ValidationError('Работа уже выполнена или закрыта.')
+        if job.state in ('reported','confirmed','unrepairable') or job.contract and job.contract.status=='archived' or job.section.project_object.status=='archived':raise ValidationError('Работа уже выполнена или закрыта.')
         if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта уже закреплена. Сначала снимите назначение.')
         incompatibility=fit.reason(item,job)
         if incompatibility:raise ValidationError(incompatibility)

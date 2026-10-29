@@ -17,6 +17,7 @@ from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
+from repairs import stock_assignment
 from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
@@ -135,7 +136,9 @@ urlpatterns=[
  path('cabinet/crew-assignments/<uuid:pk>/end/',crew_views.end_assignment,name='crew_assignment_end'),
  path('cabinet/crew-assignments/<uuid:pk>/jobs/',crew_views.crew_jobs,name='crew_assign_jobs'),
  path('cabinet/repairs/<uuid:pk>/crew/',crew_views.job_crew,name='repair_assign_crew'),
+ path('cabinet/repairs/<uuid:pk>/stock/',stock_assignment.choose,name='repair_stock_choose'),
  path('cabinet/repairs/review-selected/',repair_review.bulk_review,name='repair_bulk_review'),
+ path('cabinet/repairs/<uuid:pk>/problem-review/',repair_review.review_problem,name='repair_problem_review'),
  path('cabinet/repairs/<uuid:pk>/return/',repair_review.return_result,name='repair_return'),
  path('cabinet/repairs/<uuid:pk>/correct-accept/',repair_review.correct_accept,name='repair_correct_accept'),
  path('cabinet/work/contracts/<uuid:pk>/sections/',workspace.sections_options,name='work_sections_options'),

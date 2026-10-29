@@ -43,3 +43,8 @@ def notice_title(event):
     if event.action=='contract_updated':return 'Запрос на закрытие контракта' if event.details.get('kind')=='closure_request' else 'Указание заказчика на проверке'
     if event.action=='support_updated':return 'Обращение № '+str(event.details.get('request_id',''))
     return {'repair_reported':'Ремонтные работы на проверке','work_reported':'Ежедневные работы на проверке','subcontract_reported':'Отчёт субподрядчика на проверке','document_integrity_error':'Ошибка сохранности документа'}.get(event.action,event.get_action_display())
+
+
+def mark_repair_read(user,job,report):
+    ids=AuditEvent.objects.filter(action='repair_reported',details__entity_id=str(job.pk)).filter(Q(details__report_id=str(report.pk))|Q(created_at__lte=report.created_at)).values_list('pk',flat=True)
+    BusinessNoticeRead.objects.bulk_create([BusinessNoticeRead(user=user,event_id=pk) for pk in ids],ignore_conflicts=True)

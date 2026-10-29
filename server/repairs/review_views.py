@@ -80,3 +80,24 @@ def correct_accept(request,pk):
         except ValidationError as e:form.add_error(None,e);status=409
         else:messages.success(request,'Правка и подтверждение сохранены. Исходный результат остался в истории.');return redirect('repair_detail',pk=pk)
     return render(request,'repairs/correct_accept.html',{'job':job,'form':form,'original':latest_result(job)},status=status)
+
+
+class ProblemDecisionForm(forms.Form):
+    expected_version=forms.IntegerField(widget=forms.HiddenInput)
+    decision=forms.ChoiceField(label='Решение руководителя',choices=[('acknowledge','Принять сообщение — ремонт остаётся в работе'),('unrepairable','Дефект не подлежит устранению')],widget=forms.RadioSelect)
+    note=forms.CharField(label='Основание решения',max_length=3000,widget=forms.Textarea(attrs={'rows':3}))
+
+@leader_required
+def review_problem(request,pk):
+    job=get_object_or_404(visible_jobs(request.user),pk=pk)
+    initial={'expected_version':job.version,'note':job.problem_note,'decision':'unrepairable' if request.GET.get('decision')=='unrepairable' else 'acknowledge'}
+    if job.state=='unrepairable':initial.update(decision='reopen',note='')
+    form=ProblemDecisionForm(request.POST or None,initial=initial);status=200
+    if job.state=='unrepairable':form.fields['decision'].choices=[('reopen','Вернуть дефект в работу')]
+    back=return_url(request,reverse('repair_detail',args=[pk]))
+    if request.method=='POST' and form.is_valid():
+        from .review_services import decide_problem
+        try:decide_problem(request.user,pk,form.cleaned_data['expected_version'],form.cleaned_data['decision'],form.cleaned_data['note'])
+        except ValidationError as exc:form.add_error(None,exc);status=409
+        else:messages.success(request,'Решение по препятствию сохранено. Исходное сообщение осталось в истории.');return redirect(back)
+    return render(request,'repairs/problem_review.html',{'job':job,'form':form,'back':back},status=status)

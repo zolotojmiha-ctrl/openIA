@@ -1,0 +1,6 @@
+<div class="repair-stock-summary">
+{% if group.stock.rows %}{% for material in group.stock.rows %}<p><strong>{% if material.state == 'installed' %}Смонтировано{% else %}Закреплено{% endif %} · {{ material.quantity }} шт.</strong><br>{{ material.method }} · {% if material.diameter %}Ø{{ material.diameter }} · {% endif %}{{ material.length }} мм · стенка {{ material.wall|default_if_none:'—' }} мм<small>{{ material.warehouse|default:'Склад не указан' }}{% if material.serials %} · № {{ material.serials|join:', ' }}{% endif %}</small></p>{% endfor %}
+{% elif group.job.method == 'p1' or group.job.method == 'p2' or group.job.method == 'p3' or group.job.method == 'p4' or group.job.method == 'p5u' %}<p>Муфта не закреплена</p>{% else %}<p>Муфта не требуется</p>{% endif %}
+{% if group.rowspan > 1 %}<small>Общий комплект для {{ group.rowspan }} дефектов</small>{% endif %}
+{% if group.stock.can_choose %}<a class="button secondary small" href="{% url 'repair_stock_choose' group.job.pk %}?return_to={{ return_to|urlencode }}">{% if group.stock.reserved %}Изменить муфты{% else %}Выбрать со склада{% endif %}</a>{% endif %}
+</div>

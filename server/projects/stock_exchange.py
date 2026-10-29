@@ -62,7 +62,7 @@ def main_row(g):
 def closed_label(job):return planning.job_label(job)+f' · Завершено / закрыто: только снятие · ID {job.pk}'
 
 def work_choices(user):
-    jobs=list(visible_jobs(user).exclude(state__in=['reported','confirmed']).exclude(contract__status='archived').exclude(section__project_object__status='archived'))
+    jobs=list(visible_jobs(user).exclude(state__in=['reported','confirmed','unrepairable']).exclude(contract__status='archived').exclude(section__project_object__status='archived'))
     labels={str(j.pk):planning.job_label(j) for j in jobs};counts=Counter(labels.values())
     return [(j,labels[str(j.pk)]+(f' · {j.get_method_display()} · ID {j.pk}' if counts[labels[str(j.pk)]]>1 else '')) for j in jobs]
 
