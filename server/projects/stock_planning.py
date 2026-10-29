@@ -4,7 +4,6 @@ from collections import Counter
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 from accounts.views import audit
 from repairs.models import Coupling, CouplingUse, METHODS
@@ -43,11 +42,9 @@ def receive(user, data, warehouse, count, date, note, token):
     wh=stock.warehouses(actor).get(pk=warehouse.pk)
     if wh.archived:raise ValidationError('Склад в архиве.')
     if data['kind']=='coupling' and q>1 and data.get('serial'):raise ValidationError('Заводской номер укажите при поступлении одной муфты или заполните номера позже поштучно.')
-    if wh.brigade_assignment_id:
-        # This is a historical separate holder, not a restriction on receiving
-        # a real delivery. Existing assignment identity and ledger are retained.
-        from .crews import visible_assignments
-        if not visible_assignments(actor).filter(pk=wh.brigade_assignment_id,start_date__lte=date).filter(Q(end_date__isnull=True)|Q(end_date__gte=date)).exists():raise ValidationError('Назначение бригады не действует на дату поступления.')
+    # A delivery records where material physically arrived, independently of
+    # when a crew worked there. Keep legacy holder identity and ledger intact;
+    # crew-date validation belongs to issuing material, not receiving it.
     n=int(q) if data['kind']=='coupling' else 1
     for index in range(n):
         values=dict(data);values['coupling']=None;values['sku']='ПР-'+str(uuid.uuid4())[:12];values['archived']=False

@@ -162,7 +162,7 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
     if not date or date>timezone.localdate():raise ValidationError('Укажите фактическую дату, не в будущем.')
     if item.reserved_job_id and (kind in ('consume','loss') or job and job.pk!=item.reserved_job_id):raise ValidationError('Муфта закреплена за другой работой либо зарезервирована. Сначала снимите назначение.')
     if item.coupling_id and kind=='consume':raise ValidationError('Конкретная муфта списывается автоматически при сохранении результата установки.')
-    if kind=='receipt':valid=not source and destination and not destination.brigade_assignment_id
+    if kind=='receipt':valid=not source and destination
     elif kind=='transfer':valid=source and destination and (allow_holders or not source.brigade_assignment_id and not destination.brigade_assignment_id)
     elif kind=='issue':valid=source and destination and not source.brigade_assignment_id and destination.brigade_assignment_id
     elif kind=='return':valid=source and destination and source.brigade_assignment_id and not destination.brigade_assignment_id
@@ -171,7 +171,7 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
     else:valid=False
     if not valid or source and destination and source.pk==destination.pk:raise ValidationError('Проверьте вид операции, склад отправления и получателя. Для списания на работу выберите работу.')
     if source and source.brigade_assignment_id and kind=='consume' and source.project_object_id!=job.section.project_object_id:raise ValidationError('Бригада и работа относятся к разным объектам.')
-    if destination and destination.brigade_assignment_id:
+    if destination and destination.brigade_assignment_id and kind!='receipt':
         from .crews import visible_assignments
         crew=visible_assignments(actor).select_for_update(of=('self',)).filter(pk=destination.brigade_assignment_id).first()
         if not crew or date<crew.start_date or crew.end_date and date>crew.end_date:raise ValidationError('Назначение бригады недоступно или не действует на дату выдачи.')
