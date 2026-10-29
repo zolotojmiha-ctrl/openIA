@@ -160,32 +160,18 @@ def delete(user,item_id,version,note,warehouse_id=None,all_warehouses=False,snap
 
 
 def requirements(job):
-    """Explicit composition in metres. Ambiguous text is never guessed."""
-    if job.method not in ('p1','p2','p3','p4','p5u'):return []
-    text=job.composition.strip().replace(',','.')
-    try:
-        if text:
-            if not re.fullmatch(r'\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*',text):return None
-            parts=[Decimal(p.strip()) for p in text.split('+')]
-            if job.length_m is not None and sum(parts)!=job.length_m:return None
-        elif job.length_m:parts=[job.length_m]
-        else:return None
-        if any(x<=0 or x*1000!=(x*1000).to_integral_value() for x in parts):return None
-        return [int(x*1000) for x in parts]
-    except (InvalidOperation,ValueError):return None
+    from repairs.construction import planned_parts,COUPLING_METHODS
+    if job.method not in COUPLING_METHODS:return []
+    try:return [int(part*1000) for part in planned_parts(job.length_m,job.composition)[1]]
+    except ValidationError:return None
 
 
 def requirements_issue(job):
-    """Explain invalid planned data without treating it as a small stock piece."""
-    if requirements(job) is not None:return ''
-    text=job.composition.strip().replace(',','.')
-    if text and re.fullmatch(r'\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*',text):
-        total=sum(Decimal(p.strip()) for p in text.split('+'))
-        if job.length_m is not None and total!=job.length_m:
-            length=format(Decimal(job.length_m).normalize(),'f').replace('.',',')
-            composition=format(total.normalize(),'f').replace('.',',')
-            return f'В карточке дефекта длина {length} м, а сумма состава {composition} м. Уточните плановую длину или состав в карточке дефекта.'
-    return 'В карточке дефекта нужно уточнить длину и состав: укажите общую длину и длины отдельных муфт, например 1+1,5 м.'
+    from repairs.construction import planned_parts,COUPLING_METHODS
+    if job.method not in COUPLING_METHODS:return ''
+    try:planned_parts(job.length_m,job.composition)
+    except ValidationError as exc:return exc.messages[0]
+    return ''
 
 
 @transaction.atomic

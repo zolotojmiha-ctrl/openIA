@@ -28,6 +28,9 @@ if expected:
 if expected=='6.22.1':
  VERIFY += "\nfrom django.db.migrations.recorder import MigrationRecorder\nassert MigrationRecorder.Migration.objects.filter(app='repairs',name='0011_problem_review_state').exists()\nassert Job.objects.get().state=='planned' and Job.objects.get().version==1\nassert 'unrepairable' in dict(Job._meta.get_field('state').choices)\nfrom django.urls import reverse\nassert client.get(reverse('repair_stock_choose',args=[Job.objects.get().pk])).status_code==200\nassert b'field.js?v=6.22.1' in client.get(reverse('repair_report',args=[Job.objects.get().pk,'repaired'])).content\nprint('Repair decision migration, preserved job state, direct stock page and versioned submission script verified.')\n"
 
+if expected=='6.22.2':
+ VERIFY += "\nfrom repairs.construction import planned_parts\nfrom django.core.exceptions import ValidationError\nfrom django.urls import reverse\nassert str(planned_parts(None,'1+1,5')[0])=='2.5'\ntry:planned_parts('1','1,5')\nexcept ValidationError as exc:assert 'сумма состава 1,5 м' in exc.messages[0]\nelse:raise AssertionError('Conflicting plan accepted')\nassert b'planned-construction.js?v=6.22.2' in client.get(reverse('repair_edit',args=[Job.objects.get().pk])).content\nfrom django.db.migrations.recorder import MigrationRecorder\nassert MigrationRecorder.Migration.objects.filter(app='repairs',name='0011_problem_review_state').exists()\nprint('Planned construction validation, derived total, correction form and previous migration verified.')\n"
+
 try:
  if upgrade:
   with tempfile.NamedTemporaryFile(mode='w',suffix='.yml') as override:

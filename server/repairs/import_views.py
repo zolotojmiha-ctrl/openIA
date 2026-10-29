@@ -17,6 +17,7 @@ from .access import can_prepare
 from .access import visible_sections,prepare_required,repair_contracts,validate_contract_place,visible_batches
 from .models import Section,ImportBatch,Job,Defect,JobDefect,Coupling,Report,METHODS
 from .importer import parse_work
+from .construction import planned_parts,COUPLING_METHODS
 from .values import kilometre,matching_defects,get_or_create_defect
 from documents.storage import validate_upload,store_file,private_path,verified_file
 
@@ -52,6 +53,11 @@ class ReviewForm(forms.Form):
     include_couplings=forms.BooleanField(label='Сохранить также сведения о муфтах с заводскими номерами',required=False,initial=True)
     def __init__(self,*args,batch,user,**kwargs):
         super().__init__(*args,**kwargs);self.batch=batch
+        if self.is_bound:
+            self.data=self.data.copy()
+            for index,item in enumerate(batch.payload['jobs']):
+                for name,key in ((f'length_{index}','length_m'),(f'composition_{index}','composition')):
+                    if name not in self.data or self.data.get(f'row_{index}')!='new':self.data[name]=item.get(key,'')
         if not user.is_leader:
             self.fields['include_couplings'].initial=False
             self.fields['include_couplings'].disabled=True
@@ -60,6 +66,8 @@ class ReviewForm(forms.Form):
             choices=[('new','Создать новую работу'),('skip','Пропустить')]
             choices += [(str(j.pk),'Добавить сведения в историю: '+', '.join(str(d) for d in j.defects.all())+' · '+j.get_state_display()) for j in candidates]
             self.fields[f'row_{index}']=forms.ChoiceField(label='Действие',choices=choices,initial='skip' if candidates else 'new')
+            self.fields[f'length_{index}']=forms.DecimalField(label='Требуемая общая длина, м',required=False,min_value=Decimal('.001'),max_digits=9,decimal_places=3,initial=item.get('length_m') or None)
+            self.fields[f'composition_{index}']=forms.CharField(label='Состав, м (если несколько муфт)',required=False,max_length=200,initial=item.get('composition',''))
 
     def clean(self):
         c=super().clean()
@@ -69,6 +77,9 @@ class ReviewForm(forms.Form):
             if c.get(f'row_{index}')=='new' and item.get('assigned_to') and item['assigned_to'] not in eligible:
                 self.add_error(None,'Доступ выбранного мастера изменился. Загрузите ведомость заново после проверки доступа.')
             selected=c.get(f'row_{index}')
+            if selected=='new' and item['method'] in COUPLING_METHODS and f'length_{index}' not in self.errors and f'composition_{index}' not in self.errors:
+                try:c[f'length_{index}'],_=planned_parts(c.get(f'length_{index}'),c.get(f'composition_{index}',''))
+                except ValidationError as exc:self.add_error(f'composition_{index}' if c.get(f'composition_{index}') else f'length_{index}',exc)
             if selected not in ('skip',None) and any(matching_defects(self.batch.section,d['km'],d['number'],self.batch.contract).count()>1 for d in item['defects']):self.add_error(f'row_{index}','После округления есть дубли существующих дефектов. Проверьте их перед импортом.')
             if selected=='new' and any(matching_defects(self.batch.section,d['km'],d['number'],self.batch.contract).filter(archived_at__isnull=False).exists() for d in item['defects']):
                 self.add_error(f'row_{index}','Этот дефект удалён из списка. Сначала восстановите его в разделе «Удалённые».')
@@ -189,8 +200,10 @@ def review(request,pk):
                         action=form.cleaned_data[f'row_{i}']
                         if action=='skip':continue
                         source={'repair_code':item.get('code',''),'batch':str(batch.pk),'sha256':batch.sha256,'sheet':batch.sheet,'rows':item['rows'],'original':item['raw']}
+                        if action=='new' and item['method'] in COUPLING_METHODS:
+                            source['reviewed_plan']={'length_m':str(form.cleaned_data[f'length_{i}']),'composition':form.cleaned_data[f'composition_{i}'],'original_length':item['length_m'],'original_composition':item['composition']}
                         if action=='new':
-                            job=Job.objects.create(contract=batch.contract,section=batch.section,created_by=request.user,method=item['method'],assigned_to_id=item.get('assigned_to'),wall_mm=Decimal(item['wall_mm']) if item.get('wall_mm') else None,length_m=Decimal(item['length_m']) if item['length_m'] else None,composition=item['composition'],planned_date=item['planned_date'] or None,notes=item['note'],materials='missing' if 'нет муфт' in item['note'].lower() else 'unknown',source=source)
+                            job=Job.objects.create(contract=batch.contract,section=batch.section,created_by=request.user,method=item['method'],assigned_to_id=item.get('assigned_to'),wall_mm=Decimal(item['wall_mm']) if item.get('wall_mm') else None,length_m=form.cleaned_data[f'length_{i}'] if item['method'] in COUPLING_METHODS else (Decimal(item['length_m']) if item['length_m'] else None),composition=form.cleaned_data[f'composition_{i}'] if item['method'] in COUPLING_METHODS else item['composition'],planned_date=item['planned_date'] or None,notes=item['note'],materials='missing' if 'нет муфт' in item['note'].lower() else 'unknown',source=source)
                             created+=1
                         else:
                             job=Job.objects.select_for_update(no_key=True).get(pk=action,section=batch.section,contract=batch.contract);job.version+=1;job.save(update_fields=['version']);linked+=1
@@ -215,7 +228,12 @@ def review(request,pk):
                     if batch.payload.get('from_area') and batch.contract_id:return redirect('work_place',pk=batch.contract_id,object_id=batch.section.project_object_id)
                     return redirect('repairs')
     rows=[]
-    for i,item in enumerate(batch.payload['jobs']):rows.append({'item':item,'method':dict(METHODS)[item['method']],'field':form[f'row_{i}']})
+    for i,item in enumerate(batch.payload['jobs']):
+        issue=''
+        if item['method'] in COUPLING_METHODS:
+            try:planned_parts(form[f'length_{i}'].value(),form[f'composition_{i}'].value())
+            except ValidationError as exc:issue=exc.messages[0]
+        rows.append({'item':item,'method':dict(METHODS)[item['method']],'field':form[f'row_{i}'],'length':form[f'length_{i}'],'composition':form[f'composition_{i}'],'coupling':item['method'] in COUPLING_METHODS,'plan_issue':issue})
     back=reverse('repair_import')
     if batch.payload.get('from_area') and batch.contract_id:back+='?'+urlencode({'contract':batch.contract_id,'object':batch.section.project_object_id})
     return render(request,'repairs/import_review.html',{'batch':batch,'form':form,'rows':rows,'back':back})

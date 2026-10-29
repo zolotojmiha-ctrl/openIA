@@ -123,9 +123,11 @@ def parse_work(upload,sheet_name=''):
         item=groups.setdefault(key,{'rows':[],'defects':[],'method':m,'length_m':str(length) if length is not None else '', 'composition':comp[:200],'planned_date':planned,'note':note[:3000], 'raw':[]})
         item['rows'].append(r);item['defects'].append({'km':str(km),'number':number,'pipe_section':pipe})
         item['raw'].append({'row':r,'cells':{str(c):v for (rr,c),v in cells.items() if rr==r and c<26}})
-        if length is not None and comp and re.fullmatch(r'[\d.,+\s]+',comp):
-            parts=[numeric(v) for v in comp.split('+')]
-            if all(x is not None for x in parts) and abs(sum(parts)-length)>Decimal('.001'):warnings.append(f'Строка {r}: длина и сумма состава различаются. Исходные значения сохранены.')
+        if m in ('p1','p2','p3','p4','p5u'):
+            from .construction import planned_parts
+            try:planned_parts(length,comp)
+            except ValidationError as exc:warnings.append(f'Строка {r}: '+exc.messages[0]+' Уточните параметры в предпросмотре перед созданием работы.')
+
     if not groups:raise ValidationError('Не найдены строки дефектов с километром, номером и способом ремонта.')
     if len(groups)>300:raise ValidationError('На листе больше 300 работ. Разделите ведомость на листы.')
     right=next((c for c,v in sorted(headers.items()) if v=='муфта' and c>mc),None);couplings=[]

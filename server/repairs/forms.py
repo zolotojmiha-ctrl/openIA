@@ -9,6 +9,7 @@ from projects.access import visible_objects,contract_card
 from documents.storage import validate_upload
 from .access import visible_sections, selectable_couplings,repair_contracts,validate_contract_place
 from .values import kilometre,identifier,matching_defects
+from .construction import planned_parts,COUPLING_METHODS
 from .models import Section, Job, Defect, Coupling, Report, METHODS, PROBLEMS
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
@@ -59,6 +60,10 @@ class JobForm(forms.ModelForm):
             self.fields['assigned_to'].queryset=User.objects.filter(is_active=True).filter(Q(role='foreman')|Q(leader_slot__isnull=False)|Q(pk=self.instance.assigned_to_id)).exclude(role='customer').order_by('full_name')
         self.fields['assigned_to'].label_from_instance=lambda u:u.full_name
         self.fields['length_m'].min_value=Decimal('.001')
+        self.fields['length_m'].label='Требуемая общая длина конструкции, м'
+        self.fields['length_m'].help_text='Минимальная длина по дефекту. Для П1 и П2 складская муфта может быть длиннее; план при этом менять не нужно. Если заполнен состав, общую длину можно оставить пустой.'
+        self.fields['composition'].label='Состав плановой конструкции, м (если несколько муфт)'
+        self.fields['composition'].help_text='Для одной муфты оставьте пустым. Для двух по 1,5 м укажите 1,5+1,5; общая длина — 3 м. Это план, а не фактические размеры муфт со склада.'
         self.fields['wall_mm']=forms.DecimalField(label='Толщина стенки муфты, мм',max_digits=4,decimal_places=0,min_value=1,required=False,widget=forms.NumberInput(attrs={'step':1}),error_messages={'max_decimal_places':'Толщина стенки муфты — целое число, например 8, 10 или 12.'})
         if self.instance.pk and self.instance.section_id:
             if self.instance.wall_mm is not None and self.instance.wall_mm==self.instance.wall_mm.to_integral_value():self.initial['wall_mm']=int(self.instance.wall_mm)
@@ -88,7 +93,9 @@ class JobForm(forms.ModelForm):
         if c.get('contract') and c.get('section'):
             try:validate_contract_place(c['contract'],c['section'])
             except forms.ValidationError as e:self.add_error('contract',e)
-        if c.get('method') in ['p1','p2','p3','p4','p5u'] and not c.get('length_m'):self.add_error('length_m','Укажите необходимую длину конструкции.')
+        if c.get('method') in COUPLING_METHODS and 'length_m' not in self.errors and 'composition' not in self.errors:
+            try:c['length_m'],_=planned_parts(c.get('length_m'),c.get('composition',''))
+            except forms.ValidationError as exc:self.add_error('composition' if c.get('composition') else 'length_m',exc)
         if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
             if any(matching_defects(c['section'],c['kilometre'],number,c.get('contract')).filter(archived_at__isnull=False).exists() for number in c['defect_numbers']):
                 self.add_error('defect_numbers','Этот дефект удалён из списка. Восстановите его в разделе «Удалённые», чтобы сохранить прежнюю историю.')

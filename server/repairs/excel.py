@@ -96,7 +96,7 @@ def parse_standard(book):
                 raise ValidationError(f'Строка {row}: некорректное поле «{name}».')
             specs.append(str(v) if v is not None else '')
         if m not in ('p1','p2','p3','p4','p5u') and specs[1]:raise ValidationError(f'Строка {row}: стенку муфты укажите только для метода ремонта муфтой.')
-        if m.startswith('p') and not specs[0]:raise ValidationError(f'Строка {row}: укажите длину конструкции.')
+        if m.startswith('p') and not specs[0] and not value(row,'Состав конструкции, м'):raise ValidationError(f'Строка {row}: укажите длину конструкции.')
         phone=value(row,'Мастер (телефон)')
         if phone:phone=normalize_phone(phone)
         signature=(km,m,*specs,phone,value(row,'ID участка'),value(row,'ID контракта'),value(row,'Мастер'),value(row,'Состав конструкции, м'),value(row,'Плановая дата'))
