@@ -154,3 +154,14 @@ class InstallationInputBrowser(StaticLiveServerTestCase):
         item.refresh_from_db();job.refresh_from_db()
         self.assertEqual(item.serial,'ЗАВ-СКЛАД-001');self.assertEqual(job.state,'confirmed')
         self.assertEqual(other.reports.get().length_m,Decimal('1.5'))
+
+class SubmissionFeedbackBrowser(StaticLiveServerTestCase):
+    def test_missing_fields_are_explained_and_stalled_draft_does_not_block_submission(self):
+        from projects.models import LegalEntity,COMPANY_TAX_ID
+        LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID,defaults={'name':'Тестовая компания'})
+        base.StockTests.setUpTestData.__func__(type(self))
+        self.worker.set_password('123456');self.worker.save()
+        job=base.StockTests.make_job(self)
+        result=subprocess.run(['node',str(settings.BASE_DIR/'tests/submission-feedback-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_REPORT_JOB':str(job.pk)},capture_output=True,text=True,timeout=90)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        job.refresh_from_db();self.assertEqual(job.state,'reported');self.assertEqual(job.reports.count(),1)

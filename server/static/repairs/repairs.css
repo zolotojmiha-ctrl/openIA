@@ -21,3 +21,5 @@
 .repair-stock-summary{font-size:12px;min-width:155px;max-width:260px}.repair-stock-summary p{margin:0 0 5px}.repair-stock-summary small{display:block;font-size:11px;overflow-wrap:anywhere}.repair-stock-summary .button.small{font-size:11px;padding:6px 8px;min-height:30px}.repair-mobile-list .repair-stock-summary{max-width:none;padding:8px 0;border-top:1px solid #ddd}
 
 .repair-register tbody.repair-tone-unrepairable,.repair-mobile-item.repair-tone-unrepairable{background:#eceef2;color:#424752}.repair-tone-unrepairable .repair-status-label{color:#424752}.repair-state.unrepairable{background:#eceef2;color:#424752}
+
+.repair-field-page [aria-invalid="true"]{border:2px solid #b42318;background:#fff5f3}.repair-field-page [data-report-errors]:not(:empty){padding:12px;border:1px solid #e7aaa4;background:#fff1ef;border-radius:7px;margin-bottom:15px;color:#8f2020}.repair-field-page [data-report-errors] p{margin:5px 0}
