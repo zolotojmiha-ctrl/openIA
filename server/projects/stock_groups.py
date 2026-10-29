@@ -113,21 +113,21 @@ def values(item):
     return {k:getattr(item,k) for k in (*stock.ITEM_FIELDS,'serial','receipt_origin','electrode_brand','electrode_diameter')}
 
 @transaction.atomic
-def correct_quantity(user,token,target):
+def correct_quantity(user,token,target,note='Корректировка остатка из Excel'):
     actor=stock.manager(user);stock.lock();g=current(actor,token);delta=Decimal(target)-g['quantity']
     if not g['warehouse']:raise ValidationError('Укажите склад для поступления, а не карточку без остатка.')
     if delta==0:return
     if target<g['reserved']:raise ValidationError('Нельзя уменьшить остаток ниже закреплённого количества. Измените распределение.')
     if delta>0:
         data=values(g['item']);data['serial']=''
-        planning.receive(actor,data,g['warehouse'],delta,timezone.localdate(),'Корректировка остатка из Excel',uuid.uuid4())
+        planning.receive(actor,data,g['warehouse'],delta,timezone.localdate(),note,uuid.uuid4())
     else:
         remaining=-delta
         for m in g['members']:
             item=m['item']
             if item.reserved_job_id or m['quantity']<=0:continue
             take=min(remaining,m['quantity'])
-            stock.move(actor,item.pk,'loss',take,g['warehouse'].pk,None,timezone.localdate(),'Корректировка остатка из Excel',uuid.uuid4())
+            stock.move(actor,item.pk,'loss',take,g['warehouse'].pk,None,timezone.localdate(),note,uuid.uuid4())
             remaining-=take
             if not remaining:break
         if remaining:raise ValidationError('Для уменьшения остатка недостаточно свободного количества.')

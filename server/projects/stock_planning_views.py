@@ -16,6 +16,7 @@ from .stock_views import ItemForm, DATE
 from . import stock, stock_planning as planning
 
 class ReceiptForm(ItemForm):
+    return_inventory=forms.BooleanField(required=False,widget=forms.HiddenInput)
     catalogue_item=forms.ModelChoiceField(queryset=None,required=False,widget=forms.HiddenInput)
     catalogue_version=forms.IntegerField(required=False,widget=forms.HiddenInput)
     warehouse=forms.ModelChoiceField(label='На какой склад добавить (место хранения)',queryset=None)
@@ -34,7 +35,7 @@ class ReceiptForm(ItemForm):
 
 @permission_required('stock.manage')
 def receipt(request):
-    initial={}
+    initial={'return_inventory':request.GET.get('return_inventory')=='1'}
     if request.GET.get('warehouse'):
         from django.http import Http404
         try:wid=uuid.UUID(request.GET['warehouse'])
@@ -48,11 +49,16 @@ def receipt(request):
         initial.update({k:getattr(item,k) for k in (*stock.ITEM_FIELDS[:-1],'serial','receipt_origin')})
         if not item.movements.exists() and not item.coupling_id:initial.update(catalogue_item=item,catalogue_version=item.version)
     form=ReceiptForm(request.POST or None,user=request.user,initial=initial);status=200
+    if request.method=='GET' and 'warehouse' not in initial:
+        only=list(form.fields['warehouse'].queryset[:2])
+        if len(only)==1:form.initial['warehouse']=only[0]
     if request.method=='POST' and form.is_valid():
         c=form.cleaned_data
         try:wh=planning.receive(request.user,c,c['warehouse'],c['quantity'],c['date'],c['note'],c['token'])
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
-        else:messages.success(request,'Поступление сохранено. Муфты добавлены поштучно в остатки.');return redirect('stock_detail',pk=wh.pk)
+        else:
+            messages.success(request,'Поступление сохранено. Муфты добавлены поштучно в остатки.')
+            return redirect('stock_inventory') if c.get('return_inventory') else redirect('stock_detail',pk=wh.pk)
     return render(request,'projects/stock_form.html',{'form':form,'title':'Добавить материал / муфты на склад','receipt':True},status=status)
 
 class AllocationForm(forms.Form):

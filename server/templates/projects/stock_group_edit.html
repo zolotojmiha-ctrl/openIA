@@ -1,0 +1,15 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css">
+<a href="{% url 'stock_inventory' %}">← Материалы и остатки</a>
+<h1>Изменить позицию</h1>
+<p>{{ group.item.name }} · {{ group.item.method_label }} · {{ group.warehouse.name|default:'Склад не указан' }}.</p>
+{% if group.warehouse %}
+<form method="post" class="panel">{% csrf_token %}<input type="hidden" name="group" value="{{ token }}">
+<h2>Количество на складе</h2><p>Сейчас {{ group.quantity|floatformat:'-3' }} {{ group.item.get_unit_display }}, закреплено {{ group.reserved|floatformat:'-3' }}. Сохранение оформит корректировку с указанной причиной.</p>
+{{ form.as_p }}<button class="button">Сохранить количество</button></form>
+<p><a class="button secondary" href="{% url 'stock_group_transfer' %}?group={{ token|urlencode }}">Изменить склад — переместить количество</a></p>
+{% endif %}
+<h2>Характеристики и заводские номера</h2>
+{% for m in group.members %}<article class="panel"><p>{{ m.item.name }} · {{ m.item.method_label }} · {{ m.item.length_mm|default_if_none:'—' }} мм · стенка {{ m.item.wall_mm|default_if_none:'—' }} мм{% if m.item.kind == 'coupling' %} · заводской № {{ m.serial|default:'—' }}{% endif %} · {{ m.quantity|floatformat:'-3' }} {{ m.item.get_unit_display }}</p>
+<p><a class="button secondary" href="{% url 'stock_item_edit' m.item.pk %}">Изменить характеристики</a>{% if m.state == 'catalogue' %} <a class="button" href="{% url 'stock_receive' %}?item={{ m.item.pk }}&amp;return_inventory=1">Указать склад и количество</a>{% endif %}</p></article>{% endfor %}
+{% endblock %}

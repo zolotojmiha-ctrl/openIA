@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404,render,redirect
 from django.utils import timezone
-from accounts.permissions import permission_required
+from accounts.permissions import permission_required,permitted
 from accounts.views import audit
 from documents.access import sharing_users
 from repairs.models import Coupling,Job,METHODS
@@ -75,6 +75,11 @@ class ReverseForm(forms.Form):
 
 @login_required
 def home(request):
+    if permitted(request.user,'stock.manage'):return redirect('stock_inventory')
+    return warehouse_list(request)
+
+@login_required
+def warehouse_list(request):
     qs=stock.warehouses(request.user).filter(archived=request.GET.get('archive')=='1').order_by('name')
     return render(request,'projects/stock_home.html',{'warehouses':qs,'archive':request.GET.get('archive')=='1'})
 
@@ -108,7 +113,7 @@ def item_edit(request,pk=None):
     if request.method=='POST' and form.is_valid():
         try:stock.save_item(request.user,pk,form.cleaned_data.get('expected_version'),form.cleaned_data)
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
-        else:return redirect('stock_items')
+        else:return redirect('stock_inventory' if item else 'stock_items')
     return render(request,'projects/stock_form.html',{'form':form,'title':'Изменить номенклатуру' if item else 'Добавить материал / муфту'},status=status)
 
 @permission_required('stock.manage')

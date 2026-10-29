@@ -69,3 +69,20 @@ def transfer(request):
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
         else:messages.success(request,'Перемещение сохранено целиком.');return redirect('stock_detail',pk=c['destination'].pk)
     return render(request,'projects/stock_transfer.html',{'form':form,'group':group,'token':token},status=status)
+
+class QuantityForm(forms.Form):
+    quantity=forms.DecimalField(label='Фактическое количество на этом складе',min_value=0,max_digits=18,decimal_places=3)
+    note=forms.CharField(label='Причина исправления',max_length=1200)
+
+@permission_required('stock.manage')
+def edit(request):
+    token=request.POST.get('group','') if request.method=='POST' else request.GET.get('group','')
+    try:group=service.current(request.user,token)
+    except ValidationError as e:messages.error(request,'; '.join(e.messages));return redirect('stock_inventory')
+    form=QuantityForm(request.POST or None,initial={'quantity':group['quantity']});status=200
+    if request.method=='POST' and form.is_valid():
+        c=form.cleaned_data
+        try:service.correct_quantity(request.user,token,c['quantity'],c['note'])
+        except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
+        else:messages.success(request,'Количество исправлено на выбранном складе.');return redirect('stock_inventory')
+    return render(request,'projects/stock_group_edit.html',{'group':group,'form':form,'token':token},status=status)

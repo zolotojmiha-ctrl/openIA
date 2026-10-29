@@ -1,7 +1,7 @@
 const {chromium}=require('playwright'),assert=require('node:assert/strict');
 (async()=>{const base=process.env.ARMADA_TEST_URL,jobs=JSON.parse(process.env.ARMADA_STOCK_JOBS),browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']}),p=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];p.on('pageerror',e=>errors.push(String(e)));
 await p.goto(base+'/cabinet/login/');await p.locator('[name=phone]').fill('+70000000001');await p.locator('[name=password]').fill('123456');await p.locator('button[type=submit]').click();await p.waitForURL(base+'/cabinet/');
-await p.locator('.sidebar').getByRole('link',{name:'Склады',exact:false}).click();await p.getByRole('link',{name:'Материалы и муфты · наличие',exact:true}).click();assert.equal(await p.locator('tbody>tr').count(),2);
+await p.locator('.sidebar').getByRole('link',{name:'Склады',exact:false}).click();await p.waitForURL('**/stock/inventory/');assert.equal(await p.locator('tbody>tr').count(),2);
 let row=p.locator('tbody>tr').filter({hasText:'Володя Барабинск'});await row.locator('summary').first().click();await row.getByRole('link',{name:'Распределить по дефектам',exact:true}).click();
 await p.getByRole('button',{name:'＋ Ещё назначение',exact:true}).click();assert.equal(await p.locator('[name="form-TOTAL_FORMS"]').inputValue(),'7');
 for(let i=0;i<3;i++){await p.locator('[name="form-'+i+'-job"]').selectOption(jobs[i]);await p.locator('[name="form-'+i+'-quantity"]').fill(String([3,2,1][i]));}
