@@ -18,7 +18,10 @@ from . import services,transport
 
 @login_required
 def home(request):
-    return render(request,'postoffice/home.html',{'boxes':boxes(request.user).order_by('address')})
+    from .site_forms import can_read, visible_requests
+    allowed=can_read(request.user)
+    return render(request,'postoffice/home.html',{'boxes':boxes(request.user).order_by('address'),
+        'can_read_site_requests':allowed,'site_request_unread':visible_requests(request.user).exclude(read_by=request.user).count() if allowed else 0})
 
 @login_required
 @sensitive_post_parameters()

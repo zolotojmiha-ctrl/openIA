@@ -20,6 +20,13 @@ class Command(BaseCommand):
                 try:
                     if not process_one():break
                 except Exception:self.stderr.write('Не удалось обработать почтовую очередь; реквизиты и содержимое не выводятся.');break
+            from postoffice.site_delivery import process_one as deliver_site_request, recover_interrupted, cleanup_expired
+            try:
+                recover_interrupted()
+                if ticks%360==0:cleanup_expired()
+                for _ in range(3):
+                    if not deliver_site_request():break
+            except Exception:self.stderr.write('Не удалось отправить уведомление о заявке с сайта; заявка сохранена в кабинете.')
             from postoffice.provider import process_one as create_mailbox
             try:create_mailbox()
             except Exception:self.stderr.write('Не удалось обработать создание ящика; секреты не выводятся.')

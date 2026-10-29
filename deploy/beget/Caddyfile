@@ -3,6 +3,9 @@
 }
 armada-sibir.ru, www.armada-sibir.ru {
     encode zstd gzip
+    request_body {
+        max_size 6MB
+    }
     header X-Content-Type-Options nosniff
     redir /cabinet* https://app.armada-sibir.ru{uri} 308
     reverse_proxy web:8000

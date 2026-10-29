@@ -3,6 +3,7 @@ from projects import stock_group_views
 from projects import stock_planning_views
 from documents import assembly,deadlines
 from postoffice import provider
+from postoffice import site_forms
 from projects.closure import closure
 from django.urls import path,include
 from accounts import views
@@ -22,6 +23,13 @@ from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('forms/token/',site_forms.token,name='site_form_token'),
+ path('forms/<str:kind>/',site_forms.submit,name='site_form_submit'),
+ path('cabinet/site-requests/',site_forms.listing,name='site_requests'),
+ path('cabinet/site-requests/<uuid:pk>/',site_forms.detail,name='site_request'),
+ path('cabinet/site-requests/<uuid:pk>/resume/',site_forms.attachment,name='site_request_resume'),
+ path('cabinet/site-requests/<uuid:pk>/retry/',site_forms.retry,name='site_request_retry'),
+ path('cabinet/site-requests/<uuid:pk>/delete/',site_forms.delete,name='site_request_delete'),
  path('cabinet/mail/<uuid:pk>/retry-provision/',provider.retry,name='beget_retry'),
  path('cabinet/work/<uuid:contract_id>/areas/<uuid:object_id>/withdraw/',operations.withdraw_publication,name='customer_withdraw'),
  path('cabinet/defects/<uuid:pk>/edit/',defect_actions.edit,name='defect_edit'),

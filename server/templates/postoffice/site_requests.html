@@ -1,0 +1,13 @@
+{% extends 'accounts/base.html' %}
+{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css">
+<a class="back-link" href="{% url 'mail' %}">← Почта</a>
+<h1>Заявки с сайта</h1>
+<p>Анкеты и обращения посетителей. Письма направляются на <strong>info@armada-sibir.ru</strong>; здесь сохраняется отдельная копия обращения.</p>
+{% if not info_connected and user.is_leader %}<p class="notice">Для отправки писем подключите info@armada-sibir.ru в разделе «Почта». Все принятые обращения уже доступны ниже и будут направлены после подключения.</p>{% endif %}
+<form method="get" class="equipment-actions"><label>Тип обращения<select name="kind"><option value="">Все обращения</option>{% for value,label in request_kinds %}<option value="{{ value }}"{% if selected_kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label class="permission"><span>Только непрочитанные</span><input type="checkbox" name="unread" value="1"{% if unread_only %} checked{% endif %}></label><button class="button">Показать</button></form>
+<div class="table-wrap"><table class="equipment-table"><thead><tr><th>Получено</th><th>Обращение</th><th>Контакты</th><th>Доставка на почту</th><th></th></tr></thead><tbody>
+{% for row in page %}<tr><td data-label="Получено">{{ row.created_at|date:'d.m.Y H:i' }}</td><td data-label="Обращение"><a href="{% url 'site_request' row.pk %}">{{ row.get_kind_display }}</a></td><td data-label="Контакты">{{ row.data.name }}<small>{{ row.data.phone }}{% if row.data.email %} · {{ row.data.email }}{% endif %}</small></td><td data-label="Доставка">{{ row.get_delivery_state_display }}</td><td><a class="button action-view" href="{% url 'site_request' row.pk %}">Открыть</a></td></tr>{% empty %}<tr><td colspan="5">По выбранным условиям обращений пока нет.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?kind={{ selected_kind }}&amp;unread={% if unread_only %}1{% endif %}&amp;page={{ page.previous_page_number }}">← Новее</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?kind={{ selected_kind }}&amp;unread={% if unread_only %}1{% endif %}&amp;page={{ page.next_page_number }}">Старше →</a>{% endif %}</nav>{% endif %}
+{% endblock %}

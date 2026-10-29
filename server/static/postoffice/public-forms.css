@@ -1,0 +1,15 @@
+form[data-site-form]{position:relative;min-width:0}
+.form-trap{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap;pointer-events:none}
+form[data-site-form] .form-status:empty{display:none}
+form[data-site-form] .form-status:not(:empty){padding:16px 18px;border-left:3px solid #578474;background:#edf5f0;color:#244d3d;border-radius:7px;line-height:1.6;overflow-wrap:anywhere}
+form[data-site-form] .form-status.form-error{border-color:#ba6363;background:#fff0ef;color:#87363b}
+form[data-site-form] [aria-invalid=true]{border-color:#ba6363;outline:2px solid #f3d9d9;outline-offset:2px}
+form[data-site-form] button:disabled{opacity:.65;cursor:wait}
+form[data-site-form] input[type=file]{min-width:0;max-width:100%;font-size:16px;overflow:hidden}
+form[data-site-form] input[type=file]::file-selector-button{border:1px solid #c5bed0;background:#eeebf3;color:#322a3f;padding:9px 12px;border-radius:5px;margin-right:10px;cursor:pointer}
+.privacy-copy{max-width:900px;padding-bottom:70px;line-height:1.75}
+.privacy-copy h2{margin-top:32px;line-height:1.3}
+.privacy-copy p{overflow-wrap:anywhere}
+.privacy-copy a{text-decoration:underline;text-underline-offset:3px}
+.product-caption{color:#686174;font-size:14px}
+@media(max-width:600px){form[data-site-form] .form-status:not(:empty){padding:12px;font-size:15px}form[data-site-form] input[type=file]::file-selector-button{padding:8px}}

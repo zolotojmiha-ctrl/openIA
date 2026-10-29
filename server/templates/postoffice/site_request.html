@@ -1,0 +1,11 @@
+{% extends 'accounts/base.html' %}
+{% block content %}
+<a class="back-link" href="{% url 'site_requests' %}">← Заявки с сайта</a>
+<h1>{{ row.get_kind_display }}</h1><p class="muted">Получено {{ row.created_at|date:'d.m.Y H:i' }} · № {{ row.id.hex|slice:':12' }}</p>
+<section class="panel">{% for label,value in values %}<div class="row"><div><strong>{{ label }}</strong><p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ value }}</p></div></div>{% endfor %}
+{% if row.resume_name %}<p><a class="button action-view" href="{% url 'site_request_resume' row.pk %}">↓ Резюме: {{ row.resume_name }}</a></p>{% endif %}
+<p class="muted">Согласие получено при отправке. Редакция {{ row.consent_version }}.</p></section>
+<section class="panel"><h2>Письмо на info@armada-sibir.ru</h2><p>{{ row.get_delivery_state_display }}{% if row.sent_at %} · {{ row.sent_at|date:'d.m.Y H:i' }}{% endif %}</p>{% if row.delivery_error %}<p class="notice">{{ row.delivery_error }}</p>{% endif %}
+{% if user.is_leader %}{% if row.delivery_state == 'failed' or row.delivery_state == 'uncertain' %}<form method="post" action="{% url 'site_request_retry' row.pk %}">{% csrf_token %}{% if row.delivery_state == 'uncertain' %}<label class="permission"><span>Проверил(а) info: письмо не получено</span><input type="checkbox" name="checked" value="1" required></label>{% endif %}<button class="button">Повторить отправку письма</button></form>{% endif %}{% endif %}</section>
+{% if user.is_leader %}<details class="quiet-details"><summary>Удаление обращения</summary><p>Будут удалены обращение и резюме из кабинета. Копию письма в info следует удалить отдельно.</p><form method="post" action="{% url 'site_request_delete' row.pk %}" onsubmit="return confirm('Удалить обращение и резюме из кабинета?')">{% csrf_token %}<button class="button action-danger">Удалить обращение</button></form></details>{% endif %}
+{% endblock %}
