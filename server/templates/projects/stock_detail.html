@@ -1,1 +1,41 @@
-{% extends 'accounts/base.html' %}{% block content %}<link rel="stylesheet" href="/static/equipment/equipment.css"><a class="back-link" href="{% url 'stock' %}">← Склады</a><h1>{{ warehouse.name }}</h1><p>{{ warehouse.location }}{% if warehouse.archived %} · В архиве{% endif %}</p><p>Обслуживает участки: {% for o in served_objects %}<a href="{% url 'object_detail' o.pk %}">{{ o.name }}</a>{% if not forloop.last %}; {% endif %}{% empty %}не указаны{% endfor %}</p><p>Бригады: {% for b in served_brigades %}{{ b.name }}{% if not forloop.last %}; {% endif %}{% empty %}не указаны{% endfor %}. Остатки общие для склада.</p><p class="equipment-id">ID склада: {{ warehouse.pk }}</p>{% if can_manage_stock %}<div class="equipment-actions"><a class="button" href="{% url 'stock_receive' %}?warehouse={{ warehouse.pk }}">＋ Добавить на этот склад</a><a class="button secondary" href="{% url 'stock_move' %}?source={{ warehouse.pk }}&kind={% if warehouse.brigade_assignment_id %}return{% else %}transfer{% endif %}">Переместить / выдать / вернуть</a><a class="button secondary" href="{% url 'stock_move' %}?source={{ warehouse.pk }}&kind=consume">Списать на работу</a><a class="button secondary" href="{% url 'stock_edit' warehouse.pk %}">Изменить / архив</a><a class="button secondary" href="{% url 'stock_access' warehouse.pk %}">Открыть просмотр сотрудникам</a></div>{% endif %}<p><a href="{% url 'stock_inventory' %}">Материалы всех складов</a></p><h2>Остатки и назначение</h2>{% include 'projects/stock_inventory_rows.html' %}{% include 'projects/stock_links.html' with kind='balances' %}<h2>История операций</h2><p class="help">История не переписывается. Отмена создаёт обратную запись. Списание конкретной муфты при установке исправляется через результат ремонта.</p>{% for movement in page %}<article class="equipment-history"><strong>{{ movement.date|date:'d.m.Y' }} · {{ movement.get_kind_display }} · {{ movement.quantity|floatformat:'-3' }} {{ movement.item.get_unit_display }}</strong><p>{{ movement.item.name }}{% if movement.source %} · из {{ movement.source.name }}{% endif %}{% if movement.destination %} → {{ movement.destination.name }}{% endif %}{% if movement.automatic %} · По результату ремонта{% endif %}</p><p>{{ movement.note }}</p><small>{{ movement.created_by.full_name }}</small>{% if can_manage_stock and not movement.automatic and not movement.reverses_id %}<p><a class="button secondary small" href="{% url 'stock_reverse' movement.pk %}">Отменить с пояснением</a></p>{% endif %}</article>{% empty %}<p>Доступных операций нет.</p>{% endfor %}{% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}{% include 'projects/stock_links.html' with kind='movements' %}{% endblock %}
+{% extends 'accounts/base.html' %}
+{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css">
+<div class="stock-workspace">
+{% include 'projects/stock_navigation.html' with stock_section='warehouses' %}
+<a class="back-link" href="{% url 'stock_warehouses' %}">← Все склады</a>
+<div class="page-head"><div><h1>{{ warehouse.name }}</h1><p class="warehouse-address">{{ warehouse.location|default:'Адрес пока не указан' }}</p></div><span class="warehouse-status">{% if warehouse.archived %}Архив{% else %}Действующий{% endif %}</span></div>
+{% if can_manage_stock %}
+<div class="stock-actions">
+  <a class="button" href="{% url 'stock_receive' %}?warehouse={{ warehouse.pk }}">＋ Добавить на этот склад</a>
+  <a class="button action-edit" href="{% url 'stock_edit' warehouse.pk %}">Изменить склад</a>
+  <a class="button action-move" href="{% url 'stock_move' %}?source={{ warehouse.pk }}&amp;kind={% if warehouse.brigade_assignment_id %}return{% else %}transfer{% endif %}">Переместить / выдать / вернуть</a>
+  <a class="button action-view" href="{% url 'stock_move' %}?source={{ warehouse.pk }}&amp;kind=consume">Списать на работу</a>
+  <a class="button action-view" href="{% url 'stock_access' warehouse.pk %}">Открыть просмотр сотрудникам</a>
+</div>
+{% endif %}
+<section class="panel warehouse-links-panel">
+  <div class="section-heading"><h2>Участки этого склада</h2>{% if can_manage_stock and not warehouse.archived %}<a class="button action-move" href="{% url 'stock_edit' warehouse.pk %}#warehouse-areas">＋ Добавить участок</a>{% endif %}</div>
+  <div class="warehouse-chips">{% for area in served_objects %}<span class="warehouse-chip"><a href="{% url 'object_detail' area.pk %}">{{ area.name }}</a></span>{% empty %}<span class="muted">Нет доступных участков</span>{% endfor %}</div>
+  <div class="warehouse-scope"><div><h3>Бригады</h3><div class="warehouse-chips">{% for brigade in served_brigades %}<span class="warehouse-chip">{{ brigade.name }}</span>{% empty %}<span class="muted">Нет доступных бригад</span>{% endfor %}</div></div><div><h3>Учёт остатков</h3><p class="muted">Остатки общие для склада и не дублируются по участкам.</p></div></div>
+  {% if can_manage_stock and warehouse.brigade_assignment_id %}<p class="notice">Этот склад оформлен как отдельный остаток у бригады. Добавление участка не отменяет ограничений выдачи и закрепления муфт по назначению бригады.</p>{% endif %}
+</section>
+{% if can_manage_stock %}<p><a class="button action-view" href="{% url 'stock_inventory' %}">Материалы всех складов</a></p>{% endif %}
+<h2>Остатки и назначение</h2>
+{% include 'projects/stock_inventory_rows.html' %}
+{% include 'projects/stock_links.html' with kind='balances' %}
+<h2>История операций</h2>
+<p class="help">История не переписывается. Отмена создаёт обратную запись. Списание конкретной муфты при установке исправляется через результат ремонта.</p>
+{% for movement in page %}
+<article class="equipment-history">
+  <strong>{{ movement.date|date:'d.m.Y' }} · {{ movement.get_kind_display }} · {{ movement.quantity|floatformat:'-3' }} {{ movement.item.get_unit_display }}</strong>
+  <p>{{ movement.item.name }}{% if movement.source %} · из {{ movement.source.name }}{% endif %}{% if movement.destination %} → {{ movement.destination.name }}{% endif %}{% if movement.automatic %} · По результату ремонта{% endif %}</p>
+  <p>{{ movement.note }}</p><small>{{ movement.created_by.full_name }}</small>
+  {% if can_manage_stock and not movement.automatic and not movement.reverses_id %}<p><a class="button action-view small" href="{% url 'stock_reverse' movement.pk %}">Отменить с пояснением</a></p>{% endif %}
+</article>
+{% empty %}<p>Доступных операций нет.</p>{% endfor %}
+{% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}
+{% include 'projects/stock_links.html' with kind='movements' %}
+<details class="quiet-details"><summary>Служебные сведения</summary><p class="equipment-id">ID склада: {{ warehouse.pk }}</p></details>
+</div>
+{% endblock %}

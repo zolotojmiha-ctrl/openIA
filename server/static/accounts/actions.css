@@ -1,0 +1,61 @@
+/* Colour supplements the action label; every control remains named. */
+:root{--action-edit-ink:#245481;--action-edit-bg:#edf4fc;--action-edit-line:#bed2e8;--action-move-ink:#21625e;--action-move-bg:#eaf5f2;--action-move-line:#b8d9cf;--action-view-ink:#485568;--action-view-bg:#f3f5f8;--action-view-line:#d5dce5;--action-danger-ink:#a33338;--action-danger-bg:#fff1f1;--action-danger-line:#e5bfc2}
+.button.action-edit,.button.action-move,.button.action-view,.button.action-danger,.stock-navigation a,.stock-workspace .stock-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 15px;font-size:13px;line-height:1.35;font-weight:550;text-align:center;text-decoration:none;border-radius:9px;max-width:100%}
+.button.action-edit{color:var(--action-edit-ink);background:var(--action-edit-bg);border-color:var(--action-edit-line)}
+.button.action-edit:hover{background:#e0ecfa;border-color:#88afd4}
+.button.action-move{color:var(--action-move-ink);background:var(--action-move-bg);border-color:var(--action-move-line)}
+.button.action-move:hover{background:#daeee7;border-color:#7ebaaa}
+.button.action-view{color:var(--action-view-ink);background:var(--action-view-bg);border-color:var(--action-view-line)}
+.button.action-view:hover{background:#e8edf3;border-color:#abb9c9}
+.button.action-danger{color:var(--action-danger-ink);background:var(--action-danger-bg);border-color:var(--action-danger-line)}
+.button.action-danger:hover{background:#fbe1e3;border-color:#cf8a91}
+.button.action-edit:focus-visible,.button.action-move:focus-visible,.button.action-view:focus-visible,.button.action-danger:focus-visible,.stock-navigation a:focus-visible{outline:3px solid #6551a6;outline-offset:3px}
+.stock-workspace{min-width:0}
+.stock-workspace .stock-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0}
+.stock-workspace .stock-actions-secondary{margin-top:0}
+.stock-workspace .stock-actions .stock-delete-action{margin-left:auto}
+.stock-navigation{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px}
+.stock-navigation a{border:1px solid #d5dce5;background:#fff;color:#485568}
+.stock-navigation a[aria-current="page"]{background:#eee9f8;border-color:#b4a6d7;color:#57418c}
+.stock-navigation a:hover{border-color:#a89ac8;background:#f4f0fb}
+.warehouse-card .section-heading{margin-top:0;align-items:flex-start}
+.warehouse-card h2{margin:0 0 7px}
+.warehouse-card .section-heading>div,.stock-workspace .page-head>div{min-width:0}
+.warehouse-card h2{overflow-wrap:anywhere}
+.warehouse-card h2 a:hover{color:#6551a6}
+.warehouse-address{color:#626575;margin:0;overflow-wrap:anywhere}
+.warehouse-status{padding:5px 10px;background:#eef2f6;color:#485568;border-radius:20px;font-size:12px;white-space:nowrap}
+.warehouse-scope{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;margin:19px 0}
+.warehouse-scope h3{color:#626575;font-size:12px;margin-bottom:9px}
+.warehouse-chips{display:flex;flex-wrap:wrap;gap:7px}
+.warehouse-chip{display:inline-block;background:#f3f5fa;border:1px solid #e0e5ed;border-radius:7px;padding:6px 10px;font-size:13px;overflow-wrap:anywhere;max-width:100%}
+.warehouse-chip a{text-decoration:underline;text-underline-offset:3px}
+.warehouse-card .stock-actions{border-top:1px solid #e8ebf1;padding-top:17px;margin-bottom:0}
+.warehouse-links-panel{border-top:3px solid #b8d9cf}
+.warehouse-links-panel .section-heading{margin-top:0}
+.warehouse-field{margin:0 0 22px}
+.equipment-form:has(.warehouse-field)>.button{min-height:44px}
+.warehouse-field>label{display:block;margin-bottom:6px}
+.warehouse-field small{display:block;color:#626575;margin-top:8px;line-height:1.5}
+fieldset.warehouse-field{border:1px solid #d8dfeb;border-radius:10px;padding:16px;min-width:0;scroll-margin-top:25px}
+.warehouse-field legend{padding:0 6px;font-weight:600;font-size:14px}
+.warehouse-field:target{border-color:#6551a6;outline:3px solid #eee9f8}
+.warehouse-field #id_served_objects,.warehouse-field #id_served_brigades{display:grid;gap:6px}
+.warehouse-field #id_served_objects label,.warehouse-field #id_served_brigades label{display:flex;align-items:center;gap:10px;padding:11px 12px;min-height:44px;margin:0;background:#f7f9fc;border:1px solid #e2e7f0;border-radius:8px;font-size:14px;font-weight:400;overflow-wrap:anywhere}
+.warehouse-field input[type=checkbox]{width:19px;height:19px;min-height:19px;margin:0;flex:0 0 19px;accent-color:#6551a6}
+.warehouse-field label:has(input:checked){background:#eee9f8;border-color:#b4a6d7}
+.warehouse-advanced{border-top:1px solid #e0e5ed;margin:8px 0 23px;padding-top:12px}
+.warehouse-advanced>summary{cursor:pointer;color:#485568;padding:10px 0}
+.warehouse-advanced .warehouse-field{margin-top:16px}
+.warehouse-archive-control{display:flex;align-items:center;gap:10px}
+.warehouse-archive-control input{width:19px;height:19px;min-height:19px;margin:0}
+@media(max-width:700px){
+.stock-workspace .stock-actions{gap:8px}
+.stock-workspace .stock-actions .button{flex:1 1 145px;min-width:0;padding:11px 12px}
+.stock-workspace .stock-actions .stock-delete-action{margin-left:0}
+.stock-navigation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.stock-navigation a{padding:11px 9px;font-size:12px}
+.warehouse-scope{grid-template-columns:minmax(0,1fr);gap:17px}
+.warehouse-card .section-heading,.warehouse-links-panel .section-heading{flex-wrap:wrap}
+fieldset.warehouse-field{padding:11px}
+}

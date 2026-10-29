@@ -1,0 +1,19 @@
+{{ form.non_field_errors }}
+{% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
+<p class="muted">Укажите место хранения и отметьте участки, которые обслуживает склад.</p>
+{% if warehouse.brigade_assignment_id %}<p class="notice">Сейчас включён отдельный учёт у бригады. Обслуживаемые участки можно дополнить, но ограничения назначения бригады сохраняются.</p>{% endif %}
+{% for field in form.visible_fields %}
+  {% if field.name == 'served_objects' or field.name == 'served_brigades' %}
+    <fieldset class="warehouse-field"{% if field.name == 'served_objects' %} id="warehouse-areas" tabindex="-1"{% endif %}>
+      <legend>{{ field.label }}</legend>
+      {{ field }}{{ field.errors }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+    </fieldset>
+  {% elif field.name != 'brigade_assignment' and field.name != 'archived' %}
+    <div class="warehouse-field">{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}</div>
+  {% endif %}
+{% endfor %}
+<details class="warehouse-advanced"{% if form.brigade_assignment.errors or form.archived.errors %} open{% endif %}>
+  <summary>Учёт у бригады и архив</summary>
+  <div class="warehouse-field">{{ form.brigade_assignment.as_field_group }}</div>
+  <div class="warehouse-field"><label class="warehouse-archive-control">{{ form.archived }} {{ form.archived.label }}</label>{{ form.archived.errors }}<small>Архивирование доступно после освобождения складского остатка.</small></div>
+</details>

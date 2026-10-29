@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from django.shortcuts import get_object_or_404,render,redirect
 from django.utils import timezone
 from accounts.permissions import permission_required,permitted
@@ -80,7 +80,9 @@ def home(request):
 
 @login_required
 def warehouse_list(request):
-    qs=stock.warehouses(request.user).filter(archived=request.GET.get('archive')=='1').order_by('name')
+    qs=stock.warehouses(request.user).filter(archived=request.GET.get('archive')=='1').order_by('name').prefetch_related(
+        Prefetch('served_objects',queryset=visible_objects(request.user).order_by('name'),to_attr='display_objects'),
+        Prefetch('served_brigades',queryset=visible_crews(request.user).order_by('name'),to_attr='display_brigades'))
     return render(request,'projects/stock_home.html',{'warehouses':qs,'archive':request.GET.get('archive')=='1'})
 
 @login_required
@@ -99,7 +101,7 @@ def warehouse_edit(request,pk=None):
         try:row=stock.save_warehouse(request.user,pk,form.cleaned_data.get('expected_version'),form.cleaned_data)
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
         else:return redirect('stock_detail',pk=row.pk)
-    return render(request,'projects/stock_form.html',{'form':form,'warehouse':wh,'warehouse_config':True,'title':'Изменить склад / архив' if wh else 'Добавить склад или место выдачи бригаде'},status=status)
+    return render(request,'projects/stock_form.html',{'form':form,'warehouse':wh,'warehouse_config':True,'title':'Изменить склад' if wh else 'Добавить склад'},status=status)
 
 @permission_required('stock.manage')
 def item_list(request):

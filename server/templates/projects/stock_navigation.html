@@ -1,0 +1,4 @@
+<nav class="stock-navigation" aria-label="Разделы складского учёта">
+  {% if can_manage_stock %}<a href="{% url 'stock_inventory' %}"{% if stock_section == 'materials' %} aria-current="page"{% endif %}>Материалы и остатки</a>{% endif %}
+  <a href="{% url 'stock_warehouses' %}"{% if stock_section == 'warehouses' %} aria-current="page"{% endif %}>{% if can_manage_stock %}Настроить склады{% else %}Склады{% endif %}</a>
+</nav>

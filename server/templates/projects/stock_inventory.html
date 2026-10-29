@@ -1,30 +1,33 @@
 {% extends 'accounts/base.html' %}{% block content %}
 <link rel="stylesheet" href="/static/equipment/equipment.css">
-<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}"><div class="stock-page"><h1>Склады · материалы и остатки</h1>
+<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}"><div class="stock-page stock-workspace">{% include 'projects/stock_navigation.html' with stock_section='materials' %}<h1>Склады · материалы и остатки</h1>
 {% if mode %}
 <link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
 <form method="post" data-stock-grid data-mode="{{ mode }}" data-return-url="{{ return_url }}">
 {% csrf_token %}<input type="hidden" name="operation" value="{{ operation }}">
 <div class="equipment-actions stock-grid-toolbar">
-<button class="button" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button>
+<button class="button{% if mode == 'delete' %} action-danger{% endif %}" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button>
 <a class="button secondary" href="{{ return_url }}" data-grid-cancel>Отмена</a>
 <span data-grid-count>{% if mode == 'edit' %}Изменяйте поля прямо в таблице.{% else %}Выберите позиции для удаления.{% endif %}</span>
 </div>
 <div class="notice" role="alert" data-grid-errors hidden></div>
 {% if page.has_other_pages %}<p>Страница {{ page.number }} из {{ page.paginator.num_pages }}. Изменения этой страницы сохраняются вместе.</p>{% endif %}
 {% include 'projects/stock_inline_rows.html' %}
-<div class="equipment-actions"><button class="button" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button><a href="{{ return_url }}" data-grid-cancel>Отмена</a></div>
+<div class="equipment-actions"><button class="button{% if mode == 'delete' %} action-danger{% endif %}" type="submit">{% if mode == 'edit' %}Сохранить изменения{% else %}Удалить выбранные{% endif %}</button><a href="{{ return_url }}" data-grid-cancel>Отмена</a></div>
 </form>
 <script src="/static/accounts/stock-inline.js?v={{ release_version }}" defer></script>
 {% else %}
-<div class="equipment-actions">
-<a class="button" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=edit">Редактировать список</a>
-<a class="button secondary" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить</a>
-<a class="button secondary" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a>
-<a class="button secondary" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
-<a class="button secondary" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
-<a class="button secondary" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>
-<a href="{% url 'stock_warehouses' %}">Настроить склады</a> <a href="{% url 'stock_items' %}">Справочник карточек / архив</a>
+<div class="stock-actions">
+<a class="button" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a>
+<a class="button action-edit" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=edit">Редактировать список</a>
+<a class="button action-move" href="{% url 'stock_move' %}">Переместить материалы</a>
+<a class="button action-danger stock-delete-action" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить</a>
+</div>
+<div class="stock-actions stock-actions-secondary">
+<a class="button action-view" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
+<a class="button action-view" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
+<a class="button action-view" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>
+<a class="button action-view" href="{% url 'stock_items' %}">Справочник карточек / архив</a>
 </div>
 <p>Закреплённые муфты остаются в складском остатке до монтажа. Материалы одного типоразмера на разных складах показаны разными строками.</p>
 <form method="get" class="equipment-actions stock-filters">

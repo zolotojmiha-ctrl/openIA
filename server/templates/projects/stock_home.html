@@ -1,1 +1,38 @@
-{% extends 'accounts/base.html' %}{% block content %}<link rel="stylesheet" href="/static/equipment/equipment.css"><div class="page-head"><div><h1>{% if can_manage_stock %}Настройка складов{% else %}Склады{% endif %}</h1><p class="muted">Места хранения, адреса и обслуживаемые бригады</p></div>{% if can_manage_stock %}<a class="button" href="{% url 'stock_new' %}">＋ Добавить склад</a>{% endif %}</div>{% if can_manage_stock %}<div class="equipment-actions"><a class="button" href="{% url 'stock_receive' %}">＋ Добавить на склад</a><a class="button secondary" href="{% url 'stock_inventory' %}">Материалы и муфты · наличие</a><a class="button secondary" href="{% url 'stock_export' 'balances' %}">↓ Остатки в Excel</a></div>{% endif %}<p><a href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a> · <a href="{% url 'stock_move' %}">Другие складские операции</a></p>{% include 'projects/stock_links.html' with kind='warehouses' %}<p><a href="{% url 'stock_warehouses' %}{% if not archive %}?archive=1{% endif %}">{% if archive %}← Действующие склады{% else %}Архив складов →{% endif %}</a></p>{% for wh in warehouses %}<article class="panel"><div class="section-heading"><div><h2>{{ wh.name }}</h2><p>{{ wh.location|default:'Место не указано' }}{% if wh.brigade_assignment_id %} · Материалы у бригады{% endif %}</p></div><a class="button secondary" href="{% url 'stock_detail' wh.pk %}">Остатки и история →</a></div></article>{% empty %}<p>Нет доступных складов. {% if can_manage_stock %}Создайте склад; для выдачи бригаде создайте отдельное место хранения с её назначением.{% endif %}</p>{% endfor %}{% endblock %}
+{% extends 'accounts/base.html' %}
+{% block content %}
+<link rel="stylesheet" href="/static/equipment/equipment.css">
+<div class="stock-workspace">
+{% include 'projects/stock_navigation.html' with stock_section='warehouses' %}
+<div class="page-head">
+  <div><h1>Склады и участки</h1><p class="muted">Адреса складов, обслуживаемые участки и бригады</p></div>
+  {% if can_manage_stock %}<a class="button" href="{% url 'stock_new' %}">＋ Добавить склад</a>{% endif %}
+</div>
+<div class="stock-actions">
+  {% if can_manage_stock %}<a class="button action-view" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>{% endif %}
+  <a class="button action-view" href="{% url 'stock_warehouses' %}{% if not archive %}?archive=1{% endif %}">{% if archive %}← Действующие склады{% else %}Архив складов{% endif %}</a>
+</div>
+{% for wh in warehouses %}
+<article class="panel warehouse-card">
+  <div class="section-heading">
+    <div><h2><a href="{% url 'stock_detail' wh.pk %}">{{ wh.name }}</a></h2><p class="warehouse-address">{{ wh.location|default:'Адрес пока не указан' }}</p></div>
+    <span class="warehouse-status">{% if wh.archived %}Архив{% else %}Действующий{% endif %}</span>
+  </div>
+  <div class="warehouse-scope">
+    <div><h3>Обслуживаемые участки</h3><div class="warehouse-chips">{% for area in wh.display_objects %}<span class="warehouse-chip">{{ area.name }}</span>{% empty %}<span class="muted">Нет доступных участков</span>{% endfor %}</div></div>
+    <div><h3>Обслуживаемые бригады</h3><div class="warehouse-chips">{% for brigade in wh.display_brigades %}<span class="warehouse-chip">{{ brigade.name }}</span>{% empty %}<span class="muted">Нет доступных бригад</span>{% endfor %}</div></div>
+  </div>
+  {% if can_manage_stock and wh.brigade_assignment_id %}<p class="help">Отдельный учёт материалов, выданных бригаде. Действуют ограничения назначения бригады.</p>{% endif %}
+  <div class="stock-actions">
+    <a class="button action-view" href="{% url 'stock_detail' wh.pk %}">Остатки и история →</a>
+    {% if can_manage_stock %}
+      <a class="button action-edit" href="{% url 'stock_edit' wh.pk %}">Изменить склад</a>
+      {% if not wh.archived %}<a class="button action-move" href="{% url 'stock_edit' wh.pk %}#warehouse-areas">＋ Добавить участок</a>{% endif %}
+    {% endif %}
+  </div>
+</article>
+{% empty %}
+<div class="panel"><p>Нет доступных складов.</p>{% if can_manage_stock %}<a class="button" href="{% url 'stock_new' %}">＋ Добавить склад</a>{% endif %}</div>
+{% endfor %}
+{% include 'projects/stock_links.html' with kind='warehouses' %}
+</div>
+{% endblock %}
