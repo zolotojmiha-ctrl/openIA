@@ -1,4 +1,4 @@
 <nav class="stock-navigation" aria-label="Разделы складского учёта">
-  {% if can_manage_stock %}<a href="{% url 'stock_inventory' %}"{% if stock_section == 'materials' %} aria-current="page"{% endif %}>Материалы и остатки</a>{% endif %}
-  <a href="{% url 'stock_warehouses' %}"{% if stock_section == 'warehouses' %} aria-current="page"{% endif %}>{% if can_manage_stock %}Настроить склады{% else %}Склады{% endif %}</a>
+  {% if can_manage_stock %}{% if stock_section == 'materials' %}<span aria-current="page">Материалы и остатки</span>{% else %}<a href="{% url 'stock_inventory' %}">Материалы и остатки</a>{% endif %}{% endif %}
+  {% if stock_section == 'warehouses' %}<span aria-current="page">{% if can_manage_stock %}Настроить склады{% else %}Склады{% endif %}</span>{% else %}<a href="{% url 'stock_warehouses' %}">{% if can_manage_stock %}Настроить склады{% else %}Склады{% endif %}</a>{% endif %}
 </nav>

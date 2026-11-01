@@ -1,6 +1,6 @@
 /* Colour supplements the action label; every control remains named. */
 :root{--action-edit-ink:#245481;--action-edit-bg:#edf4fc;--action-edit-line:#bed2e8;--action-move-ink:#21625e;--action-move-bg:#eaf5f2;--action-move-line:#b8d9cf;--action-view-ink:#485568;--action-view-bg:#f3f5f8;--action-view-line:#d5dce5;--action-danger-ink:#a33338;--action-danger-bg:#fff1f1;--action-danger-line:#e5bfc2}
-.button.action-edit,.button.action-move,.button.action-view,.button.action-danger,.stock-navigation a,.stock-workspace .stock-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 15px;font-size:13px;line-height:1.35;font-weight:550;text-align:center;text-decoration:none;border-radius:9px;max-width:100%}
+.button.action-edit,.button.action-move,.button.action-view,.button.action-danger,.stock-navigation a,.stock-navigation>[aria-current="page"],.stock-workspace .stock-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 15px;font-size:13px;line-height:1.35;font-weight:550;text-align:center;text-decoration:none;border-radius:9px;max-width:100%}
 .button.action-edit{color:var(--action-edit-ink);background:var(--action-edit-bg);border-color:var(--action-edit-line)}
 .button.action-edit:hover{background:#e0ecfa;border-color:#88afd4}
 .button.action-move{color:var(--action-move-ink);background:var(--action-move-bg);border-color:var(--action-move-line)}
@@ -16,7 +16,7 @@
 .stock-workspace .stock-actions .stock-delete-action{margin-left:auto}
 .stock-navigation{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px}
 .stock-navigation a{border:1px solid #d5dce5;background:#fff;color:#485568}
-.stock-navigation a[aria-current="page"]{background:#eee9f8;border-color:#b4a6d7;color:#57418c}
+.stock-navigation>[aria-current="page"]{background:transparent;border:0;border-bottom:3px solid #6551a6;border-radius:0;color:#57418c;cursor:default}
 .stock-navigation a:hover{border-color:#a89ac8;background:#f4f0fb}
 .warehouse-card .section-heading{margin-top:0;align-items:flex-start}
 .warehouse-card h2{margin:0 0 7px}
@@ -54,7 +54,7 @@ fieldset.warehouse-field{border:1px solid #d8dfeb;border-radius:10px;padding:16p
 .stock-workspace .stock-actions .button{flex:1 1 145px;min-width:0;padding:11px 12px}
 .stock-workspace .stock-actions .stock-delete-action{margin-left:0}
 .stock-navigation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-.stock-navigation a{padding:11px 9px;font-size:12px}
+.stock-navigation a,.stock-navigation>[aria-current="page"]{padding:11px 9px;font-size:12px}
 .warehouse-scope{grid-template-columns:minmax(0,1fr);gap:17px}
 .warehouse-card .section-heading,.warehouse-links-panel .section-heading{flex-wrap:wrap}
 fieldset.warehouse-field{padding:11px}
