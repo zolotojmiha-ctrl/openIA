@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import timedelta
 from django import forms
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404,redirect,render
@@ -89,7 +90,9 @@ def detail(request,pk):
         bound=form(request.POST,**({'rental':rental} if action=='finance_link' else {}))
         if bound.is_valid():
             try:
-                if action=='day':rentals.save_day(request.user,pk,**bound.cleaned_data)
+                if action=='day':
+                    saved=rentals.save_day(request.user,pk,**bound.cleaned_data)
+                    messages.success(request,f'Отметка за {saved.date:%d.%m.%Y} сохранена: {saved.get_kind_display()}.')
                 elif action=='rate':rentals.add_rate(request.user,pk,**bound.cleaned_data)
                 elif action=='payment':rentals.payment(request.user,pk,**bound.cleaned_data)
                 elif action=='finance_link':rentals.link_finance(request.user,pk,**bound.cleaned_data)
@@ -109,7 +112,7 @@ def detail(request,pk):
         chart.append({'label':label,'count':count})
     high=max([d['count'] for d in chart]+[1])
     for bar in chart:bar['percent']=round(bar['count']/high*100)
-    return render(request,'projects/rental_detail.html',{'chart':chart,'finance_link_form':finance_link,'can_write_rental_finance':can_write,'rental':rental,'days':days,'missing':missing,'day_form':day,'rate_form':rate,'payment_form':payment,'period_form':period,'can_manage_rental':can_manage,'rental_financial':financial,'total':rentals.totals(rental) if financial else None,'payments':rental.payments.all() if financial else [],'periods':rental.periods.all() if financial else []})
+    return render(request,'projects/rental_detail.html',{'can_record_rental':can_manage or bool(missing) or any(d.can_change for d in days),'chart':chart,'finance_link_form':finance_link,'can_write_rental_finance':can_write,'rental':rental,'days':days,'missing':missing,'day_form':day,'rate_form':rate,'payment_form':payment,'period_form':period,'can_manage_rental':can_manage,'rental_financial':financial,'total':rentals.totals(rental) if financial else None,'payments':rental.payments.all() if financial else [],'periods':rental.periods.all() if financial else []})
 
 @login_required
 @require_POST
