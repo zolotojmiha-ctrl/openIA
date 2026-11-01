@@ -16,7 +16,7 @@ def report_work(user,job_id,action,data):
     stored=[]
     try:
         with transaction.atomic():
-            current=User.objects.select_for_update().get(pk=user.pk)
+            current=User.objects.select_for_update(no_key=True).get(pk=user.pk)
             if not current.is_active or current.session_version!=user.session_version:raise ValidationError('Доступ изменился. Войдите заново.')
             if action in ('result','correction') or data.get('couplings'):
                 from projects.stock import lock as stock_lock

@@ -24,7 +24,7 @@
 <a class="button action-danger stock-delete-action" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить</a>
 </div>
 <div class="stock-actions stock-actions-secondary">
-<a class="button action-view" href="{% url 'repair_materials' %}">Потребность и расход материалов</a>
+<a class="button action-view" href="{% url 'repair_materials' %}">Потребность на работы</a>
 <a class="button action-view" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
 <a class="button action-view" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
 <a class="button action-view" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>

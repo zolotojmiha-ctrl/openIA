@@ -47,10 +47,29 @@ def listing(request):
     if permitted(request.user,'stock.manage'):
         from .p1_composition import choices
         for row in rows:row['assemblies']=choices(row['job'],request.user) if row['job'].method=='p1' else []
-    ledger=RepairConsumption.objects.filter(job_id__in=ids).select_related('job__section','report').order_by('-updated_at')[:100]
-    actual=list(consumption_movements(ids).order_by('-created_at')[:100])
-    for row in actual:row.repair_job=row.job or row.reverses.job
-    return render(request,'projects/repair_materials.html',{'actual':actual,'rows':rows,'ledger':ledger,'can_manage_materials':permitted(request.user,'stock.manage')})
+    grouped={};issues=[]
+    for row in rows:
+        job=row['job'];label='; '.join('км '+d.km+' № '+d.number for d in job.active_defects)
+        if row['issues']:issues.append({'job':job,'label':label,'reason':friendly_issue(job,row['issues']),'missing_profile':any('площадь покрытия' in s for s in row['issues'])})
+        for n in row['couplings']+row['materials']:
+            key=(n['name'],n['unit']);r=grouped.setdefault(key,{'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[]})
+            r['need']+=Decimal(n['need']);r['missing']+=Decimal(n['missing'])
+            if n['missing']:r['jobs'].append({'job':job,'label':label,'quantity':n['missing']})
+    return render(request,'projects/repair_materials.html',{'grouped':list(grouped.values()),'issues':issues,'rows':rows,'can_manage_materials':permitted(request.user,'stock.manage')})
+
+def friendly_issue(job,issues):
+    if not job.section.diameter_mm:return 'Нужно указать диаметр трубопровода.'
+    if not job.wall_mm:return 'Нужно указать толщину стенки конструкции.'
+    if any('площадь покрытия' in s for s in issues):return 'Для этого типоразмера ещё не заданы нормы изоляции.'
+    return 'Нужно уточнить размеры конструкции или норму расхода.'
+
+def job_panel(user,job):
+    if not materials.can_read(user):return None
+    total={}
+    for m in consumption_movements([job.pk]):
+        key=m.item_id;r=total.setdefault(key,{'name':m.item.name,'unit':m.item.get_unit_display(),'quantity':Decimal(0)})
+        r['quantity']+=-m.quantity if m.kind=='reversal' else m.quantity
+    return {'totals':[r for r in total.values() if r['quantity']],'entry':RepairConsumption.objects.filter(job=job).first(),'can_manage':permitted(user,'stock.manage')}
 
 @login_required
 def profiles(request,pk=None):
@@ -72,7 +91,7 @@ def retry(request,pk):
     job=get_object_or_404(visible_jobs(request.user),pk=pk)
     try:materials.retry(request.user,job)
     except ValidationError as e:return HttpResponse('; '.join(e.messages),status=400)
-    return redirect('repair_materials')
+    return redirect('repair_detail',pk=job.pk)
 
 @login_required
 def export(request):

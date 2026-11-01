@@ -1,5 +1,5 @@
 {% extends 'accounts/base.html' %}
-{% block content %}
+{% block content %}{% if can_read_materials %}<p><a class="button action-view" href="{% url 'repair_materials' %}">Потребность на работы</a></p>{% endif %}{% if can_manage_stock %}<p><a class="button action-edit" href="{% url 'coating_profiles' %}">Нормы расхода материалов</a></p>{% endif %}
 <link rel="stylesheet" href="/static/equipment/equipment.css">
 <div class="stock-workspace">
 {% include 'projects/stock_navigation.html' with stock_section='warehouses' %}

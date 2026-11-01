@@ -62,6 +62,7 @@ def filtered(user,params):
     else:qs=qs.exclude(status='archived')
     q=str(params.get('q','')).strip()[:150]
     if q:qs=qs.filter(Q(name__icontains=q)|Q(inventory_number__icontains=q)|Q(registration_number__icontains=q)|Q(category__icontains=q))
+    if params.get('ownership') in ('own','rent','subcontractor'):qs=qs.filter(ownership=params['ownership'])
     if params.get('state') in dict(Equipment._meta.get_field('status').choices):qs=qs.filter(status=params['state'])
     if params.get('object'):
         from uuid import UUID
@@ -90,8 +91,11 @@ def listing(request):
     qs=filtered(request.user,request.GET);page=Paginator(qs,25).get_page(request.GET.get('page'))
     location_map={}
     for row in service.current(service.placements(request.user)).filter(equipment__in=page.object_list):location_map.setdefault(row.equipment_id,[]).append(row)
-    rows=[{'item':item,'locations':location_map.get(item.pk,[])} for item in page.object_list]
-    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
+    from . import rentals
+    rental_map={}
+    for r in rentals.visible(request.user).filter(placement__equipment__in=page.object_list,placement__start_date__lte=timezone.localdate()).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=timezone.localdate())):rental_map.setdefault(r.placement.equipment_id,[]).append(r)
+    rows=[{'item':item,'locations':location_map.get(item.pk,[]),'has_rental':item.pk in rental_map} for item in page.object_list]
+    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','ownership':request.GET.get('ownership',''),'ownerships':Equipment._meta.get_field('ownership').choices,'states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
 
 @login_required
 def detail(request,pk):
@@ -105,7 +109,21 @@ def detail(request,pk):
         days=(link.expires_on-timezone.localdate()).days if link.expires_on else None
         link.deadline_state='expired' if days is not None and days<0 else 'soon' if days is not None and days<=link.days_before else 'valid' if days is not None else 'none'
         link.deadline_label={'expired':'Просрочен','soon':'Скоро истекает','valid':'Действует','none':'Без срока'}[link.deadline_state]
-    return render(request,'projects/equipment_detail.html',{'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
+    from . import rentals,rental_views
+    available=rentals.visible(request.user).filter(placement__equipment=item).order_by('-placement__start_date','pk')
+    today=timezone.localdate()
+    active=available.filter(placement__start_date__lte=today).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=today)).first()
+    panel={}
+    if request.method=='POST':
+        from django.http import Http404
+        try:rental_id=UUID(request.POST.get('rental_id',''))
+        except (ValueError,TypeError):raise Http404
+        active=get_object_or_404(available,pk=rental_id)
+    if active:
+        panel=rental_views.detail(request,active.pk,embedded=True)
+        from django.http.response import HttpResponseBase
+        if isinstance(panel,HttpResponseBase):return panel
+    return render(request,'projects/equipment_detail.html',{**panel,'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):
@@ -122,6 +140,10 @@ def edit(request,pk=None):
 def assign(request,pk):
     item=get_object_or_404(service.visible_equipment(request.user),pk=pk)
     initial={'expected_version':item.version,'start_date':timezone.localdate()}
+    if not request.GET.get('object') and not request.GET.get('crew'):
+        from .crews import visible_assignments
+        crews=list(service.current(visible_assignments(request.user)).filter(brigade_id__in=service.current(item.custodies.all()).values('brigade_id'))[:2])
+        if len(crews)==1:initial.update(crew_assignment=crews[0].pk,project_object=crews[0].project_object_id,contract=crews[0].contract_id)
     if request.GET.get('object'):initial['project_object']=request.GET['object']
     if request.GET.get('crew'):
         from .crews import visible_assignments

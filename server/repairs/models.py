@@ -127,7 +127,7 @@ class Report(ArchiveProtectedModel):
     author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     token=models.UUIDField(default=uuid.uuid4,unique=True)
     request_digest=models.CharField(max_length=64,blank=True)
-    kind=models.CharField('Действие',max_length=20,choices=[('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера'),('revision','Возвращено на доработку'),('problem_review','Решение по препятствию'),('reopen','Возвращено в работу')])
+    kind=models.CharField('Действие',max_length=20,choices=[('plan_change','Уточнение конструкции после обследования'),('start','Начали работу'),('problem','Сообщили о проблеме'),('resolve','Препятствие устранено'),('partial','Выполнено частично'),('complete','Работа выполнена'),('note','Фото / пояснение'),('correction','Исправление подтверждённого результата'),('acceptance','Приёмка заказчиком'),('imported','Сведения из ведомости'),('assignment','Смена ответственного мастера'),('revision','Возвращено на доработку'),('problem_review','Решение по препятствию'),('reopen','Возвращено в работу')])
     performed_date=models.DateField('Дата')
     method=models.CharField('Фактический способ',max_length=20,choices=METHODS,blank=True)
     length_m=models.DecimalField('Фактическая длина, м',max_digits=9,decimal_places=3,null=True,blank=True)

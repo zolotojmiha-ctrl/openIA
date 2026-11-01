@@ -2,7 +2,7 @@ from django.conf import settings
 
 def local_testing(request):
     from .presets import PRESETS
-    context={'permission_presets':PRESETS,'lan_test':settings.LAN_TEST,'release_version':'6.24.0'}
+    context={'permission_presets':PRESETS,'lan_test':settings.LAN_TEST,'release_version':'6.24.1'}
     if request.user.is_authenticated and request.user.role=='customer' and not request.user.is_leader:return context
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
@@ -39,6 +39,7 @@ def local_testing(request):
         context['rental_pending']=[{'rental':r,'date':dates[0]} for r in rental_rows[:30] if (dates:=rentals.missing_dates(r,request.user,1))][:5]
         from projects.repair_materials import can_read as can_read_materials
         context['can_read_materials']=can_read_materials(request.user)
+        context['can_stock']=context['can_stock'] or context['can_read_materials']
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

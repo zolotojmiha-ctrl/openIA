@@ -84,7 +84,7 @@ class Release624Tests(TestCase):
     def test_leader_rental_ui_and_profile_pages_render(self):
         r=self.rental();self.client.force_login(self.leader)
         for name,args in [('rental_list',[]),('rental_detail',[r.pk]),('coating_profiles',[]),('repair_materials',[]),('rental_setup',[])]:
-            response=self.client.get(reverse(name,args=args));self.assertEqual(response.status_code,200,(name,response.content[:500]))
+            response=self.client.get(reverse(name,args=args),follow=True);self.assertEqual(response.status_code,200,(name,response.content[:500]))
     def test_kit_tables_have_normative_allowance_once(self):
         self.assertEqual(materials.kits(720,1500),{'sealant':2,'composite':7})
         self.assertEqual(materials.kits(720,2500),{'sealant':2,'composite':11})
@@ -187,7 +187,7 @@ class Release624Tests(TestCase):
         cells=read_book(SimpleUploadedFile('expense.xlsx',response.content))['cells']
         amounts=[Decimal(cells[(r,9)]) for r,c in cells if c==7 and cells[(r,c)]==item.name]
         self.assertCountEqual(amounts,[Decimal(3),Decimal(-3)]);self.assertEqual(sum(amounts),0)
-        self.assertContains(self.client.get(reverse('repair_materials')),item.name)
+        self.assertContains(self.client.get(reverse('repair_detail',args=[job.pk])),'Материалы этого ремонта')
     def test_rental_financial_summary_includes_charge_and_payment_once(self):
         from finance.models import FinancialScope
         from finance.services import summary

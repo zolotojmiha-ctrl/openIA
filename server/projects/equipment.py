@@ -13,11 +13,14 @@ from .access import visible_objects,visible_contracts
 
 def visible_equipment(user):
     qs=Equipment.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID)
-    if not user.is_authenticated or not user.is_active:return qs.none()
+    if not user.is_authenticated or not user.is_active or user.role=='customer':return qs.none()
     if user.role=='subcontractor' and not permitted(user,'equipment.manage'):return qs.none()
-    if not permitted(user,'equipment.manage'):
-        qs=qs.filter(placements__project_object__in=visible_objects(user))
-    return qs if permitted(user,'equipment.manage') else qs.distinct()
+    if permitted(user,'equipment.manage'):return qs
+    rentals_reader=any(permitted(user,k) for k in ('rental.manage','finance.read','finance.write'))
+    own=Q(placements__project_object__in=visible_objects(user))|Q(placements__crew_assignment__master=user)|Q(custodies__brigade__assignments__master=user)
+    if rentals_reader:own|=Q(ownership='rent')|Q(placements__rental__isnull=False)
+    # Keep DISTINCT in a subquery so the equipment row can still be locked on PostgreSQL.
+    return qs.filter(pk__in=qs.filter(own).values('pk'))
 
 def placements(user):
     qs=EquipmentAssignment.objects.filter(equipment__in=visible_equipment(user))
@@ -54,6 +57,9 @@ def save_equipment(user,pk,version,data):
     item.full_clean()
     if pk:item.version+=1
     item.save();audit(actor,'equipment_updated',equipment=str(item.pk),previous=before,values={k:getattr(item,k) for k in FIELDS},version=item.version)
+    if item.ownership=='rent':
+        from .rentals import ensure_for_assignment
+        for placement in item.placements.filter(end_date__isnull=True):ensure_for_assignment(actor,placement)
     return item
 
 def dates(start,end):
@@ -83,6 +89,8 @@ def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False,cr
         old.end_date=start-timedelta(days=1);old.version+=1;old.save(update_fields=['end_date','version'])
         audit(actor,'equipment_assigned',kind='transfer_from',assignment=str(old.pk),end=str(old.end_date))
     result=EquipmentAssignment.objects.create(equipment=item,project_object=obj,contract=contract,crew_assignment=crew_assignment,start_date=start,end_date=end,note=note,created_by=actor)
+    from .rentals import ensure_for_assignment
+    ensure_for_assignment(actor,result)
     item.version+=1;item.save(update_fields=['version'])
     audit(actor,'equipment_assigned',kind='assigned',equipment=str(pk),assignment=str(result.pk),object=str(obj.pk),contract=str(contract.pk) if contract else None,start=str(start),end=str(end or ''),note=note,crew_assignment=str(crew_assignment.pk) if crew_assignment else None)
     return result

@@ -166,9 +166,11 @@ def job_edit(request,pk=None,section_id=None):
     form=JobForm(request.POST or None,user=request.user,instance=job,initial=initial)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            actor=User.objects.select_for_update().get(pk=request.user.pk)
+            actor=User.objects.select_for_update(no_key=True).get(pk=request.user.pk)
             if not can_prepare(actor):raise PermissionDenied
             if job and not visible_jobs(actor).filter(pk=job.pk).exists():raise Http404
+            from projects.stock import lock as stock_lock
+            stock_lock()
             target=form.cleaned_data.get('contract')
             if target:
                 from projects.models import Contract
@@ -185,6 +187,11 @@ def job_edit(request,pk=None,section_id=None):
             elif locked and locked.state=='confirmed':form.add_error(None,'Подтверждённая история сохранена. Для изменения результата используйте «Внести исправление».')
             else:
                 saved=form.save(commit=False)
+                from . import plans
+                plan_before=plans.snapshot(locked) if locked else None
+                if locked:
+                    try:plans.validate_change(locked,saved)
+                    except ValidationError as e:form.add_error(None,e)
                 if job and job.reports.exists():
                     previous={(d.number,kilometre(d.kilometre),d.pipe_section) for d in job.defects.all()}
                     desired={(n,form.cleaned_data['kilometre'],form.cleaned_data['pipe_section']) for n in form.cleaned_data['defect_numbers']}
@@ -196,6 +203,7 @@ def job_edit(request,pk=None,section_id=None):
                         from .assignment_access import grant
                         grant(actor,saved.assigned_to,saved.section,target)
                     saved.created_by=job.created_by if job else request.user;saved.version=(locked.version+1) if locked else 1;saved.save()
+                    if locked:plans.record_change(actor,saved,plan_before,form.cleaned_data.get('plan_change_reason',''))
                     desired=[]
                     for number in form.cleaned_data['defect_numbers']:
                         defect,_=get_or_create_defect(section=saved.section,kilometre=form.cleaned_data['kilometre'],number=number,contract=saved.contract,defaults={'pipe_section':form.cleaned_data['pipe_section']})
@@ -217,7 +225,8 @@ def detail(request,pk):
     from .navigation import return_url
     back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
     problem_report=job.reports.filter(kind='problem').first()
-    return render(request,'repairs/detail.html',{'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    from projects.material_views import job_panel
+    return render(request,'repairs/detail.html',{'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):

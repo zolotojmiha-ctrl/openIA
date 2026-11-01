@@ -26,6 +26,12 @@ class SetupForm(forms.Form):
         self.fields['placement'].label_from_instance=lambda p:f'{p.equipment.name} · {p.equipment.registration_number or "без госномера"} · {p.project_object.name} · с {p.start_date:%d.%m.%Y}'
         self.fields['agreement'].queryset=CounterpartyAgreement.objects.filter(kind='equipment_rent',archived=False)
 
+class RentalInfoForm(forms.Form):
+    version=forms.IntegerField(widget=forms.HiddenInput)
+    supplier=forms.CharField(label='Арендодатель',max_length=200,required=False)
+    reference=forms.CharField(label='Номер договора',max_length=200,required=False)
+    agreement=forms.ModelChoiceField(label='Договор в системе',queryset=CounterpartyAgreement.objects.filter(kind='equipment_rent',archived=False),required=False)
+
 class RateForm(forms.Form):
     starts_on=forms.DateField(label='Тариф действует с',widget=DATE,initial=timezone.localdate)
     basis=forms.ChoiceField(label='Стоимость указана',choices=[('day','За день / смену'),('hour','За час')])
@@ -59,14 +65,11 @@ class PeriodForm(forms.Form):
 
 @login_required
 def listing(request):
-    rows=[]
-    for rental in rentals.visible(request.user).order_by('placement__equipment__name'):
-        dates=rentals.missing_dates(rental,request.user,32)
-        rows.append({'rental':rental,'missing':len(dates),'first_missing':dates[0] if dates else None,'total':rentals.totals(rental) if rentals.financial_reader(request.user) else None})
-    return render(request,'projects/rental_list.html',{'rows':rows,'can_manage_rental':rentals.manager(request.user),'rental_financial':rentals.financial_reader(request.user)})
+    return redirect('/cabinet/equipment/?ownership=rent')
 
 @login_required
 def setup(request):
+    if request.method=='GET':return redirect('/cabinet/equipment/?ownership=rent')
     if not rentals.manager(request.user):raise PermissionDenied
     form=SetupForm(request.POST or None,user=request.user)
     if request.method=='POST' and form.is_valid():
@@ -76,17 +79,18 @@ def setup(request):
     return render(request,'projects/operation_form.html',{'form':form,'title':'Включить учёт аренды','back':'/cabinet/rentals/','intro':'Сначала назначьте арендованную технику объекту и бригаде в её карточке. Затем здесь задаются договор и тариф.'})
 
 @login_required
-def detail(request,pk):
+def detail(request,pk,embedded=False):
     rental=get_object_or_404(rentals.visible(request.user),pk=pk)
     can_manage=rentals.manager(request.user);financial=rentals.financial_reader(request.user);can_write=rentals.financial_writer(request.user)
     missing=rentals.missing_dates(rental,request.user,367)
     initial={'date':missing[0] if missing else timezone.localdate()}
-    day=DayForm(initial=initial);rate=RateForm();payment=PaymentForm();period=PeriodForm(initial={'start':rental.placement.start_date,'end':min(rental.placement.end_date or timezone.localdate(),timezone.localdate())})
+    day=DayForm(initial=initial);rate=RateForm(initial={'starts_on':rental.placement.start_date if not rental.rates.exists() else timezone.localdate()});payment=PaymentForm();period=PeriodForm(initial={'start':rental.placement.start_date,'end':min(rental.placement.end_date or timezone.localdate(),timezone.localdate())})
     finance_link=FinanceLinkForm(rental=rental,initial={'scope':rental.financial_scope_id})
+    info=RentalInfoForm(initial={'supplier':rental.supplier,'reference':rental.reference,'agreement':rental.agreement_id,'version':rental.version})
     if request.method=='POST':
-        action=request.POST.get('action');form={'day':DayForm,'rate':RateForm,'payment':PaymentForm,'period':PeriodForm,'finance_link':FinanceLinkForm}.get(action)
+        action=request.POST.get('action');form={'day':DayForm,'rate':RateForm,'payment':PaymentForm,'period':PeriodForm,'finance_link':FinanceLinkForm,'info':RentalInfoForm}.get(action)
         if form is None:raise PermissionDenied
-        if action!='day' and not can_write:raise PermissionDenied
+        if action not in ('day','info') and not can_write:raise PermissionDenied
         bound=form(request.POST,**({'rental':rental} if action=='finance_link' else {}))
         if bound.is_valid():
             try:
@@ -95,15 +99,17 @@ def detail(request,pk):
                     messages.success(request,f'Отметка за {saved.date:%d.%m.%Y} сохранена: {saved.get_kind_display()}.')
                 elif action=='rate':rentals.add_rate(request.user,pk,**bound.cleaned_data)
                 elif action=='payment':rentals.payment(request.user,pk,**bound.cleaned_data)
+                elif action=='info':rentals.update_info(request.user,pk,**bound.cleaned_data)
                 elif action=='finance_link':rentals.link_finance(request.user,pk,**bound.cleaned_data)
                 else:rentals.close_period(request.user,pk,**bound.cleaned_data)
             except ValidationError as e:bound.add_error(None,e)
-            else:return redirect('rental_detail',pk=pk)
+            else:return redirect('equipment_detail',pk=rental.placement.equipment_id) if embedded else redirect('rental_detail',pk=pk)
         if action=='day':day=bound
         elif action=='rate':rate=bound
         elif action=='payment':payment=bound
         elif action=='period':period=bound
-        else:finance_link=bound
+        elif action=='finance_link':finance_link=bound
+        else:info=bound
     days=[d for d in rental.days.select_related('updated_by').prefetch_related('revisions__author').order_by('-date') if financial or rentals.allowed_on(request.user,rental,d.date)][:100]
     for d in days:d.can_change=rentals.allowed_on(request.user,rental,d.date)
     chart=[]
@@ -112,7 +118,10 @@ def detail(request,pk):
         chart.append({'label':label,'count':count})
     high=max([d['count'] for d in chart]+[1])
     for bar in chart:bar['percent']=round(bar['count']/high*100)
-    return render(request,'projects/rental_detail.html',{'can_record_rental':can_manage or bool(missing) or any(d.can_change for d in days),'chart':chart,'finance_link_form':finance_link,'can_write_rental_finance':can_write,'rental':rental,'days':days,'missing':missing,'day_form':day,'rate_form':rate,'payment_form':payment,'period_form':period,'can_manage_rental':can_manage,'rental_financial':financial,'total':rentals.totals(rental) if financial else None,'payments':rental.payments.all() if financial else [],'periods':rental.periods.all() if financial else []})
+    context={'can_record_rental':can_manage or bool(missing) or any(d.can_change for d in days),'chart':chart,'finance_link_form':finance_link,'can_write_rental_finance':can_write,'rental':rental,'days':days,'missing':missing,'day_form':day,'rate_form':rate,'payment_form':payment,'period_form':period,'can_manage_rental':can_manage,'rental_financial':financial,'total':rentals.totals(rental) if financial else None,'payments':rental.payments.all() if financial else [],'periods':rental.periods.all() if financial else []}
+    context['info_form']=info
+    if embedded:return context
+    return render(request,'projects/rental_detail.html',context)
 
 @login_required
 @require_POST

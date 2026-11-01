@@ -190,3 +190,22 @@ def link_finance(user,pk,scope):
     if rental.financial_scope_id and rental.financial_scope_id!=(scope.pk if scope else None) and (rental.days.exists() or rental.payments.exists()):raise ValidationError('После начала начислений финансовая привязка сохраняется. Исправление требует отдельной сверки.')
     rental.financial_scope=scope;rental.version+=1;rental.save(update_fields=['financial_scope','version'])
     audit(actor,'finance_corrected',kind='rental_scope_link',rental=str(pk),scope=str(scope.pk if scope else ''))
+
+
+def ensure_for_assignment(actor,placement):
+    """Called by the equipment lifecycle under its lock, never by a read-only GET."""
+    if placement.equipment.ownership!='rent':return None
+    from finance.models import FinancialScope
+    scopes=list(FinancialScope.objects.filter(contract_id=placement.contract_id)[:2]) if placement.contract_id else []
+    row,created=EquipmentRental.objects.get_or_create(placement=placement,defaults={'supplier':placement.equipment.owner,'reference':'','financial_scope':scopes[0] if len(scopes)==1 else None,'created_by':actor})
+    if created:audit(actor,'equipment_assigned',kind='rental_created_automatically',rental=str(row.pk),equipment=str(placement.equipment_id))
+    return row
+
+@transaction.atomic
+def update_info(user,pk,supplier,reference,agreement,version):
+    actor=actor_lock(user,True);row=visible(actor).select_for_update(of=('self',)).get(pk=pk)
+    if row.version!=version:raise ValidationError('Условия уже изменены. Обновите карточку техники.')
+    if agreement and (agreement.kind!='equipment_rent' or agreement.equipment_id not in (None,row.placement.equipment_id)):raise ValidationError('Договор относится к другой технике.')
+    row.supplier=supplier.strip();row.reference=reference.strip();row.agreement=agreement;row.version+=1
+    row.save(update_fields=['supplier','reference','agreement','version'])
+    audit(actor,'equipment_assigned',kind='rental_conditions',rental=str(row.pk));return row
