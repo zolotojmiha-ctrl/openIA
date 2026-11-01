@@ -1,0 +1,34 @@
+{
+  "version": "6.24.0",
+  "source_commit": "1aa9e23fb936cabb296076962c6cb5aa2c147919",
+  "archive": "openIA-6.24.0-update.zip",
+  "archive_sha256": "dc3611ca419b1e341f5a79b5670cc76783f99e24dcd30b8e8841aeacda2f4ab7",
+  "archive_size": 30191660,
+  "source_files": 696,
+  "installer": "install-6.24.0.sh",
+  "installer_sha256": "c1ed39da26cf7458a296f21c8b71782e3e017a1d5b629c698f872386a4a70076",
+  "built_at_utc": "2026-11-01T03:21:23.228952+00:00",
+  "validation": {
+    "postgresql_tests": 911,
+    "postgresql_result": "OK",
+    "post_full_profile_tests": 36,
+    "post_full_profile_result": "OK, includes real Chromium and concurrent actors",
+    "browser_widths": [
+      320,
+      390,
+      768,
+      1440
+    ],
+    "upgrade_from": [
+      "6.22.2",
+      "6.23.0"
+    ],
+    "backup_and_restore": "both previous versions verified on isolated synthetic installations using final ZIP-built image",
+    "installer_guards": "5 passed: success, checksum failure, build failure, backup failure, unhealthy application",
+    "production_installed": false,
+    "production_mail_verified": false,
+    "coating_setup": "dimension-specific verified geometry profiles required; Ksizol 5.19 kg/m2, wrapper 0.81 kg/m2, primer 0.21 kg/m2; electrodes deferred"
+  },
+  "image_id": "sha256:2ed0d4480313604d7f91108a8f71dec87bfb18f0779c1c1a6931052d5d590957",
+  "image_source": "Built from the verified release ZIP; 567 packaged application/static file hashes checked against image"
+}
