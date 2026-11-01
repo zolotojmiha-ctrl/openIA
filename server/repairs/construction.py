@@ -10,7 +10,7 @@ def metres(value):
     return format(Decimal(value).normalize(), 'f').replace('.', ',')
 
 
-def planned_parts(length, composition):
+def planned_parts(length, composition, method=None):
     """Return the total and individual lengths, deriving only a missing total."""
     text = (composition or '').strip().replace(',', '.')
     try:
@@ -32,6 +32,10 @@ def planned_parts(length, composition):
             raise ValidationError('Общая длина конструкции должна быть меньше 1000000 м.')
         if total is not None and combined != total:
             raise ValidationError(f'В карточке дефекта длина {metres(total)} м, а сумма состава {metres(combined)} м. Уточните плановую длину или состав в карточке дефекта.')
+        if method == 'p2' and len(parts) > 1:
+            raise ValidationError('П2 нельзя стыковать: нужна одна цельная муфта.')
+        if method == 'p1' and combined > Decimal('10.5'):
+            raise ValidationError('Рабочая максимальная длина П1 — 10,5 м.')
         return total if total is not None else combined, parts
     except (InvalidOperation, ValueError, TypeError):
         raise ValidationError('Проверьте длину и состав: нужны длины в метрах, например 1,5 или 1+1,5.')

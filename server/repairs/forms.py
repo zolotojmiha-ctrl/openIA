@@ -94,7 +94,10 @@ class JobForm(forms.ModelForm):
             try:validate_contract_place(c['contract'],c['section'])
             except forms.ValidationError as e:self.add_error('contract',e)
         if c.get('method') in COUPLING_METHODS and 'length_m' not in self.errors and 'composition' not in self.errors:
-            try:c['length_m'],_=planned_parts(c.get('length_m'),c.get('composition',''))
+            try:
+                c['length_m'],parts=planned_parts(c.get('length_m'),c.get('composition',''),c.get('method'))
+                if c.get('method')=='p2' and len(parts)>1:raise forms.ValidationError('П2 нельзя стыковать. Укажите одну цельную муфту.')
+                if c.get('method')=='p1' and c['length_m']>Decimal('10.5'):raise forms.ValidationError('Рабочий предел составной П1 — 10,5 м.')
             except forms.ValidationError as exc:self.add_error('composition' if c.get('composition') else 'length_m',exc)
         if c.get('section') and c.get('kilometre') is not None and c.get('defect_numbers'):
             if any(matching_defects(c['section'],c['kilometre'],number,c.get('contract')).filter(archived_at__isnull=False).exists() for number in c['defect_numbers']):

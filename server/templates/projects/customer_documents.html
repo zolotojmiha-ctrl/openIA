@@ -1,0 +1,7 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<a class="back-link" href="{% if user.is_leader %}{% url 'contracts' %}{% else %}{% url 'customer_portal' %}{% endif %}">← Назад</a><h1>Документы</h1><p>{{ contract.number }} · {{ area.name }}</p>
+<p class="muted">ППР, совместные приказы и другие файлы для обмена по этому участку. Здесь видны только специально переданные документы.</p>
+<section class="panel"><h2>Передать документ</h2><form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="upload">{{ form.as_p }}<button class="button">Загрузить и передать</button></form></section>
+{% if share_form %}<details class="panel"><summary>Открыть файл из внутреннего реестра</summary><form method="post">{% csrf_token %}<input type="hidden" name="action" value="share">{{ share_form.as_p }}<button class="button">Открыть заказчику</button></form></details>{% endif %}
+{% for row in rows %}<section class="panel">{% if row.unread %}<strong class="notice">Новый документ</strong>{% endif %}<a class="button action-view" href="{% url 'customer_document_download' row.pk %}">↓ {{ row.document.title }}</a><p class="muted">Передал: {{ row.created_by.full_name }} · {{ row.created_at|date:'d.m.Y H:i' }}</p>{% if user.is_leader %}<form method="post" action="{% url 'customer_document_revoke' row.pk %}">{% csrf_token %}<button class="button secondary small">Закрыть доступ к файлу</button></form>{% endif %}</section>{% empty %}<p>Документов пока нет.</p>{% endfor %}
+{% endblock %}

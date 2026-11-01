@@ -30,7 +30,7 @@ def parse(book):
             if kind not in dict(StockItem._meta.get_field('kind').choices):
                 raise ValidationError('Выберите категорию: муфта, композит, герметик, изоляция, электроды или материал.')
             method=get('Тип муфты');diameter=get('Диаметр, мм');length=get('Длина, мм');wall=get('Стенка, мм')
-            unit=get('Единица') or units.get('m2' if kind=='insulation' else 'kg' if kind=='electrode' else 'pcs')
+            unit=get('Единица') or units.get('m2' if kind=='insulation' else 'kg' if kind in ('electrode','abrasive','ksizol','wrapper','primer') else 'kit' if kind in ('composite','sealant') else 'pcs')
             name=get('Наименование')
             if not name:
                 name=f'Муфта {method} Ø{diameter} × {length} мм, стенка {wall} мм' if kind=='coupling' else dict(StockItem._meta.get_field('kind').choices)[kind]

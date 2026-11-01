@@ -51,7 +51,7 @@ class Stock620Tests(TestCase):
         self.report(j2,[c]);self.assertEqual(self.balance(b,i),0)
     def test_generic_batch_issued_to_job_is_reserved_as_individual_pieces(self):
         a=self.wh();crew=self.crew();b=self.wh('Бригада',brigade_assignment=crew)
-        i=self.item(kind='coupling',unit='pcs',method='p2',length_mm=1000,wall_mm=8);j=self.make_job();j.length_m=3;j.composition='1+1+1';j.save()
+        i=self.item(kind='coupling',unit='pcs',method='p1',length_mm=1000,wall_mm=8);j=self.make_job();j.method='p1';j.length_m=3;j.composition='1+1+1';j.save()
         self.move(i,q=10,dst=a);self.move(i,'issue',3,a,b,job=j)
         self.assertEqual((self.g(a)['free'],self.g(b)['reserved'],self.g(b)['free']),(7,3,0))
         self.assertEqual(len(stock.prepared_couplings(j)),3)

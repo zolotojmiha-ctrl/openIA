@@ -1,0 +1,10 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<h1>{% if rental_financial %}Аренда техники{% else %}Моя арендованная техника{% endif %}</h1>
+<p class="muted">Отмечайте дни работы. Часы к оплате аренды учитываются отдельно от моточасов двигателя.</p>
+{% if can_manage_rental %}<p><a class="button" href="{% url 'rental_setup' %}">＋ Включить учёт аренды</a> <a class="button action-view" href="{% url 'equipment' %}">Техника и назначения</a></p>{% endif %}
+{% for r in rows %}<section class="panel"><h2><a href="{% url 'rental_detail' r.rental.pk %}">{{ r.rental.placement.equipment.name }} · {{ r.rental.placement.equipment.registration_number|default:'Без госномера' }}</a></h2>
+<p>{{ r.rental.placement.project_object.name }} · {{ r.rental.placement.crew_assignment.brigade.name|default:'Бригада не указана' }}</p>
+{% if r.missing %}<p class="notice">Есть дни без отметки: {{ r.missing }}{% if r.missing == 32 %}+{% endif %}. Первый: {{ r.first_missing|date:'d.m.Y' }}. <a href="{% url 'rental_detail' r.rental.pk %}">Отметить →</a></p>{% endif %}
+{% if rental_financial %}<div class="metric-grid"><p>Начислено<br><strong>{{ r.total.charged|floatformat:2 }} ₽</strong></p><p>Перечислено<br><strong>{{ r.total.paid|floatformat:2 }} ₽</strong></p><p>К оплате<br><strong>{{ r.total.debt|floatformat:2 }} ₽</strong></p><p>Остаток аванса<br><strong>{{ r.total.advance|floatformat:2 }} ₽</strong></p></div>{% endif %}
+<a class="button" href="{% url 'rental_detail' r.rental.pk %}">Открыть табель</a></section>{% empty %}<p class="panel">Пока нет назначенной арендованной техники с включённым учётом аренды.</p>{% endfor %}
+{% endblock %}

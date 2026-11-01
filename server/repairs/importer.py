@@ -125,7 +125,7 @@ def parse_work(upload,sheet_name=''):
         item['raw'].append({'row':r,'cells':{str(c):v for (rr,c),v in cells.items() if rr==r and c<26}})
         if m in ('p1','p2','p3','p4','p5u'):
             from .construction import planned_parts
-            try:planned_parts(length,comp)
+            try:planned_parts(length,comp,m)
             except ValidationError as exc:warnings.append(f'Строка {r}: '+exc.messages[0]+' Уточните параметры в предпросмотре перед созданием работы.')
 
     if not groups:raise ValidationError('Не найдены строки дефектов с километром, номером и способом ремонта.')

@@ -2,7 +2,7 @@ from django.conf import settings
 
 def local_testing(request):
     from .presets import PRESETS
-    context={'permission_presets':PRESETS,'lan_test':settings.LAN_TEST,'release_version':'6.23.0'}
+    context={'permission_presets':PRESETS,'lan_test':settings.LAN_TEST,'release_version':'6.24.0'}
     if request.user.is_authenticated and request.user.role=='customer' and not request.user.is_leader:return context
     if request.user.is_authenticated:
         from .permissions import permitted,can_link_person
@@ -33,6 +33,12 @@ def local_testing(request):
         context['mail_count']=sum(boxes(request.user).filter(state='active').values_list('unread',flat=True))
         from postoffice.site_forms import can_read, visible_requests
         context['site_request_count']=visible_requests(request.user).exclude(read_by=request.user).count() if can_read(request.user) else 0
+        from projects import rentals
+        rental_rows=rentals.visible(request.user)
+        context['can_rentals']=rentals.manager(request.user) or rental_rows.exists()
+        context['rental_pending']=[{'rental':r,'date':dates[0]} for r in rental_rows[:30] if (dates:=rentals.missing_dates(r,request.user,1))][:5]
+        from projects.repair_materials import can_read as can_read_materials
+        context['can_read_materials']=can_read_materials(request.user)
         from .models import Preference
         from documents.access import unread_documents,unsorted_documents,visible_documents
         from documents.models import Notice

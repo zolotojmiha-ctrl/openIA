@@ -163,6 +163,10 @@ def employee_edit(request,pk=None):
                     Person.objects.filter(user=employee).update(archived=True)
                 employee.grants.all().delete()
                 AccessGrant.objects.bulk_create([AccessGrant(user=employee,permission=p,granted_by=request.user) for p in form.cleaned_data['permissions']])
+                if employee.role=='customer' and form.cleaned_data.get('customer_scopes_present'):
+                    from projects.models import CustomerAccess
+                    CustomerAccess.objects.filter(user=employee).delete()
+                    CustomerAccess.objects.bulk_create([CustomerAccess(user=employee,contract=s.contract,project_object=s.project_object,created_by=actor) for s in form.cleaned_data['customer_scopes']])
                 if temporary and employee.role!='customer':
                     from documents.models import Person
                     from projects.models import LegalEntity,COMPANY_TAX_ID

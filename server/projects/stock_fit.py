@@ -48,6 +48,8 @@ def occupied(job, exclude=()):
 def capacity(job, item, reserved, installed):
     if reason(item, job):
         return 0
+    if job.method == 'p1' and any(Decimal(p.wall_mm or 0) != Decimal(item.wall_mm or 0) for p in reserved + installed):
+        return 0
     left = consume(job, installed, check_diameter=False)
     if left is None:
         return 0

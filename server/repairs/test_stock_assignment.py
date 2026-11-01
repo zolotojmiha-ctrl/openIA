@@ -86,9 +86,10 @@ class DefectStockTests(TestCase):
         response=self.client.post(self.url,self.choice({self.a.name:1,self.b.name:1}))
         self.assertEqual(response.status_code,409);self.assertFalse(self.held().exists())
     def test_multiple_parts_and_shared_defects_use_one_reservation_set(self):
+        self.job.method='p1'
         self.job.length_m=Decimal('2.5');self.job.composition='1+1.5';self.job.save()
         other=Defect.objects.create(contract=self.contract,section=self.section,kilometre=1,number='ВТОРОЙ');JobDefect.objects.create(job=self.job,defect=other)
-        self.receive(n=2)
+        self.receive(n=2,method='p1')
         self.assertEqual(self.client.post(self.url,self.choice({self.a.name:2})).status_code,302)
         self.assertEqual(self.held().count(),2)
         self.assertContains(self.client.get(reverse('repairs')),'Общий комплект для 2 дефектов')

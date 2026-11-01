@@ -35,6 +35,7 @@ def apply(actor,job,facts,selected):
     if facts.get('kind')!='manual' or prepared:raise ValidationError('На работу закреплены складские муфты. Используйте их размеры и заводские номера.')
     pieces=facts.get('pieces',[])
     if not isinstance(pieces,list) or not 1<=len(pieces)<=30:raise ValidationError('Укажите от 1 до 30 установленных муфт.')
+    if job.method=='p2' and len(pieces)>1:raise ValidationError('П2 нельзя стыковать: нужна одна цельная муфта.')
     result=[]
     for piece in pieces:
         serial=str(piece.get('serial','')).strip();length=piece.get('length_mm')

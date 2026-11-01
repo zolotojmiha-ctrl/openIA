@@ -313,12 +313,7 @@ def material_edit(request,contract_id,object_id,pk=None):
 class PublishForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     confirm=forms.BooleanField(label='Проверено: опубликовать ход работ и потребность заказчику')
-    photos=forms.ModelMultipleChoiceField(label='Фотографии для заказчика',queryset=None,required=False,widget=forms.CheckboxSelectMultiple)
-    def __init__(self,*a,contract,area,**kw):
-        from repairs.models import Attachment
-        super().__init__(*a,**kw)
-        self.fields['photos'].queryset=Attachment.objects.filter(report__job__contract=contract,report__job__section__project_object=area,report__job__state='confirmed',content_type__in=['image/jpeg','image/png'])
-        self.fields['photos'].label_from_instance=lambda p:p.name
+    def __init__(self,*args,contract=None,area=None,**kwargs):super().__init__(*args,**kwargs)
 
 @leader_required
 def customer_publish(request,contract_id,object_id):
@@ -334,37 +329,40 @@ def customer_publish(request,contract_id,object_id):
                 jobs=list(Job.objects.filter(contract=c,section__project_object=o).select_for_update().select_related('section').prefetch_related('defects').order_by('section__pipeline','pk'))
                 rows=[]
                 for job in jobs:
+                    report=job.reports.filter(outcome='complete').order_by('-created_at','-pk').first() if job.state=='confirmed' else None
                     for d in job.active_defects:
-                        rows.append({'pipeline':job.section.pipeline,'km':d.km,'number':d.number,'state':job.get_state_display() if job.state in ['planned','progress','partial','confirmed'] else 'На внутренней проверке','method':job.get_method_display() if job.state=='confirmed' else '', 'accepted':bool(job.accepted_date) if job.state=='confirmed' else False})
+                        rows.append({'pipeline':job.section.pipeline,'km':d.km,'number':d.number,'state':('Устранён' if job.state=='confirmed' else job.get_state_display()) if job.state in ['planned','progress','partial','confirmed'] else 'На внутренней проверке','method':job.get_method_display() if job.state=='confirmed' else '', 'accepted':bool(job.accepted_date) if job.state=='confirmed' else False,'latitude':str(report.latitude) if report and report.latitude is not None else '', 'longitude':str(report.longitude) if report and report.longitude is not None else ''})
                 needs=[{'name':m.name,'quantity':str(m.quantity),'unit':m.unit,'km':m.kilometre,'date':str(m.needed_on or ''),'note':m.note,'status':m.get_status_display()} for m in MaterialRequest.objects.filter(contract=c,project_object=o)]
-                photos=[str(p.pk) for p in form.cleaned_data['photos'] if p.report.job.state=='confirmed']
+                photos=[]
                 CustomerPublication.objects.create(contract=c,project_object=o,snapshot={'contract':c.number,'area':o.name,'rows':rows,'materials':needs,'photos':photos},created_by=request.user)
                 c.version+=1;c.save(update_fields=['version','updated_at'])
                 audit(request.user,'customer_published',kind='customer_publication',contract=str(c.pk),area=str(o.pk))
         except ValidationError as e:form.add_error(None,e)
         else:messages.success(request,'Опубликовано в кабинете заказчика.');return redirect('customer_publish',contract_id=c.pk,object_id=o.pk)
-    return page(request,form,'Публикация для заказчика · '+o.name,reverse('work_place',args=[c.pk,o.pk]),intro='Публикуются только перечисленные поля: нефтепровод, км, номер дефекта, состояние работ, проверенный способ устранения, материалы и выбранные фото. Внутренние примечания и персональные документы не публикуются.',needs=MaterialRequest.objects.filter(contract=c,project_object=o),contract_id=c.pk,object_id=o.pk)
+    return page(request,form,'Публикация для заказчика · '+o.name,reverse('work_place',args=[c.pk,o.pk]),intro='Публикуются только перечисленные поля: нефтепровод, км, номер дефекта, состояние работ, проверенный способ устранения, материалы и координаты проверенных результатов. Фотографии заказчику не передаются. Внутренние примечания и персональные документы не публикуются.',needs=MaterialRequest.objects.filter(contract=c,project_object=o),contract_id=c.pk,object_id=o.pk)
 
 @login_required
 def customer_portal(request):
     if request.user.role!='customer' or request.user.is_leader:raise PermissionDenied
+    from .repair_materials import all_demand
+    demand=all_demand()
     rows=[]
     for grant in CustomerAccess.objects.filter(user=request.user).select_related('contract','project_object').order_by('contract__number','project_object__name'):
         publication=CustomerPublication.objects.filter(contract=grant.contract,project_object=grant.project_object).first()
-        rows.append({'grant':grant,'publication':publication})
+        needs=[];pending=False
+        if publication and not publication.snapshot.get('withdrawn'):
+            for d in demand:
+                if d['job'].contract_id==grant.contract_id and d['job'].section.project_object_id==grant.project_object_id:
+                    pending=pending or bool(d['issues'])
+                    label=', '.join('км '+x.km+' № '+x.number for x in d['job'].active_defects)
+                    needs.extend({'name':n['name'],'quantity':n['missing'],'unit':n['unit'],'place':label} for n in d['couplings']+d['materials'] if n['missing']>0)
+        from .customer_documents import unread_count
+        rows.append({'grant':grant,'publication':publication,'needs':needs,'needs_pending':pending,'document_unread':unread_count(request.user,grant.contract_id,grant.project_object_id)})
     return render(request,'projects/customer_portal.html',{'rows':rows})
 
 @login_required
 def customer_photo(request,publication_id,pk):
-    from repairs.models import Attachment
-    publication=get_object_or_404(CustomerPublication,pk=publication_id)
-    if request.user.role!='customer' or not CustomerAccess.objects.filter(user=request.user,contract=publication.contract,project_object=publication.project_object).exists():raise Http404
-    if str(pk) not in publication.snapshot.get('photos',[]):raise Http404
-    # Old publications are not an alternative route around corrections/revocation.
-    if CustomerPublication.objects.filter(contract=publication.contract,project_object=publication.project_object).first().pk!=publication.pk:raise Http404
-    photo=get_object_or_404(Attachment,pk=pk,report__job__contract=publication.contract,report__job__section__project_object=publication.project_object,report__job__state='confirmed')
-    response=FileResponse(verified_file(photo),content_type=photo.content_type)
-    response['Content-Disposition']='inline';return response
+    raise Http404('Фотографии не публикуются заказчику.')
 
 @login_required
 def my_admissions(request):

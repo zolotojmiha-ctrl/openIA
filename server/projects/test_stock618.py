@@ -10,7 +10,7 @@ from repairs.models import CouplingUse,Job
 
 class Stock618Tests(StockTests):
     def receive_piece(self,**changes):
-        wh=self.wh();data=self.data(kind='coupling',unit='pcs',method='p2',length_mm=1000,wall_mm=8,diameter_mm=720,serial='',**changes)
+        wh=self.wh();data=self.data(**({'kind':'coupling','unit':'pcs','method':'p2','length_mm':1000,'wall_mm':8,'diameter_mm':720,'serial':''}|changes))
         planning.receive(self.leader,data,wh,1,self.today,'Получено',uuid.uuid4())
         return wh,StockItem.objects.get(individual=True)
 
@@ -65,8 +65,8 @@ class Stock618Tests(StockTests):
         self.assertEqual(piece.reserved_job_id,j.pk)
 
     def test_coverage_composition_and_reserve(self):
-        wh,i=self.receive_piece();self.section.diameter_mm=720;self.section.save()
-        j=self.make_job();j.length_m=Decimal('2.5');j.composition='1+1.5';j.save()
+        wh,i=self.receive_piece(method='p1');self.section.diameter_mm=720;self.section.save()
+        j=self.make_job();j.method='p1';j.length_m=Decimal('2.5');j.composition='1+1.5';j.save()
         planning.reserve(self.leader,i.pk,i.version,j.pk)
         self.client.force_login(self.leader)
         res=self.client.get(reverse('stock_coverage'));self.assertEqual(res.status_code,200)
@@ -138,10 +138,10 @@ class Stock618Tests(StockTests):
         self.assertEqual(self.client.post(url,{'expected_diameter':0,'diameter_mm':530}).status_code,409)
 
     def test_partial_installation_not_in_remaining_need(self):
-        wh,i=self.receive_piece();self.section.diameter_mm=720;self.section.save();j=self.make_job();j.length_m=Decimal('2.5');j.composition='1+1.5';j.save()
+        wh,i=self.receive_piece(method='p1');self.section.diameter_mm=720;self.section.save();j=self.make_job();j.method='p1';j.length_m=Decimal('2.5');j.composition='1+1.5';j.save()
         item=planning.reserve(self.leader,i.pk,i.version,j.pk)
         from repairs.services import report_work
-        report_work(self.leader,j.pk,'result',{'token':uuid.uuid4(),'expected_version':j.version,'performed_date':self.today,'outcome':'partial','method':'p2','length_m':j.length_m,'composition':j.composition,'note':'Часть конструкции','problem':'','latitude':None,'longitude':None,'couplings':[item.coupling],'files':[]})
+        report_work(self.leader,j.pk,'result',{'token':uuid.uuid4(),'expected_version':j.version,'performed_date':self.today,'outcome':'partial','method':'p1','length_m':j.length_m,'composition':j.composition,'note':'Часть конструкции','problem':'','latitude':None,'longitude':None,'couplings':[item.coupling],'files':[]})
         self.client.force_login(self.leader);response=self.client.get(reverse('stock_coverage'))
         self.assertEqual(sum(r['need'] for r in response.context['rows']),1)
         self.assertEqual(sum(r['missing'] for r in response.context['rows']),1)

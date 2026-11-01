@@ -94,7 +94,7 @@ class StockOversizeTests(TestCase):
     def test_mixed_construction_counts_each_piece_once_after_partial_installation(self):
         job = self.job(length='2.5', composition='1+1.5')
         long = self.piece(length=2000)
-        short = self.piece(length=1000, wall=8)
+        short = self.piece(length=1000, wall=10)
         long = planning.reserve(self.leader, long.pk, long.version, job.pk)
         short = planning.reserve(self.leader, short.pk, short.version, job.pk)
         extra = self.piece()

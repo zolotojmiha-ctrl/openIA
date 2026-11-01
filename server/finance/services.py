@@ -29,6 +29,12 @@ def summary(scope):
         else:due_future+=remaining
     direct=total(scope.costs.filter(kind='direct'));overhead=total(scope.costs.filter(kind='overhead'))
     cash_out=total(scope.costs,'paid_amount')
+    from projects.models import RentalDay,RentalPayment
+    rental_cost=total(RentalDay.objects.filter(rental__financial_scope=scope))
+    rental_paid=total(RentalPayment.objects.filter(rental__financial_scope=scope))
+    rental_unpriced=RentalDay.objects.filter(rental__financial_scope=scope,hours__gt=0,rate__isnull=True).count()
+    direct+=rental_cost;cash_out+=rental_paid
+    has_costs=scope.costs.exists() or bool(rental_cost or rental_paid)
     obligation=total(scope.subcontracts);subpaid=total(scope.subcontracts,'paid')
     price=None
     if scope.contract and scope.contract.amount is not None:price=scope.contract.amount+total(scope.contract.price_changes)
@@ -36,9 +42,10 @@ def summary(scope):
         expected_advance_balance=expected_balance,reported_advance_balance=reported_balance,advance_difference=reported_balance-expected_balance,
         pending_difference=pending_reported-total(scope.pending_work) if base else ZERO,accepted_unpaid=accepted-paid-offsets,
         due_future=due_future,due_overdue=due_overdue,due_unknown=due_unknown,direct=direct,overhead=overhead,cash_out=cash_out,
+        rental_cost=rental_cost,rental_paid=rental_paid,rental_unpriced=rental_unpriced,
         subcontract_obligation=obligation,subcontract_paid=subpaid,subcontract_remaining=obligation-subpaid,
         # Subcontract commitments are NOT added to costs automatically, to avoid counting an entered cost twice.
-        result=accepted-direct-overhead if scope.costs.exists() else None,cash_flow=advances+paid-cash_out if scope.costs.exists() and not base and not subpaid else None,
+        result=accepted-direct-overhead if has_costs and not rental_unpriced else None,cash_flow=advances+paid-cash_out if has_costs and not base and not subpaid else None,
         cash_flow_new=total(scope.allocations)-cash_out if not subpaid else None,factual_extra=factual_extra,price=price,planned_profit=scope.planned_profit,
         progress=round(base.repaired_defects/base.total_defects*100,1) if base and base.total_defects else None,
         advance_used_percent=round(offsets/advances*100,1) if advances else 0,

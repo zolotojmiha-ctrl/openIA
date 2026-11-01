@@ -12,3 +12,6 @@ __pycache__/
 /deploy/synology/.env
 
 /nas-data/
+
+# Private source specification remains outside release archives.
+/reference/TZ_Armada_Sibir_Codex_*.md

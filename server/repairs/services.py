@@ -56,6 +56,9 @@ def report_work(user,job_id,action,data):
             if len(couplings)!=len(selected):raise ValidationError('Состав муфт изменился. Обновите страницу.')
             if CouplingUse.objects.filter(coupling__in=couplings).exclude(job=job).exists():raise ValidationError('Одна из муфт уже установлена на другой работе. Выберите актуальные изделия.')
             if not current.is_leader and Coupling.objects.filter(pk__in=[c.pk for c in couplings],source__historical_installation=True).exclude(installation__job=job).exists():raise ValidationError('В ведомости указан прежний монтаж одной из муфт. Руководитель должен проверить её связь с этой работой.')
+            if job.method=='p1' and sum(c.length_mm for c in couplings)>10500:raise ValidationError('Рабочая максимальная длина П1 — 10,5 м.')
+            if job.method=='p1' and len({c.wall_mm for c in couplings})>1:raise ValidationError('Все секции составной П1 должны иметь одинаковую стенку.')
+            if job.method=='p2' and len(couplings)>1:raise ValidationError('П2 нельзя стыковать: выберите одну цельную муфту.')
             result=action in ('result','correction')
             kind=data.get('outcome','') if action=='result' else action
             report=Report.objects.create(job=job,author=current,token=data['token'],request_digest=digest,kind=kind,performed_date=data['performed_date'],
@@ -73,6 +76,8 @@ def report_work(user,job_id,action,data):
                 # Current installation can be corrected; old report snapshots remain immutable.
                 CouplingUse.objects.filter(job=job).exclude(coupling__in=couplings).delete()
                 for coupling in couplings:CouplingUse.objects.update_or_create(coupling=coupling,defaults={'job':job,'report':report})
+                from projects.repair_materials import reconcile as reconcile_materials
+                reconcile_materials(current,job,report,couplings)
                 job.state='reported' if data['outcome']=='complete' else 'partial'
                 if data['outcome']=='complete':job.problem='';job.problem_note=''
                 if action=='correction':

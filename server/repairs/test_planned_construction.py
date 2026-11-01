@@ -38,7 +38,7 @@ class PlannedInputTests(TestCase):
         self.assertIn('composition',response.context['form'].errors)
         self.assertFalse(Job.objects.exists())
     def test_manual_total_is_calculated_if_only_composition_was_entered(self):
-        response=self.client.post(reverse('repair_new'),self.payload(length_m='',composition='1+1,5'))
+        response=self.client.post(reverse('repair_new'),self.payload(method='p1',length_m='',composition='1+1,5'))
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(Job.objects.get().length_m,Decimal('2.5'))
     def test_old_invalid_card_can_be_corrected_without_changing_identity(self):
@@ -71,10 +71,10 @@ class PlannedInputTests(TestCase):
     def test_preview_derives_total_and_skip_does_not_require_correction(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from .excel import workbook as standard_book
-        parsed=parse_work(SimpleUploadedFile('synthetic.xlsx',standard_book([['12.345','12345','П2','','1+1,5']],headers=['Км','№ дефекта','Метод ремонта','Длина, м','Состав конструкции, м'])))
+        parsed=parse_work(SimpleUploadedFile('synthetic.xlsx',standard_book([['12.345','12345','П1','','1+1,5']],headers=['Км','№ дефекта','Метод ремонта','Длина, м','Состав конструкции, м'])))
         self.assertEqual(parsed['jobs'][0]['length_m'],'')
         self.assertEqual(parsed['jobs'][0]['composition'],'1+1,5')
-        batch=self.batch();response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','length_0':'','composition_0':'1+1,5'})
+        batch=self.batch(method='p1');response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'new','length_0':'','composition_0':'1+1,5'})
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(Job.objects.get().length_m,Decimal('2.5'))
         batch=self.batch();response=self.client.post(reverse('repair_import_review',args=[batch.pk]),{'row_0':'skip','length_0':'invalid','composition_0':'invalid'})
@@ -96,7 +96,7 @@ class PlannedConstructionBrowser(StaticLiveServerTestCase):
         base.StockTests.setUpTestData.__func__(type(self))
         self.leader.set_password('123456');self.leader.save()
         fixture=PlannedInputTests();fixture.contract=self.contract;fixture.section=self.section;fixture.leader=self.leader
-        batch=fixture.batch()
+        batch=fixture.batch(method='p1')
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/planned-construction-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_PLAN_FIXTURE':json.dumps({'contract':str(self.contract.pk),'section':str(self.section.pk),'batch':str(batch.pk)})},capture_output=True,text=True,timeout=100)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual(Job.objects.count(),2)

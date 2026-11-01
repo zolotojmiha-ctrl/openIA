@@ -21,10 +21,19 @@ class EmployeeForm(forms.Form):
         self.edit_user=user
         self.actor=actor
         super().__init__(*args,**kwargs)
+        from projects.models import ContractObject,CustomerAccess
+        from projects.access import visible_contracts,visible_objects
+        scopes=ContractObject.objects.filter(contract__in=visible_contracts(actor),project_object__in=visible_objects(actor)).select_related('contract','project_object') if actor and actor.is_leader else ContractObject.objects.none()
+        self.fields['customer_scopes_present']=forms.BooleanField(required=False,initial=True,widget=forms.HiddenInput)
+        self.fields['customer_scopes']=forms.ModelMultipleChoiceField(label='Контракты и участки заказчика',queryset=scopes,required=False,widget=forms.CheckboxSelectMultiple)
+        self.fields['customer_scopes'].label_from_instance=lambda s:f'{s.contract.number} · {s.project_object.name}'
+        if user and user.role=='customer':
+            old=set(CustomerAccess.objects.filter(user=user).values_list('contract_id','project_object_id'))
+            self.initial['customer_scopes']=[s.pk for s in scopes if (s.contract_id,s.project_object_id) in old]
         from postoffice.forms import add_request_fields
         add_request_fields(self,actor)
         if actor and not actor.is_leader:
-            allowed_profiles=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items() if set(v['permissions']).issubset(set(actor.grants.values_list('permission',flat=True)))]
+            allowed_profiles=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items() if k!='customer' and set(v['permissions']).issubset(set(actor.grants.values_list('permission',flat=True)))]
             self.fields['profile'].choices=allowed_profiles
             self.fields['role'].choices=[v for v in ROLES if v[0]!='customer']
             allowed=set(actor.grants.values_list('permission',flat=True))
@@ -36,7 +45,8 @@ class EmployeeForm(forms.Form):
         if profile:data['permissions']=list(set(data.get('permissions',[]))|set(profile['permissions']))
         if data.get('role')=='customer':
             if not self.actor or not self.actor.is_leader:raise forms.ValidationError('Заказчика создаёт руководитель.')
-            if data.get('permissions') or data.get('request_mail'):raise forms.ValidationError('Заказчику не выдаются внутренние права и корпоративная почта. Выберите индивидуальную настройку без галочек; участки назначаются в «Доступ заказчика».')
+            if data.get('permissions') or data.get('request_mail'):raise forms.ValidationError('Заказчику не выдаются внутренние права и корпоративная почта. Выберите набор заказчика без внутренних прав.')
+        if data.get('role')!='customer' and data.get('profile')=='customer':raise forms.ValidationError('Набор заказчика применяется только к роли «Заказчик».')
         return validate_request(self,data)
     def clean_phone(self):
         phone=normalize_phone(self.cleaned_data['phone'])

@@ -88,6 +88,8 @@ def reserve(user, item_id, version, job_id):
         if lengths is None:raise ValidationError(requirements_issue(job))
         if not any(fit.length_fits(job.method,item.length_mm,length) for length in lengths):raise ValidationError('Длина муфты не соответствует требуемой длине конструкции.')
         held,installed=fit.occupied(job,exclude=[item.pk])
+        if job.method=='p1' and sum(p.length_mm for p in held+installed)+item.length_mm>10500:raise ValidationError('Суммарная длина П1 не должна превышать 10,5 м.')
+        if job.method=='p1' and any(p.wall_mm!=item.wall_mm for p in held+installed):raise ValidationError('Все секции составной П1 должны иметь одинаковую толщину стенки.')
         if not fit.capacity(job,item,held,installed):raise ValidationError('Для этой конструкции уже закреплено нужное количество муфт.')
         if item.deleted_at:raise ValidationError('Позиция удалена.')
         balances=list(item.balances.filter(quantity__gt=0).select_related('warehouse'))
@@ -162,14 +164,14 @@ def delete(user,item_id,version,note,warehouse_id=None,all_warehouses=False,snap
 def requirements(job):
     from repairs.construction import planned_parts,COUPLING_METHODS
     if job.method not in COUPLING_METHODS:return []
-    try:return [int(part*1000) for part in planned_parts(job.length_m,job.composition)[1]]
+    try:return [int(part*1000) for part in planned_parts(job.length_m,job.composition,job.method)[1]]
     except ValidationError:return None
 
 
 def requirements_issue(job):
     from repairs.construction import planned_parts,COUPLING_METHODS
     if job.method not in COUPLING_METHODS:return ''
-    try:planned_parts(job.length_m,job.composition)
+    try:planned_parts(job.length_m,job.composition,job.method)
     except ValidationError as exc:return exc.messages[0]
     return ''
 

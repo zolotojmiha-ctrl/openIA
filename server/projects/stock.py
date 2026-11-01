@@ -91,7 +91,7 @@ def save_item(user,pk,version,data):
     if 'electrode_brand' in data:row.electrode_brand=(data['electrode_brand'] or '').strip()
     if 'electrode_diameter' in data:row.electrode_diameter=data['electrode_diameter']
     if row.kind=='electrode' and (row.unit!='kg' or not row.electrode_brand or not row.electrode_diameter or row.electrode_diameter<=0):raise ValidationError('Для электродов нужны марка, диаметр и единица кг.')
-    if row.kind in ('composite','sealant') and row.unit!='pcs':raise ValidationError('Композит и герметик учитываются в штуках.')
+    if row.kind in ('composite','sealant') and row.unit not in ('pcs','kit'):raise ValidationError('Композит и герметик учитываются комплектами.')
     if row.kind=='insulation' and row.unit!='m2':raise ValidationError('Изоляция учитывается в квадратных метрах (м²).')
     if row.coupling_id and row.serial!=row.coupling.serial and 'serial' in data:
         row.coupling.serial=row.serial;row.coupling.full_clean();row.coupling.save(update_fields=['serial'])
@@ -118,7 +118,7 @@ def quantity(raw,item):
     try:q=Decimal(str(raw))
     except InvalidOperation:raise ValidationError('Укажите количество числом.')
     if not q.is_finite() or q<=0 or q>=Decimal('1000000000000000') or q.normalize().as_tuple().exponent < -3:raise ValidationError('Количество должно быть положительным, до трёх знаков после запятой.')
-    if item.unit=='pcs' and q!=q.to_integral_value():raise ValidationError('Штучные изделия учитываются целым количеством.')
+    if item.unit in ('pcs','kit') and q!=q.to_integral_value():raise ValidationError('Штучные изделия учитываются целым количеством.')
     if (item.coupling_id or item.individual) and q!=1:raise ValidationError('Конкретная муфта учитывается как одно изделие.')
     return q
 
@@ -216,7 +216,7 @@ def reverse(user,pk,note,token):
 def reconcile_installation(actor,job,report,selected):
     """Called under StockLock and coupling locks, inside the repair transaction."""
     selected_ids={c.pk for c in selected}
-    active=StockMovement.objects.filter(job=job,automatic=True,kind='consume',reversal__isnull=True).select_related('item','source')
+    active=StockMovement.objects.filter(job=job,automatic=True,kind='consume',reversal__isnull=True,item__coupling__isnull=False).select_related('item','source')
     kept=set()
     for row in active:
         if row.item.coupling_id in selected_ids:kept.add(row.item.coupling_id);continue

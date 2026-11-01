@@ -13,12 +13,12 @@ class Stock619Tests(StockTests):
     def setup_groups(self):
         self.a=self.wh('Володя Барабинск');self.b=self.wh('Омск')
         self.section.diameter_mm=720;self.section.save()
-        data=self.data(name='Муфта П2',kind='coupling',unit='pcs',method='p2',diameter_mm=720,length_mm=1500,wall_mm=8)
+        data=self.data(name='Муфта П1',kind='coupling',unit='pcs',method='p1',diameter_mm=720,length_mm=1500,wall_mm=8)
         planning.receive(self.leader,data,self.a,10,self.today,'Поступление',uuid.uuid4())
         planning.receive(self.leader,data,self.b,5,self.today,'Поступление',uuid.uuid4())
         self.jobs=[]
         for km,n in [(100,3),(102,2),(105,1)]:
-            job=Job.objects.create(contract=self.contract,section=self.section,method='p2',wall_mm=8,length_m=Decimal('1.5')*n,composition='+'.join(['1.5']*n),created_by=self.leader)
+            job=Job.objects.create(contract=self.contract,section=self.section,method='p1',wall_mm=8,length_m=Decimal('1.5')*n,composition='+'.join(['1.5']*n),created_by=self.leader)
             defect=Defect.objects.create(contract=self.contract,section=self.section,kilometre=km,number=str(km));JobDefect.objects.create(job=job,defect=defect);self.jobs.append(job)
     def group(self,wh):return next(g for g in groups.groups(self.leader) if g['warehouse'] and g['warehouse'].pk==wh.pk)
     def export_tables(self):
@@ -71,8 +71,8 @@ class Stock619Tests(StockTests):
         with self.assertRaises(ValidationError):stock.save_item(self.leader,item.pk,item.version,data)
 
     def test_legacy_batch_splits_automatically_on_bulk_allocation(self):
-        self.a=self.wh();item=self.item(name='Муфта',kind='coupling',unit='pcs',method='p2',length_mm=1000,wall_mm=8)
-        self.move(item,q=10,dst=self.a);j=self.make_job();j.length_m=3;j.composition='1+1+1';j.save()
+        self.a=self.wh();item=self.item(name='Муфта',kind='coupling',unit='pcs',method='p1',length_mm=1000,wall_mm=8)
+        self.move(item,q=10,dst=self.a);j=self.make_job();j.method='p1';j.length_m=3;j.composition='1+1+1';j.save()
         g=self.group(self.a);groups.distribute(self.leader,g['token'],{str(j.pk):3})
         g=self.group(self.a);self.assertEqual((g['quantity'],g['reserved'],g['free']),(10,3,7))
     def test_upload_preview_and_apply_are_visible_and_idempotent(self):
@@ -134,7 +134,7 @@ class Stock619HistoryTests(Stock619Tests):
         groups.distribute(self.leader,g['token'],{str(job.pk):3})
         items=list(StockItem.objects.filter(reserved_job=job).select_related('coupling'))
         from repairs.services import report_work
-        report_work(self.leader,job.pk,'result',{'token':uuid.uuid4(),'expected_version':job.version,'performed_date':self.today,'outcome':'complete','method':'p2','length_m':job.length_m,'composition':job.composition,'note':'Монтаж','problem':'','latitude':None,'longitude':None,'couplings':[i.coupling for i in items],'files':[]})
+        report_work(self.leader,job.pk,'result',{'token':uuid.uuid4(),'expected_version':job.version,'performed_date':self.today,'outcome':'complete','method':'p1','length_m':job.length_m,'composition':job.composition,'note':'Монтаж','problem':'','latitude':None,'longitude':None,'couplings':[i.coupling for i in items],'files':[]})
         g=self.group(self.a);self.assertEqual((g['quantity'],g['reserved'],g['free'],g['installed']),(7,0,7,3))
         tables=self.export_tables();exchange.apply(self.leader,tables)
         self.assertEqual((self.group(self.a)['quantity'],self.group(self.a)['installed']),(7,3))

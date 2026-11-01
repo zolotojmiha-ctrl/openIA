@@ -1,0 +1,6 @@
+.account-field{margin:18px 0}.account-field>label{display:block;font-weight:600;margin-bottom:8px}.account-field[hidden]{display:none}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.metric-grid>p{background:#f4f1f9;border:1px solid #e1daed;border-radius:12px;padding:16px;margin:0}.metric-grid strong{display:block;font-size:1.4rem;margin-top:8px}
+.panel details{padding:14px 0;border-top:1px solid #e7e2ef}.panel summary{cursor:pointer;font-weight:600;min-height:36px}.panel form{max-width:840px}.panel input,.panel select{max-width:100%;box-sizing:border-box}.panel p,.panel h2{overflow-wrap:anywhere}
+@media(max-width:600px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-grid>p{padding:12px;font-size:14px}.metric-grid strong{font-size:1.1rem}.account-field input,.account-field select{max-width:100%}.table-wrap{max-width:100%;overflow-x:auto}}
+
+.rental-bars{display:grid;gap:16px}.rental-bars>div{display:grid;grid-template-columns:1fr auto;gap:8px}.rental-bar-track{grid-column:1/-1;height:12px;background:#eee9f6;border-radius:8px;overflow:hidden}.rental-bar-track>div{height:100%;background:#7560ac;border-radius:8px}

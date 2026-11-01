@@ -53,6 +53,7 @@ class InstallationInputTests(TestCase):
         self.assertFalse(Report.objects.exists())
 
     def test_manual_multiple_parts_have_individual_serials(self):
+        self.job.method='p1';self.job.save()
         response=self.client.post(self.url,self.payload(composition='1+0.5',manual_serials='ПЕРВАЯ\nВТОРАЯ'))
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(set(Coupling.objects.values_list('serial','length_mm')),{('ПЕРВАЯ',1000),('ВТОРАЯ',500)})

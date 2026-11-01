@@ -266,3 +266,32 @@ urlpatterns=[
  path('cabinet/finance/<uuid:pk>/edit/',finance.scope_edit,name='finance_scope_edit'),
  path('cabinet/finance/<uuid:pk>/',finance.detail,name='finance_detail'),
 ]
+
+
+from projects import rental_views
+urlpatterns += [
+ path('cabinet/rentals/<uuid:pk>/periods/<int:period_id>/reopen/', rental_views.reopen, name='rental_period_reopen'),
+    path('cabinet/rentals/',rental_views.listing,name='rental_list'),
+ path('cabinet/rentals/new/',rental_views.setup,name='rental_setup'),
+ path('cabinet/rentals/<uuid:pk>/',rental_views.detail,name='rental_detail'),
+ path('cabinet/rentals/<uuid:pk>/excel/',rental_views.export,name='rental_export'),
+ path('cabinet/rentals/<uuid:pk>/payments/<int:payment_id>/reverse/',rental_views.reverse,name='rental_payment_reverse'),
+]
+
+from projects import customer_documents
+urlpatterns += [
+ path('cabinet/customer/documents/<uuid:contract_id>/<uuid:object_id>/',customer_documents.listing,name='customer_documents'),
+ path('cabinet/customer/files/<uuid:pk>/',customer_documents.download,name='customer_document_download'),
+ path('cabinet/customer/files/<uuid:pk>/revoke/',customer_documents.revoke,name='customer_document_revoke'),
+]
+
+from projects import material_views
+urlpatterns += [
+ path('cabinet/repair-materials/<uuid:pk>/composition/', material_views.choose_composition, name='repair_materials_composition'),
+    path('cabinet/repair-materials/',material_views.listing,name='repair_materials'),
+ path('cabinet/repair-materials/excel/',material_views.export,name='repair_materials_export'),
+ path('cabinet/repair-materials/profiles/',material_views.profiles,name='coating_profiles'),
+ path('cabinet/repair-materials/profiles/<int:pk>/',material_views.profiles,name='coating_profile_edit'),
+ path('cabinet/repair-materials/<uuid:pk>/retry/',material_views.retry,name='repair_materials_retry'),
+]
+urlpatterns += [path('cabinet/customer/excel/<uuid:contract_id>/<uuid:object_id>/',customer_documents.excel,name='customer_excel')]

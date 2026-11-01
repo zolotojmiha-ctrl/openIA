@@ -78,7 +78,7 @@ class ReviewForm(forms.Form):
                 self.add_error(None,'Доступ выбранного мастера изменился. Загрузите ведомость заново после проверки доступа.')
             selected=c.get(f'row_{index}')
             if selected=='new' and item['method'] in COUPLING_METHODS and f'length_{index}' not in self.errors and f'composition_{index}' not in self.errors:
-                try:c[f'length_{index}'],_=planned_parts(c.get(f'length_{index}'),c.get(f'composition_{index}',''))
+                try:c[f'length_{index}'],_=planned_parts(c.get(f'length_{index}'),c.get(f'composition_{index}',''),item['method'])
                 except ValidationError as exc:self.add_error(f'composition_{index}' if c.get(f'composition_{index}') else f'length_{index}',exc)
             if selected not in ('skip',None) and any(matching_defects(self.batch.section,d['km'],d['number'],self.batch.contract).count()>1 for d in item['defects']):self.add_error(f'row_{index}','После округления есть дубли существующих дефектов. Проверьте их перед импортом.')
             if selected=='new' and any(matching_defects(self.batch.section,d['km'],d['number'],self.batch.contract).filter(archived_at__isnull=False).exists() for d in item['defects']):
@@ -231,7 +231,7 @@ def review(request,pk):
     for i,item in enumerate(batch.payload['jobs']):
         issue=''
         if item['method'] in COUPLING_METHODS:
-            try:planned_parts(form[f'length_{i}'].value(),form[f'composition_{i}'].value())
+            try:planned_parts(form[f'length_{i}'].value(),form[f'composition_{i}'].value(),item['method'])
             except ValidationError as exc:issue=exc.messages[0]
         rows.append({'item':item,'method':dict(METHODS)[item['method']],'field':form[f'row_{i}'],'length':form[f'length_{i}'],'composition':form[f'composition_{i}'],'coupling':item['method'] in COUPLING_METHODS,'plan_issue':issue})
     back=reverse('repair_import')
