@@ -1,0 +1,14 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{
+ const base=process.env.ARMADA_TEST_URL,shots='/workspace/armada-private-analysis/release6251-screenshots';fs.mkdirSync(shots,{recursive:true});
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']}),page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
+ async function fit(name){for(const width of[320,390,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,name+' '+width);}await page.setViewportSize({width:390,height:844});await page.screenshot({path:shots+'/'+name+'-phone.png',fullPage:true});}
+ async function download(name){const [file]=await Promise.all([page.waitForEvent('download'),page.getByRole('link',{name:'↓ Ведомость в Excel',exact:true}).click()]);assert.equal(file.suggestedFilename(),name);await file.saveAs(process.env.ARMADA_TEST_DOWNLOADS+'/'+name);}
+ await page.goto(base+'/cabinet/login/');await page.locator('[name=phone]').fill('+70000000731');await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');
+ await page.goto(base+'/cabinet/stock/');await page.waitForURL('**/stock/inventory/');assert.equal(await page.getByRole('link',{name:'＋ Добавить на склад',exact:true}).count(),1);await fit('pto-stock');
+ await page.getByRole('link',{name:'Потребность на работы',exact:true}).click();await page.getByRole('heading',{name:'Потребность на работы',exact:true}).waitFor();await download('repair-materials.xlsx');await fit('pto-needs');
+ await page.goto(base+'/cabinet/stock/inventory/');await page.getByRole('link',{name:'Хватит ли муфт на работы?',exact:true}).click();await page.getByRole('heading',{name:'Обеспеченность муфтами',exact:true}).waitFor();await download('coupling-coverage.xlsx');await fit('pto-couplings');
+ await page.goto(base+'/cabinet/stock/inventory/');await page.getByRole('link',{name:'Настроить склады',exact:true}).click();await page.getByRole('link',{name:'Нормы расхода материалов',exact:true}).click();await page.getByRole('heading',{name:'Нормы изоляции',exact:true}).waitFor();assert.equal(await page.getByText('Добавить профиль',{exact:false}).count(),1);await page.locator('summary').filter({hasText:'Добавить профиль'}).click();assert.ok(await page.locator('[name=area_per_m]').isVisible());await fit('pto-norms');
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS PTO warehouse controls, norms, both actual Excel downloads and four viewport widths.');
+})().catch(e=>{console.error(e);process.exit(1)});
