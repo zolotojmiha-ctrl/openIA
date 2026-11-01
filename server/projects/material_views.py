@@ -15,6 +15,10 @@ from repairs.excel import workbook
 from . import repair_materials as materials, stock
 from .models import CoatingProfile,StockItem,RepairConsumption,StockMovement,COMPANY_TAX_ID
 
+def consumption_movements(job_ids):
+    # Legacy manual reversals may carry the job only on their original movement.
+    return StockMovement.objects.filter(item__legal_entity__tax_id=COMPANY_TAX_ID).filter(Q(kind='consume',job_id__in=job_ids)|Q(kind='reversal',reverses__kind='consume',reverses__job_id__in=job_ids)).select_related('item','job__section','job__contract','reverses__job__section','reverses__job__contract')
+
 class ProfileForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
     class Meta:
@@ -44,7 +48,8 @@ def listing(request):
         from .p1_composition import choices
         for row in rows:row['assemblies']=choices(row['job'],request.user) if row['job'].method=='p1' else []
     ledger=RepairConsumption.objects.filter(job_id__in=ids).select_related('job__section','report').order_by('-updated_at')[:100]
-    actual=StockMovement.objects.filter(item__legal_entity__tax_id=COMPANY_TAX_ID,job_id__in=ids,).filter(Q(kind='consume')|Q(kind='reversal',reverses__kind='consume')).select_related('item','job__section').order_by('-created_at')[:100]
+    actual=list(consumption_movements(ids).order_by('-created_at')[:100])
+    for row in actual:row.repair_job=row.job or row.reverses.job
     return render(request,'projects/repair_materials.html',{'actual':actual,'rows':rows,'ledger':ledger,'can_manage_materials':permitted(request.user,'stock.manage')})
 
 @login_required
@@ -79,8 +84,8 @@ def export(request):
         label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
         for n in d['couplings']+d['materials']:rows.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Потребность',n['name'],n['unit'],str(n['need']),str(n['missing']),''])
         for issue in d['issues']:rows.append(['',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Нужно уточнить','','','','',issue])
-    for m in StockMovement.objects.filter(item__legal_entity__tax_id=COMPANY_TAX_ID,job_id__in=allowed,).filter(Q(kind='consume')|Q(kind='reversal',reverses__kind='consume')).select_related('item','job__section','job__contract'):
-        job=m.job;label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
+    for m in consumption_movements(allowed):
+        job=m.job or m.reverses.job;label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
         rows.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Списание' if m.kind=='consume' else 'Отмена',m.item.name,m.item.get_unit_display(),str(-m.quantity if m.kind=='reversal' else m.quantity),'',m.note])
     response=HttpResponse(workbook(rows,['Контракт','Объект','Нефтепровод','Дефекты общей конструкции','Код ремонта','Вид записи','Материал','Единица','Количество / норма (отмена со знаком минус)','К поставке','Основание'],'Материалы'),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="repair-materials.xlsx"';return response
 

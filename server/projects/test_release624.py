@@ -180,8 +180,14 @@ class Release624Tests(TestCase):
         self.assertEqual(choices(j),[])
     def test_pto_consumption_excel_does_not_require_full_stock_access(self):
         AccessGrant.objects.create(user=self.worker,permission='repairs.prepare',granted_by=self.leader)
+        wh=self.wh(project_object=self.obj);item=self.item(name='ТЕСТ Фактический расход');self.move(item,dst=wh,q=10);job=self.make_job()
+        movement=self.move(item,'consume',3,src=wh,job=job);stock.reverse(self.leader,movement.pk,'ТЕСТ ошибочное списание',uuid.uuid4())
         self.client.force_login(self.worker);response=self.client.get(reverse('repair_materials_export'));self.assertEqual(response.status_code,200)
-        self.assertTrue(zipfile.is_zipfile(io.BytesIO(response.content)))
+        from repairs.importer import read_book
+        cells=read_book(SimpleUploadedFile('expense.xlsx',response.content))['cells']
+        amounts=[Decimal(cells[(r,9)]) for r,c in cells if c==7 and cells[(r,c)]==item.name]
+        self.assertCountEqual(amounts,[Decimal(3),Decimal(-3)]);self.assertEqual(sum(amounts),0)
+        self.assertContains(self.client.get(reverse('repair_materials')),item.name)
     def test_rental_financial_summary_includes_charge_and_payment_once(self):
         from finance.models import FinancialScope
         from finance.services import summary
