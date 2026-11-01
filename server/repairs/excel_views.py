@@ -26,7 +26,9 @@ def export(request):
     import uuid
     for key in ('contract','object','section','master'):
         if request.GET.get(key):
-            try:uuid.UUID(request.GET[key])
+            try:
+                from projects.scope_widgets import identifiers
+                identifiers(request.GET,key) if key in ('contract','object') else uuid.UUID(request.GET[key])
             except (ValueError,TypeError):return HttpResponse('Некорректный параметр фильтра: '+key,status=400)
     from .filters import filtered_jobs,filter_values
     qs=filtered_jobs(request.user,filter_values(request.GET))

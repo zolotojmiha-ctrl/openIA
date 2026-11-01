@@ -46,7 +46,7 @@ class FinanceTests(TestCase):
         self.assertEqual(b['declared_pending'],D('123'));self.assertEqual(len(b['lines']),2)
     def test_import_preview_then_commit_and_idempotency(self):
         url=reverse('finance_import')
-        self.assertContains(self.client.post(url,{'file':report_file()}),'123,00')
+        self.assertContains(self.client.post(url,{'file':report_file()}),'0,123 тыс. руб.')
         self.assertFalse(FinancialImport.objects.exists())
         self.assertEqual(self.client.post(url,{'file':report_file(),'confirm':'on'}).status_code,302)
         scope=FinancialScope.objects.get(title='ТЕСТ. 10 дефектов');card=summary(scope)

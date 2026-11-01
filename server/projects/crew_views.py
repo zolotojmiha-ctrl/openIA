@@ -1,3 +1,4 @@
+from projects.scope_widgets import ScopeChecklist
 from django import forms
 from django.core import signing
 from django.core.exceptions import ValidationError
@@ -163,7 +164,7 @@ def crew_edit(request,pk):
 
 class BulkPlaceForm(forms.Form):
     snapshot=forms.CharField(widget=forms.HiddenInput)
-    project_objects=forms.ModelMultipleChoiceField(label='Объекты контракта',queryset=ProjectObject.objects.none(),widget=forms.CheckboxSelectMultiple)
+    project_objects=forms.ModelMultipleChoiceField(label='Объекты контракта',queryset=ProjectObject.objects.none(),widget=ScopeChecklist)
     start=forms.DateField(label='Начало работы',widget=DATE)
     end=forms.DateField(label='Окончание работы',widget=DATE,required=False)
     replace=forms.BooleanField(label='Заменить прежние бригады на выбранных объектах с указанной даты',required=False)

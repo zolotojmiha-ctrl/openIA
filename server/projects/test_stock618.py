@@ -70,9 +70,9 @@ class Stock618Tests(StockTests):
         planning.reserve(self.leader,i.pk,i.version,j.pk)
         self.client.force_login(self.leader)
         res=self.client.get(reverse('stock_coverage'));self.assertEqual(res.status_code,200)
-        rows=res.context['rows'];self.assertEqual(len(rows),2)
+        rows=res.context['rows'];self.assertEqual([(r['length'],r['need']) for r in rows],[(2500,1)])
         self.assertEqual(sum(r['missing'] for r in rows),1)
-        self.assertEqual(sum(r['reserved'] for r in rows),1)
+        self.assertEqual(sum(r['reserved'] for r in rows),0)
         j.composition='неизвестно';j.save();res=self.client.get(reverse('stock_coverage'));self.assertEqual(len(res.context['unknown']),1)
 
     def test_insulation_square_metres_and_no_conversion(self):

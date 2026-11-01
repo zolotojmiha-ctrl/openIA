@@ -1,3 +1,4 @@
+from projects.scope_widgets import ScopeChecklist,ScopedContracts
 """Explicit operational actions; customer data crosses a publication boundary only."""
 from datetime import timedelta
 from decimal import Decimal
@@ -251,14 +252,14 @@ def _admission_download(request,pk,revision_id,file_id=None):
 
 class CustomerGrantForm(forms.Form):
     user=forms.ModelChoiceField(label='Представитель заказчика',queryset=User.objects.none())
-    contract=forms.ModelChoiceField(label='Контракт',queryset=Contract.objects.none())
-    objects=forms.ModelMultipleChoiceField(label='Разрешённые участки',queryset=ProjectObject.objects.none(),widget=forms.CheckboxSelectMultiple)
+    contract=ScopedContracts(label='Контракты',queryset=Contract.objects.none(),widget=ScopeChecklist)
+    objects=forms.ModelMultipleChoiceField(label='Разрешённые участки',queryset=ProjectObject.objects.none(),widget=ScopeChecklist)
     def __init__(self,*a,user,**kw):
         super().__init__(*a,**kw);self.fields['user'].queryset=User.objects.filter(role='customer',is_active=True,leader_slot__isnull=True)
         self.fields['contract'].queryset=visible_contracts(user);self.fields['objects'].queryset=visible_objects(user)
     def clean(self):
         d=super().clean()
-        if d.get('contract') and d.get('objects') and d['objects'].exclude(contracts=d['contract']).exists():self.add_error('objects','Все участки должны принадлежать выбранному контракту.')
+        if d.get('contract') and d.get('objects') and d['objects'].exclude(contracts__in=d['contract']).exists():self.add_error('objects','Каждый участок должен входить хотя бы в один выбранный контракт.')
         return d
 
 @leader_required
@@ -269,11 +270,12 @@ def customer_access(request):
             lock_actor(request.user)
             user=User.objects.select_for_update().get(pk=form.cleaned_data['user'].pk)
             if user.role!='customer' or not user.is_active:raise PermissionDenied
-            c=form.cleaned_data['contract'];CustomerAccess.objects.filter(user=user,contract=c).delete()
-            for obj in form.cleaned_data['objects']:CustomerAccess.objects.create(user=user,contract=c,project_object=obj,created_by=request.user)
-            audit(request.user,'contract_access_changed',user,kind='customer',contract=str(c.pk))
-        messages.success(request,'Доступ заказчика сохранён. Для этого контракта список участков заменён.');return redirect('customer_access')
-    return page(request,form,'Доступ заказчика',reverse('users'),intro='Сначала создайте пользователя с ролью «Заказчик». Его кабинет показывает только опубликованные данные выбранных участков. Повторное сохранение заменяет список участков этого контракта.',grants=CustomerAccess.objects.select_related('user','contract','project_object'))
+            selected=list(form.cleaned_data['contract']);CustomerAccess.objects.filter(user=user,contract__in=selected).delete()
+            for c in selected:
+                for obj in form.cleaned_data['objects'].filter(contracts=c):CustomerAccess.objects.create(user=user,contract=c,project_object=obj,created_by=request.user)
+            audit(request.user,'contract_access_changed',user,kind='customer',contracts=[str(c.pk) for c in selected])
+        messages.success(request,'Доступ заказчика сохранён. Для выбранных контрактов списки участков заменены.');return redirect('customer_access')
+    return page(request,form,'Доступ заказчика',reverse('users'),intro='Сначала создайте пользователя с ролью «Заказчик». Его кабинет показывает только опубликованные данные выбранных участков. Можно выбрать несколько контрактов и участков. Повторное сохранение заменяет доступ только по выбранным контрактам.',grants=CustomerAccess.objects.select_related('user','contract','project_object'))
 
 @leader_required
 def customer_revoke(request,pk):

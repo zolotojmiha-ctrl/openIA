@@ -50,10 +50,10 @@ class ContractAreaTests(TestCase):
         self.assertIn(str(self.contract.pk),response.url)
         section=Section.objects.get();self.assertEqual(section.project_object,self.area)
         self.assertFalse(Job.objects.exists())
-    def test_cannot_attach_existing_area_to_second_contract(self):
+    def test_existing_area_can_be_linked_to_second_contract(self):
         from .forms import ContractForm
-        form=ContractForm({'number':'Новый','work_kinds':['repairs'],'status':'active','linked_objects':[str(self.area.pk)]},user=self.leader)
-        self.assertFalse(form.is_valid());self.assertIn('linked_objects',form.errors)
+        form=ContractForm({'number':'Новый','subject':'ТЕСТ Общий участок','work_kinds':['repairs'],'status':'active','linked_objects':[str(self.area.pk)]},user=self.leader)
+        self.assertTrue(form.is_valid(),form.errors)
     def test_no_permission_or_archived_area_cannot_create_defect(self):
         user=User.objects.create_user('+79999981502','123456',full_name='Работник',must_change_password=False)
         self.client.force_login(user);self.assertEqual(self.client.get(self.url()).status_code,403)

@@ -186,8 +186,12 @@ def coverage(request):
     jobs=visible_jobs(request.user).exclude(state__in=['reported','confirmed','unrepairable']).exclude(contract__status='archived')
     from django.http import Http404
     try:
-        if request.GET.get('contract'):jobs=jobs.filter(contract_id=uuid.UUID(request.GET['contract']))
-        if request.GET.get('object'):jobs=jobs.filter(section__project_object_id=uuid.UUID(request.GET['object']))
+        if request.GET.get('contract'):
+            from .scope_widgets import identifiers
+            jobs=jobs.filter(contract_id__in=identifiers(request.GET,'contract'))
+        if request.GET.get('object'):
+            from .scope_widgets import identifiers
+            jobs=jobs.filter(section__project_object_id__in=identifiers(request.GET,'object'))
     except ValueError:raise Http404
     from .repair_materials import all_demand
     allowed=set(jobs.values_list('pk',flat=True));grouped={};unknown=[]

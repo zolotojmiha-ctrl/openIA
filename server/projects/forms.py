@@ -1,15 +1,23 @@
+from projects.scope_widgets import ScopeChecklist
+from finance.money_forms import MoneyForm,MoneyModelForm
 from django import forms
 from accounts.models import User
 from .models import ProjectObject, Contract, SHARED_FIELDS, COMPANY_TAX_ID, WORK_KINDS
 from .access import visible_objects,visible_contracts
 
 class ObjectForm(forms.ModelForm):
-    related_contract=forms.ModelChoiceField(label='Контракт заказчика',queryset=Contract.objects.none(),required=False,help_text='Участок будет добавлен в выбранный контракт.')
+    related_contract=forms.ModelMultipleChoiceField(label='Контракты заказчиков',queryset=Contract.objects.none(),required=False,widget=ScopeChecklist,help_text='Можно выбрать несколько контрактов.')
     def __init__(self,*args,user=None,**kwargs):
+        kwargs=dict(kwargs)
+        initial=dict(kwargs.get('initial') or {})
+        if initial.get('related_contract'):initial['related_contract']=[getattr(initial['related_contract'],'pk',initial['related_contract'])]
+        kwargs['initial']=initial
         super().__init__(*args,**kwargs)
         if not self.instance._state.adding:self.fields.pop('related_contract')
         elif user:
             self.fields['related_contract'].queryset=visible_contracts(user).exclude(status='archived')
+            from .access import contract_card
+            self.fields['related_contract'].label_from_instance=lambda c:contract_card(c,user)['title']
             if self.initial.get('related_contract'):
                 self.fields['related_contract'].disabled=True
                 self.fields['related_contract'].required=True
@@ -23,10 +31,10 @@ class ObjectForm(forms.ModelForm):
         fields=['name','kind','location','status','start_date','end_date']
         widgets={key:forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}) for key in ['start_date','end_date']}
 
-class ContractForm(forms.ModelForm):
+class ContractForm(MoneyModelForm):
     work_kinds=forms.MultipleChoiceField(label='Виды работ — можно выбрать несколько',choices=WORK_KINDS,widget=forms.CheckboxSelectMultiple)
     expected_version = forms.IntegerField(widget=forms.HiddenInput,required=False)
-    linked_objects = forms.ModelMultipleChoiceField(label='Участки работ контракта',queryset=ProjectObject.objects.none(),required=False,widget=forms.CheckboxSelectMultiple(attrs={'data-bulk-check':'objects'}))
+    linked_objects = forms.ModelMultipleChoiceField(label='Участки работ контракта',queryset=ProjectObject.objects.none(),required=False,widget=ScopeChecklist(attrs={'data-bulk-check':'objects'}))
     class Meta:
         model=Contract
         fields=['number','date','subject','rnu','work_kinds','counterparty','deadline','amount','status','private_notes']
@@ -47,14 +55,9 @@ class ContractForm(forms.ModelForm):
                     for flag,name in [('show_number','number'),('show_date','date'),('show_subject','subject'),('show_counterparty','counterparty'),('show_deadline','deadline')]:
                         if not rule or not getattr(rule,flag):self.fields.pop(name,None)
         self.fields['linked_objects'].required=False
-        self.fields['linked_objects'].help_text='Сначала сохраните контракт, затем добавьте участки работ из его карточки.'
+        self.fields['linked_objects'].help_text='Можно выбрать несколько участков. Новый участок можно добавить после сохранения контракта.'
     def clean_linked_objects(self):
         places=self.cleaned_data['linked_objects']
-        shared=places.filter(contracts__isnull=False)
-        if not self.instance._state.adding:
-            shared=shared.exclude(pk__in=self.instance.objects_linked.values('pk'))
-        if shared.exists():
-            raise forms.ValidationError('Участок уже относится к другому контракту. Создайте отдельный участок для этого контракта; работы и документы учитываются раздельно.')
         return places
     def clean_work_kinds(self):
         return list(dict.fromkeys(self.cleaned_data['work_kinds']))
@@ -86,10 +89,6 @@ class ContractShareForm(forms.Form):
 
 
 def validate_new_area_links(contract,ids):
-    """Serialize first attachment; historical shared links remain unchanged."""
-    from .models import ContractObject
+    """Lock selected areas before updating a contract relationship."""
     list(ProjectObject.objects.select_for_update().filter(pk__in=ids).order_by('pk'))
-    previous=set(contract.objects_linked.values_list('pk',flat=True)) if contract and contract.pk else set()
-    links=ContractObject.objects.filter(project_object_id__in=set(ids)-previous)
-    if contract and contract.pk:links=links.exclude(contract=contract)
-    if links.exists():raise forms.ValidationError('Участок уже добавлен в другой контракт. Создайте отдельный участок.')
+    # Several contracts may reference an object; each operation retains its contract.

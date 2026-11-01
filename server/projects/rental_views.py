@@ -1,3 +1,5 @@
+from finance.money_forms import MoneyForm,MoneyModelForm
+from decimal import Decimal
 import uuid
 from decimal import Decimal
 from datetime import timedelta
@@ -30,9 +32,9 @@ class RentalInfoForm(forms.Form):
     version=forms.IntegerField(widget=forms.HiddenInput)
     supplier=forms.CharField(label='Арендодатель',max_length=200,required=False)
     reference=forms.CharField(label='Номер договора',max_length=200,required=False)
-    agreement=forms.ModelChoiceField(label='Договор в системе',queryset=CounterpartyAgreement.objects.filter(kind='equipment_rent',archived=False),required=False)
+    agreement=forms.ModelChoiceField(label='Связать с сохранённым договором — необязательно',queryset=CounterpartyAgreement.objects.filter(kind='equipment_rent',archived=False),required=False)
 
-class RateForm(forms.Form):
+class RateForm(MoneyForm):
     starts_on=forms.DateField(label='Тариф действует с',widget=DATE,initial=timezone.localdate)
     basis=forms.ChoiceField(label='Стоимость указана',choices=[('day','За день / смену'),('hour','За час')])
     work_price=forms.DecimalField(label='Работа — стоимость, ₽',min_value=0,max_digits=16,decimal_places=2)
@@ -44,7 +46,7 @@ class DayForm(forms.Form):
     version=forms.IntegerField(min_value=0,initial=0,widget=forms.HiddenInput)
     note=forms.CharField(label='Причина исправления (только при изменении отметки)',max_length=500,required=False)
 
-class PaymentForm(forms.Form):
+class PaymentForm(MoneyForm):
     date=forms.DateField(label='Дата перечисления',widget=DATE,initial=timezone.localdate)
     amount=forms.DecimalField(label='Сумма, ₽',min_value=Decimal('.01'),max_digits=18,decimal_places=2)
     note=forms.CharField(label='Основание: аванс / оплата, номер платежа',max_length=500)
@@ -136,22 +138,24 @@ def export(request,pk):
     rental=get_object_or_404(rentals.visible(request.user),pk=pk)
     from repairs.excel import workbook
     financial=rentals.financial_reader(request.user)
-    headers=['Дата','Техника','Госномер','Объект','Состояние','Часы к оплате','Внёс']+(['Начислено, ₽'] if financial else [])
+    from accounts.xlsx import money_value
+    def thousands(value):return money_value(value,1000)
+    headers=['Дата','Техника','Госномер','Объект','Состояние','Часы к оплате','Внёс']+(['Начислено, тыс. руб.'] if financial else [])
     rows=[]
     for d in rental.days.select_related('updated_by').order_by('date'):
         if not financial and not rentals.allowed_on(request.user,rental,d.date):continue
-        rows.append([str(d.date),rental.placement.equipment.name,rental.placement.equipment.registration_number,rental.placement.project_object.name,d.get_kind_display(),d.hours,d.updated_by.full_name]+([str(d.amount) if d.rate_id or not d.hours else 'Тариф не задан'] if financial else []))
+        rows.append([str(d.date),rental.placement.equipment.name,rental.placement.equipment.registration_number,rental.placement.project_object.name,d.get_kind_display(),d.hours,d.updated_by.full_name]+([thousands(d.amount) if d.rate_id or not d.hours else 'Тариф не задан'] if financial else []))
     sheets=[('Табель',headers,rows)]
     history=[]
     for d in rental.days.prefetch_related('revisions__author').filter(version__gt=1).order_by('date'):
         if not financial and not rentals.allowed_on(request.user,rental,d.date):continue
         for revision in d.revisions.all().order_by('number'):
-            history.append([str(d.date),revision.number,revision.data.get('hours',''),revision.author.full_name,str(revision.created_at),revision.data.get('note','')]+([revision.data.get('amount','')] if financial else []))
-    sheets.append(('История отметок',['Дата','Редакция','Часы','Кто внёс','Когда','Причина']+(['Начислено, ₽'] if financial else []),history))
+            history.append([str(d.date),revision.number,revision.data.get('hours',''),revision.author.full_name,str(revision.created_at),revision.data.get('note','')]+([thousands(revision.data.get('amount') or 0)] if financial else []))
+    sheets.append(('История отметок',['Дата','Редакция','Часы','Кто внёс','Когда','Причина']+(['Начислено, тыс. руб.'] if financial else []),history))
     if financial:
-        sheets.append(('Платежи',['Дата','Сумма, ₽','Основание','Отменён'],[[str(p.date),str(p.amount),p.note,'Да' if p.reversed else 'Нет'] for p in rental.payments.all()]))
-        totals=rentals.totals(rental);sheets.append(('Итог',['Показатель','Значение'],[[k,str(v)] for k,v in [('Начислено',totals['charged']),('Перечислено',totals['paid']),('К оплате',totals['debt']),('Остаток аванса',totals['advance'])]]))
-        sheets.append(('Периоды сверки',['С','По','Состояние','Основание','Кто закрыл','Когда','Начислено на дату закрытия','Оплачено на дату закрытия','Долг на дату закрытия','Аванс на дату закрытия','Причина повторной сверки'],[[str(p.starts_on),str(p.ends_on),'Повторная сверка' if p.reopened_at else 'Закрыт',p.note,p.created_by.full_name,str(p.created_at),p.snapshot.get('charged',''),p.snapshot.get('paid',''),p.snapshot.get('debt',''),p.snapshot.get('advance',''),p.reopen_reason] for p in rental.periods.select_related('created_by')]))
+        sheets.append(('Платежи',['Дата','Сумма, тыс. руб.','Основание','Отменён'],[[str(p.date),thousands(p.amount),p.note,'Да' if p.reversed else 'Нет'] for p in rental.payments.all()]))
+        totals=rentals.totals(rental);sheets.append(('Итог',['Показатель','Значение, тыс. руб.'],[[k,thousands(v)] for k,v in [('Начислено',totals['charged']),('Перечислено',totals['paid']),('К оплате',totals['debt']),('Остаток аванса',totals['advance'])]]))
+        sheets.append(('Периоды сверки',['С','По','Состояние','Основание','Кто закрыл','Когда','Начислено на дату закрытия, тыс. руб.','Оплачено на дату закрытия, тыс. руб.','Долг на дату закрытия, тыс. руб.','Аванс на дату закрытия, тыс. руб.','Причина повторной сверки'],[[str(p.starts_on),str(p.ends_on),'Повторная сверка' if p.reopened_at else 'Закрыт',p.note,p.created_by.full_name,str(p.created_at),thousands(p.snapshot.get('charged') or 0),thousands(p.snapshot.get('paid') or 0),thousands(p.snapshot.get('debt') or 0),thousands(p.snapshot.get('advance') or 0),p.reopen_reason] for p in rental.periods.select_related('created_by')]))
     flat=[]
     for name,cols,data in sheets:
         flat.append([name]);flat.append(cols);flat.extend(data);flat.append([])

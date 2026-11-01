@@ -15,13 +15,13 @@ ZERO=Decimal('0')
 HOURS={'work':10,'idle':4,'external':0}
 
 def manager(user):
-    return bool(user.is_authenticated and user.is_active and user.role!='customer' and (user.is_leader or permitted(user,'rental.manage') or permitted(user,'finance.write')))
+    return bool(user.is_authenticated and user.is_active and (user.is_leader or user.role not in ('customer','foreman')) and (user.is_leader or permitted(user,'rental.manage') or permitted(user,'finance.write')))
 
 def financial_writer(user):
-    return user.is_authenticated and user.is_active and user.role!='customer' and (user.is_leader or permitted(user,'finance.write'))
+    return user.is_authenticated and user.is_active and (user.is_leader or user.role not in ('customer','foreman')) and (user.is_leader or permitted(user,'finance.write'))
 
 def financial_reader(user):
-    return manager(user) or bool(user.is_authenticated and user.is_active and user.role!='customer' and permitted(user,'finance.read'))
+    return manager(user) or bool(user.is_authenticated and user.is_active and (user.is_leader or user.role not in ('customer','foreman')) and permitted(user,'finance.read'))
 
 def visible(user):
     rows=EquipmentRental.objects.filter(placement__equipment__legal_entity__tax_id=COMPANY_TAX_ID).select_related('placement__equipment','placement__project_object','placement__crew_assignment__brigade','placement__contract','agreement')

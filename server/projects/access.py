@@ -1,3 +1,4 @@
+from finance.templatetags.finance_format import rub
 from django.db.models import Q
 from .models import COMPANY_TAX_ID, Contract, ProjectObject
 
@@ -25,7 +26,7 @@ def contract_card(contract, user):
             'archived':contract.status=='archived', 'id':contract.pk, 'title':contract.number, 'subject':contract.subject,
             'fields':[('Номер договора',contract.number),('Дата',contract.date),('Предмет',contract.subject),
                       ('Контрагент',contract.counterparty),('РНУ',contract.rnu),('Срок окончания',contract.deadline),
-                      ('Состояние',contract.get_status_display()),('Сумма по карточке, ₽',contract.amount),
+                      ('Состояние',contract.get_status_display()),('Сумма по карточке, тыс. руб.',rub(contract.amount)),
                       ('Внутренние примечания',contract.private_notes)],
         }
     rule = contract.access_rules.get(user=user)

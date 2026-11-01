@@ -75,18 +75,19 @@ def object_edit(request,pk=None):
             else:
                 saved=form.save(commit=False)
                 saved.legal_entity=get_object_or_404(LegalEntity,tax_id=COMPANY_TAX_ID)
-            related=form.cleaned_data.get('related_contract')
-            if related:
-                related=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=visible_contracts(actor).values('pk')),pk=related.pk)
-                if related.status=='archived':form.add_error('related_contract','Контракт уже в архиве.')
+            related_rows=list(form.cleaned_data.get('related_contract') or [])
+            for index,c in enumerate(related_rows):
+                related_rows[index]=get_object_or_404(Contract.objects.select_for_update().filter(pk__in=visible_contracts(actor).values('pk')),pk=c.pk)
+                if related_rows[index].status=='archived':form.add_error('related_contract','Контракт уже в архиве.')
+            related=related_rows[0] if related_rows else None
             if not form.errors:
                 saved.save()
                 if not obj and not request.user.is_leader:ObjectAccess.objects.create(user=request.user,project_object=saved,granted_by=request.user)
                 audit(request.user,'object_updated' if obj else 'object_created',entity_id=str(saved.pk),summary=saved.name)
-                if related:
-                    ContractObject.objects.create(contract=related,project_object=saved)
-                    related.version+=1;related.save(update_fields=['version','updated_at'])
-                    audit(actor,'contract_updated',entity_id=str(related.pk),linked=[str(saved.pk)])
+                for linked_contract in related_rows:
+                    ContractObject.objects.create(contract=linked_contract,project_object=saved)
+                    linked_contract.version+=1;linked_contract.save(update_fields=['version','updated_at'])
+                    audit(actor,'contract_updated',entity_id=str(linked_contract.pk),linked=[str(saved.pk)])
                 messages.success(request,'Участок сохранён и добавлен в контракт.' if related else 'Участок сохранён.')
                 if related or context_contract:return redirect('contract_detail',pk=(related or context_contract).pk)
                 return redirect('object_detail',pk=saved.pk)

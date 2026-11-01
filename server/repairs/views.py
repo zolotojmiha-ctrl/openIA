@@ -22,6 +22,7 @@ from .models import Section, Job, Defect, JobDefect, Coupling, Report, Attachmen
 from .services import report_work, confirm_work
 from .navigation import detail_url,report_return_url
 from .values import kilometre,get_or_create_defect
+from projects.scope_widgets import values,identifiers
 
 def register_context(request,scope=None):
     archived=request.GET.get('archive')=='1' and can_prepare(request.user)
@@ -33,6 +34,8 @@ def register_context(request,scope=None):
     counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').exclude(state='unrepairable').count(),'unrepairable':qs.filter(state='unrepairable').count(),'revision':qs.exclude(review_note='').count()}
     qs=filtered_jobs(request.user,params)
     review_filter=signing.dumps({'actor':str(request.user.pk),'filters':params},salt='repair-review-filter',compress=True) if request.user.is_leader and not archived else ''
+    summary_defects=Defect.objects.filter(jobs__in=qs,archived_at__isnull=not archived).distinct()
+    total_defects=summary_defects.count();done_defects=summary_defects.filter(jobs__in=qs.filter(state__in=['reported','confirmed'])).distinct().count()
     ordered=qs.annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=not archived))).order_by('first_km','created_at','pk')
     page=Paginator(ordered,25).get_page(request.GET.get('page'))
     offset=max(0,page.start_index()-1)
@@ -62,19 +65,25 @@ def register_context(request,scope=None):
     except (ValueError,TypeError):contract_readonly=False
     section_choices=visible_sections(request.user)
     if params['contract']:
-        try:section_choices=section_choices.filter(project_object__contracts=uuid.UUID(params['contract']))
+        try:section_choices=section_choices.filter(project_object__contracts__in=identifiers(params,'contract')).distinct()
         except ValueError:section_choices=section_choices.none()
     if params['object']:
-        try:section_choices=section_choices.filter(project_object_id=uuid.UUID(params['object']))
+        try:section_choices=section_choices.filter(project_object_id__in=identifiers(params,'object'))
         except ValueError:section_choices=section_choices.none()
     master_scope={k:v for k,v in params.items() if k in ('contract','object','section','legacy')}
     from projects.access import visible_objects,contract_card
     area_choices=visible_objects(request.user)
     if params['contract']:
-        try:area_choices=area_choices.filter(contracts=uuid.UUID(params['contract']))
+        try:area_choices=area_choices.filter(contracts__in=identifiers(params,'contract')).distinct()
         except ValueError:area_choices=area_choices.none()
     contract_choices=[contract_card(c,request.user) for c in visible_contracts(request.user).order_by('number')]
-    return {'scope_locked':bool(scope),'area_choices':area_choices,'contract_choices':contract_choices,'selected_legacy':params['legacy'],'return_to':request.get_full_path(),'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':section_choices.distinct().order_by('rnu','pipeline','name'),'selected_contract':params['contract'],'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':params['object'],'masters':User.objects.filter(repair_jobs__in=filtered_jobs(request.user,master_scope)).distinct().order_by('full_name')}
+    scope_pairs=list(qs.values_list('contract_id','section_id').distinct()[:2])
+    scope_names={str(c['id']):c['title'] for c in contract_choices}
+    for group in groups:group['scope_contract']=scope_names.get(str(group['job'].contract_id),'Без контракта')
+    section_ids=list(qs.values_list('section_id',flat=True).distinct()[:2]);master_ids=list(qs.exclude(assigned_to__isnull=True).values_list('assigned_to_id',flat=True).distinct())
+    from projects.scope_widgets import values
+    compact={'register_single_scope':len(scope_pairs)==1,'new_contract':params['contract'] if len(values(params,'contract'))==1 else '', 'new_object':params['object'] if len(values(params,'object'))==1 else '', 'selected_contracts':values(params,'contract'),'selected_objects':values(params,'object'),'register_single_section':Section.objects.filter(pk=section_ids[0]).first() if len(section_ids)==1 else None,'register_common_master':User.objects.filter(pk=master_ids[0]).first() if len(master_ids)==1 else None,'register_master_count':len(master_ids),'defect_totals':{'total':total_defects,'done':done_defects,'left':total_defects-done_defects}}
+    return {**compact,'scope_locked':bool(scope),'area_choices':area_choices,'contract_choices':contract_choices,'selected_legacy':params['legacy'],'return_to':request.get_full_path(),'contract_readonly':contract_readonly,'review_filter':review_filter,'page':page,'groups':groups,'archived':archived,'sections':section_choices.distinct().order_by('rnu','pipeline','name'),'selected_contract':params['contract'],'selected_section':sid,'q':q,'state':state,'year':year,'counts':counts,'can_prepare_repairs':can_prepare(request.user) and not contract_readonly,'selected_master':master,'selected_object':params['object'],'masters':User.objects.filter(repair_jobs__in=filtered_jobs(request.user,master_scope)).distinct().order_by('full_name')}
 
 @login_required
 def jobs(request):

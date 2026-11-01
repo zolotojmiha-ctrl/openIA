@@ -1,3 +1,4 @@
+from projects.scope_widgets import values
 from uuid import UUID
 from django import forms
 from django.contrib import messages
@@ -66,9 +67,11 @@ def filtered(user,params):
     if params.get('state') in dict(Equipment._meta.get_field('status').choices):qs=qs.filter(status=params['state'])
     if params.get('object'):
         from uuid import UUID
-        try:pk=UUID(str(params['object']))
+        try:
+            from .scope_widgets import identifiers
+            ids=identifiers(params,'object')
         except ValueError:return qs.none()
-        qs=qs.filter(pk__in=service.current(service.placements(user)).filter(project_object_id=pk).values('equipment_id'))
+        qs=qs.filter(pk__in=service.current(service.placements(user)).filter(project_object_id__in=ids).values('equipment_id'))
     return qs
 
 @login_required
@@ -95,7 +98,7 @@ def listing(request):
     rental_map={}
     for r in rentals.visible(request.user).filter(placement__equipment__in=page.object_list,placement__start_date__lte=timezone.localdate()).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=timezone.localdate())):rental_map.setdefault(r.placement.equipment_id,[]).append(r)
     rows=[{'item':item,'locations':location_map.get(item.pk,[]),'has_rental':item.pk in rental_map} for item in page.object_list]
-    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','ownership':request.GET.get('ownership',''),'ownerships':Equipment._meta.get_field('ownership').choices,'states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
+    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'selected_objects':values(request.GET,'object'),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','ownership':request.GET.get('ownership',''),'ownerships':Equipment._meta.get_field('ownership').choices,'states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
 
 @login_required
 def detail(request,pk):

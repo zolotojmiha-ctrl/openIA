@@ -1,10 +1,11 @@
+from finance.money_forms import MoneyForm,MoneyModelForm
 import uuid
 from django import forms
 from django.core.exceptions import ValidationError
 from .models import FinancialScope,CashReceipt,PaymentAllocation,WorkExecution,AdvanceOffset,CostEntry,SubcontractObligation,PriceChange
 from projects.models import Contract,ProjectObject,COMPANY_TAX_ID
 
-class FinanceForm(forms.ModelForm):
+class FinanceForm(MoneyModelForm):
     operation_token=forms.UUIDField(initial=uuid.uuid4,required=False,widget=forms.HiddenInput)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
@@ -45,7 +46,7 @@ class WorkForm(FinanceForm):
         if pending and pending.scope_id!=getattr(data.get('scope'),'pk',None):self.add_error('scope','Строка справки относится к другому направлению.')
         return data
 
-class AcceptanceForm(forms.Form):
+class AcceptanceForm(MoneyForm):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput)
     accepted_amount=forms.DecimalField(label='Принято по КС, ₽',max_digits=18,decimal_places=2,min_value=0.01)
     payment_due=forms.DateField(label='Срок оплаты по договору (можно уточнить позже)',required=False,widget=forms.DateInput(attrs={'type':'date'}))

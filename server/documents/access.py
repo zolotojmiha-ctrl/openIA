@@ -3,6 +3,7 @@ from projects.models import COMPANY_TAX_ID
 from .models import Document, DocumentAccess, Bundle, BundleAccess, DocumentRead
 
 def has_permission(user,permission):
+    if getattr(user,'role','')=='foreman' and not user.is_leader and permission in ('finance.read','finance.write','rental.manage'):return False
     return user.is_authenticated and user.is_active and (user.is_leader or user.grants.filter(permission=permission).exists())
 
 def visible_bundles(user):

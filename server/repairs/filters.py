@@ -6,16 +6,17 @@ from django.db.models import Q
 from .access import visible_jobs,can_prepare
 from .values import kilometre
 from .models import Job
+from projects.scope_widgets import values,identifiers
 
 FILTER_KEYS=('contract','object','section','master','q','state','year','legacy','archive')
-def filter_values(params):return {k:str(params.get(k,''))[:150] for k in FILTER_KEYS}
+def filter_values(params):return {k:(','.join(values(params,k))[:10000] if k in ('contract','object') else str(params.get(k,''))[:150]) for k in FILTER_KEYS}
 def filtered_jobs(user,params,apply_state=True):
     archived=params.get('archive')=='1' and can_prepare(user)
     qs=visible_jobs(user,include_archived=archived)
     if archived:qs=qs.filter(defects__archived_at__isnull=False).distinct()
     for key,field in [('contract','contract_id'),('object','section__project_object_id'),('section','section_id'),('master','assigned_to_id')]:
         if params.get(key):
-            try:qs=qs.filter(**{field:uuid.UUID(str(params[key]))})
+            try:qs=qs.filter(**{field+'__in':identifiers(params,key)}) if key in ('contract','object') else qs.filter(**{field:uuid.UUID(str(params[key]))})
             except (ValueError,TypeError):return qs.none()
     if params.get('legacy')=='1':qs=qs.filter(contract__isnull=True)
     q=str(params.get('q','')).strip()[:150]

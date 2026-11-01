@@ -24,7 +24,9 @@ def home(request):
     archived=request.GET.get('archive')=='1'
     contracts=contracts.filter(status='archived') if archived else contracts.exclude(status='archived')
     if request.GET.get('object'):
-        try:contracts=contracts.filter(objects_linked=uuid.UUID(request.GET['object']))
+        try:
+            from .scope_widgets import identifiers
+            contracts=contracts.filter(objects_linked__in=identifiers(request.GET,'object')).distinct()
         except ValueError:contracts=contracts.none()
     rows=[]
     for contract in contracts:

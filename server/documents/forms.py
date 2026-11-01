@@ -1,3 +1,4 @@
+from projects.scope_widgets import ScopeChecklist
 from django import forms
 from accounts.models import User
 from projects.access import visible_objects,visible_contracts,contract_card
@@ -11,7 +12,7 @@ class ContractChoice(forms.ModelMultipleChoiceField):
 
 class LinkForm(forms.ModelForm):
     expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
-    linked_objects=forms.ModelMultipleChoiceField(label='Объекты',queryset=None,required=False,widget=forms.CheckboxSelectMultiple)
+    linked_objects=forms.ModelMultipleChoiceField(label='Объекты',queryset=None,required=False,widget=ScopeChecklist)
     linked_people=forms.ModelMultipleChoiceField(label='Работники',queryset=Person.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     confirm_access=forms.BooleanField(label='Я проверил список получателей при смене комплекта',required=False)
     class Meta:
@@ -24,7 +25,7 @@ class LinkForm(forms.ModelForm):
         self.fields['title'].required=False
         self.fields['section'].initial='general'
         self.fields['linked_objects'].queryset=visible_objects(user).order_by('name')
-        self.fields['linked_contracts']=ContractChoice(label='Договоры',queryset=visible_contracts(user).order_by('id'),user=user,required=False,widget=forms.CheckboxSelectMultiple)
+        self.fields['linked_contracts']=ContractChoice(label='Договоры',queryset=visible_contracts(user).order_by('id'),user=user,required=False,widget=ScopeChecklist)
         self.fields['linked_people'].queryset=visible_people(user).filter(archived=False).order_by('full_name')
         self.fields['bundle'].queryset=visible_bundles(user).filter(created_by=user) if not user.is_leader else visible_bundles(user)
         if not self.instance._state.adding:

@@ -162,14 +162,14 @@ def delete(user,item_id,version,note,warehouse_id=None,all_warehouses=False,snap
 
 
 def requirements(job):
-    from repairs.construction import planned_parts,COUPLING_METHODS
+    from repairs.construction import planned_parts,demand_parts,COUPLING_METHODS
     if job.method not in COUPLING_METHODS:return []
-    try:return [int(part*1000) for part in planned_parts(job.length_m,job.composition,job.method)[1]]
+    try:return [int(part*1000) for part in (demand_parts if job.method=='p1' and not job.composition else planned_parts)(job.length_m,job.composition,job.method)[1]]
     except ValidationError:return None
 
 
 def requirements_issue(job):
-    from repairs.construction import planned_parts,COUPLING_METHODS
+    from repairs.construction import planned_parts,demand_parts,COUPLING_METHODS
     if job.method not in COUPLING_METHODS:return ''
     try:planned_parts(job.length_m,job.composition,job.method)
     except ValidationError as exc:return exc.messages[0]

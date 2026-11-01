@@ -7,6 +7,7 @@ def permitted(user,key):
     if not user.is_authenticated or not user.is_active:return False
     if user.is_leader:return True
     if user.role=='customer':return False
+    if user.role=='foreman' and key in ('finance.read','finance.write','rental.manage'):return False
     return user.grants.filter(permission=key).exists()
 
 def permission_required(key):

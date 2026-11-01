@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from accounts.permissions import permitted
-from repairs.construction import planned_parts
+from repairs.construction import planned_parts,demand_parts
 from repairs.models import Job
 from .models import (CoatingProfile, RepairConsumption, StockItem, StockBalance, StockMovement,
  Warehouse, COMPANY_TAX_ID)
@@ -133,14 +133,19 @@ def all_demand(user=None):
     for job in jobs:
         row={'job':job,'couplings':[],'materials':[],'issues':[]};rows.append(row)
         try:
-            total,parts=planned_parts(job.length_m,job.composition,job.method)
+            installed=[u.coupling for u in job.installed_couplings.all()]
+            total,parts=demand_parts(job.length_m,job.composition,job.method)
+            if job.method=='p1' and installed:
+                if any(stock_fit.reason(c,job,False) for c in installed):raise ValidationError('Параметры установленной муфты отличаются от задания. Проверьте фактический результат.')
+                left=max(Decimal(0),total-sum(Decimal(c.length_mm)/1000 for c in installed))
+                parts=demand_parts(left,'',job.method)[1] if left else []
             if job.method=='p2' and len(parts)>1:raise ValidationError('П2 нельзя стыковать. Уточните прежний состав задания.')
             if job.method=='p1' and total>Decimal('10.5'):raise ValidationError('П1 длиннее рабочего ограничения 10,5 м. Требуется проверка задания.')
             if not job.section.diameter_mm or not job.wall_mm:raise ValidationError('Укажите диаметр участка и стенку конструкции.')
-            initial=stock_fit.consume(job,[u.coupling for u in job.installed_couplings.all()],check_diameter=False)
+            initial=Counter(int(p*1000) for p in parts) if job.method=='p1' and installed else stock_fit.consume(job,installed,Counter(int(p*1000) for p in parts),check_diameter=False)
             held=[s['item'] for s in supply if s['item'].reserved_job_id==job.pk]
             remaining=stock_fit.consume(job,held,initial)
-            walls={Decimal(i.wall_mm) for i in held if i.wall_mm}
+            walls={Decimal(i.wall_mm) for i in held+installed if i.wall_mm}
             if job.method=='p1' and len(walls)>1:raise ValidationError('В закреплении составной П1 смешаны стенки. Требуется уточнить распределение.')
             candidates=[(n,s) for n,s in enumerate(supply) if s['item'].kind=='coupling' and not s['item'].reserved_job_id and eligible(s['warehouse'],job) and not stock_fit.reason(s['item'],job)]
             if job.method=='p1' and len(parts)>1:

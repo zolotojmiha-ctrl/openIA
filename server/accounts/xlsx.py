@@ -6,6 +6,7 @@ Legacy, complete machine-format worksheets remain accepted unchanged.
 """
 import re
 import uuid
+from decimal import Decimal,InvalidOperation
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError
 from django.core import signing
@@ -29,6 +30,7 @@ WORDS = {
 }
 
 REFS = {
+    'ID дополнительных контрактов':'contracts', 'ID дополнительных объектов':'objects',
     'ID объекта':'objects', 'ID объектов (через ;)':'objects',
     'ID контракта':'contracts', 'ID контракта заказчика':'contracts',
     'ID техники':'equipment', 'ID документа':'documents', 'ID документа-основания':'documents',
@@ -42,6 +44,7 @@ REFS = {
     'ID указания заказчика':'changes',
 }
 LABELS = {
+    'ID дополнительных контрактов':'Дополнительные контракты', 'ID дополнительных объектов':'Дополнительные объекты',
     'ID объекта':'Участок работ', 'ID объектов (через ;)':'Участки работ (через ;)',
     'ID контракта':'Контракт', 'ID контракта заказчика':'Контракт заказчика',
     'ID техники':'Техника', 'ID документа':'Документ', 'ID документа-основания':'Документ-основание',
@@ -144,6 +147,16 @@ class References:
         return found.pop()
 
 
+def money_label(header):return label(header).replace('₽','тыс. руб.')
+
+def money_value(value,divisor):
+    if value in ('',None):return ''
+    try:
+        number=Decimal(str(value).replace(' ','').replace('\u00a0','').replace(',','.'))/Decimal(divisor)
+        if not number.is_finite():raise InvalidOperation
+        return format(number.normalize(),'f')
+    except (InvalidOperation,ValueError):raise ValidationError('Некорректная денежная сумма.')
+
 def workbook(user,topic,rows,headers,sheet_name='Данные'):
     from repairs.excel import workbook as write
     hidden=system(topic,headers);refs=References(user);data=[];metadata=[]
@@ -152,13 +165,14 @@ def workbook(user,topic,rows,headers,sheet_name='Данные'):
         for n,h in enumerate(headers):
             if n in hidden:continue
             if h in REFS:
-                values[n]='; '.join(refs.name(REFS[h],v.strip()) for v in str(values[n]).split(';') if v.strip()) if 'через ;' in h else refs.name(REFS[h],values[n])
+                values[n]='; '.join(refs.name(REFS[h],v.strip()) for v in str(values[n]).split(';') if v.strip()) if 'через ;' in h or 'дополнительных' in h else refs.name(REFS[h],values[n])
                 links[str(n)]={'value':str(row[n]),'label':values[n]}
             elif choices(h):values[n]=choices(h).get(str(values[n]),values[n])
+            elif '₽' in h:values[n]=money_value(values[n],1000)
         data.append(values)
         metadata.append(signing.dumps({'actor':str(user.pk),'topic':topic,'links':links},salt='human-excel-links',compress=True))
     order=[n for n in range(len(headers)) if n not in hidden]+sorted(hidden)
-    names=[PREFIX+headers[n] if n in hidden else label(headers[n]) for n in order]
+    names=[PREFIX+headers[n] if n in hidden else money_label(headers[n]) for n in order]
     names.append(PREFIX+'Связи')
     return write([[row[n] for n in order]+[meta] for row,meta in zip(data,metadata)],headers=names,sheet_name=sheet_name,
                  hidden_columns=range(len(order)-len(hidden),len(order)+1),
@@ -172,14 +186,16 @@ def normalize(user,topic,book,headers):
     metadata_column=incoming.pop(PREFIX+'Связи',None)
     hidden=system(topic,headers);known={}
     for n,h in enumerate(headers):
-        for key in (h,PREFIX+h,label(h) if n not in hidden else PREFIX+h):known.setdefault(key,n)
+        for key in (h,PREFIX+h,label(h) if n not in hidden else PREFIX+h,money_label(h) if n not in hidden else PREFIX+h):known.setdefault(key,n)
     unknown=set(incoming)-set(known)
     if unknown:raise ValidationError('Неизвестные столбцы: '+', '.join(sorted(unknown))+'. Используйте шаблон этого раздела.')
     if not incoming:raise ValidationError('В первой строке нужны названия столбцов.')
     refs=References(user);result={(1,n+1):h for n,h in enumerate(headers)}
     for row in sorted({r for r,c in cells if r>1}):
         values=['']*len(headers)
-        for name,column in incoming.items():values[known[name]]=str(cells.get((row,column),'')).strip()
+        for name,column in incoming.items():
+            value=str(cells.get((row,column),'')).strip();index=known[name]
+            values[index]=money_value(value,Decimal('.001')) if 'тыс. руб.' in name and '₽' in headers[index] else value
         if not any(values):continue
         try:
             links={}
@@ -195,7 +211,7 @@ def normalize(user,topic,book,headers):
                 if h in REFS:
                     original=links.get(str(n))
                     if original and value==original['label']:value=original['value']
-                    values[n]=';'.join(refs.resolve(REFS[h],v.strip(),label(h)) for v in value.split(';') if v.strip()) if 'через ;' in h else refs.resolve(REFS[h],value,label(h))
+                    values[n]=';'.join(refs.resolve(REFS[h],v.strip(),label(h)) for v in value.split(';') if v.strip()) if 'через ;' in h or 'дополнительных' in h else refs.resolve(REFS[h],value,label(h))
                 elif choices(h):
                     option=choices(h);inverse={v.casefold():k for k,v in option.items()}
                     if not value:

@@ -1,3 +1,4 @@
+from projects.scope_widgets import identifiers
 import uuid
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -78,7 +79,7 @@ def home(request):
     companies=service.companies(request.user).filter(archived=request.GET.get('archive')=='1').order_by('name')
     orders=service.orders(request.user).order_by('title')
     if request.GET.get('contract'):
-        try:orders=orders.filter(contract_id=uuid.UUID(request.GET['contract']))
+        try:orders=orders.filter(contract_id__in=identifiers(request.GET,'contract'))
         except ValueError:orders=orders.none()
         companies=companies.filter(pk__in=orders.values('company_id'))
     if request.GET.get('review')=='1':orders=orders.filter(Q(state='reported')|Q(repair_jobs__state='reported')).distinct()

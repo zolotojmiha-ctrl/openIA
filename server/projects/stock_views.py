@@ -1,3 +1,4 @@
+from projects.scope_widgets import ScopeChecklist
 import uuid
 from decimal import Decimal
 from django import forms
@@ -23,7 +24,7 @@ DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 class WarehouseForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
     class Meta:
-        model=Warehouse;fields=['name','location','served_objects','served_brigades','brigade_assignment','archived'];widgets={'served_objects':forms.CheckboxSelectMultiple,'served_brigades':forms.CheckboxSelectMultiple}
+        model=Warehouse;fields=['name','location','served_objects','served_brigades','brigade_assignment','archived'];widgets={'served_objects':ScopeChecklist,'served_brigades':forms.CheckboxSelectMultiple}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         from .crews import visible_crews

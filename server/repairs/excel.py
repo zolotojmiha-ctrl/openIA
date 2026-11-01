@@ -91,7 +91,7 @@ def parse_standard(book):
         seen.add(identity)
         specs=[]
         for name,places,upper in [('Длина, м',3,Decimal('1000000')),('Толщина стенки муфты, мм',0,Decimal('10000'))]:
-            text=value(row,name);v=fixed_decimal(text,places,upper) if text else None
+            text='' if m=='grind' and name=='Толщина стенки муфты, мм' else value(row,name);v=fixed_decimal(text,places,upper) if text else None
             if text and v is None:
                 raise ValidationError(f'Строка {row}: некорректное поле «{name}».')
             specs.append(str(v) if v is not None else '')

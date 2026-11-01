@@ -20,7 +20,7 @@ class ContractFirstTests(TestCase):
         c=Contract.objects.get();self.assertFalse(c.objects_linked.exists());self.assertEqual(str(c.amount),'61000000.00')
         self.assertContains(self.client.get(response.url),'Добавить участок работ')
         create=reverse('object_new')+'?contract='+str(c.pk)
-        self.assertEqual(self.client.get(create).context['form'].initial['related_contract'],c)
+        self.assertEqual(self.client.get(create).context['form'].initial['related_contract'],[c.pk])
         response=self.client.post(create,{'name':'Объект после контракта','kind':'Нефтепровод','status':'active','related_contract':str(c.pk)})
         self.assertRedirects(response,reverse('contract_detail',args=[c.pk]));c.refresh_from_db();self.assertEqual(c.objects_linked.count(),1);self.assertEqual(c.version,2)
     def test_delegated_creator_keeps_draft_access_but_other_editor_does_not(self):

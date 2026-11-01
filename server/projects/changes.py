@@ -1,3 +1,4 @@
+from projects.scope_widgets import ScopeChecklist
 """Explicit customer instructions: append revisions, never rewrite past execution."""
 import hashlib,json,uuid
 from django import forms
