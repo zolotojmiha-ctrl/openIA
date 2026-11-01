@@ -11,7 +11,7 @@ from accounts.permissions import permitted
 from accounts.views import audit
 from repairs.access import visible_jobs
 from repairs.models import Job
-from repairs.excel import workbook
+from .report_excel import workbook
 from . import repair_materials as materials, stock
 from .models import CoatingProfile,StockItem,RepairConsumption,StockMovement,COMPANY_TAX_ID
 
@@ -39,14 +39,9 @@ class ProfileForm(forms.ModelForm):
         if len({c[k].pk for k in ('tape','wrapper','primer') if c.get(k)})!=3:raise forms.ValidationError('Лента, обёртка и праймер — три отдельные позиции.')
         return c
 
-@login_required
-def listing(request):
-    if not materials.can_read(request.user):raise PermissionDenied
-    ids=set(visible_jobs(request.user).values_list('pk',flat=True))
+def demand_report(user):
+    ids=set(visible_jobs(user).values_list('pk',flat=True))
     rows=[d for d in materials.all_demand() if d['job'].pk in ids]
-    if permitted(request.user,'stock.manage'):
-        from .p1_composition import choices
-        for row in rows:row['assemblies']=choices(row['job'],request.user) if row['job'].method=='p1' else []
     grouped={};issues=[]
     for row in rows:
         job=row['job'];label='; '.join('км '+d.km+' № '+d.number for d in job.active_defects)
@@ -55,7 +50,16 @@ def listing(request):
             key=(n['name'],n['unit']);r=grouped.setdefault(key,{'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[]})
             r['need']+=Decimal(n['need']);r['missing']+=Decimal(n['missing'])
             if n['missing']:r['jobs'].append({'job':job,'label':label,'quantity':n['missing']})
-    return render(request,'projects/repair_materials.html',{'grouped':list(grouped.values()),'issues':issues,'rows':rows,'can_manage_materials':permitted(request.user,'stock.manage')})
+    return rows,list(grouped.values()),issues
+
+@login_required
+def listing(request):
+    if not materials.can_read(request.user):raise PermissionDenied
+    rows,grouped,issues=demand_report(request.user)
+    if permitted(request.user,'stock.manage'):
+        from .p1_composition import choices
+        for row in rows:row['assemblies']=choices(row['job'],request.user) if row['job'].method=='p1' else []
+    return render(request,'projects/repair_materials.html',{'grouped':grouped,'issues':issues,'rows':rows,'can_manage_materials':permitted(request.user,'stock.manage')})
 
 def friendly_issue(job,issues):
     if not job.section.diameter_mm:return 'Нужно указать диаметр трубопровода.'
@@ -96,17 +100,23 @@ def retry(request,pk):
 @login_required
 def export(request):
     if not materials.can_read(request.user):raise PermissionDenied
-    allowed=set(visible_jobs(request.user).values_list('pk',flat=True));rows=[]
-    for d in materials.all_demand():
-        job=d['job']
-        if job.pk not in allowed:continue
-        label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
-        for n in d['couplings']+d['materials']:rows.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Потребность',n['name'],n['unit'],str(n['need']),str(n['missing']),''])
-        for issue in d['issues']:rows.append(['',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Нужно уточнить','','','','',issue])
+    records,grouped,issues=demand_report(request.user)
+    allowed=set(visible_jobs(request.user).values_list('pk',flat=True));details=[];actual=[]
+    headers=['Контракт','Объект','Нефтепровод','Дефекты общей конструкции','Код ремонта','Вид записи','Материал','Единица','Количество / норма (отмена со знаком минус)','К поставке','Основание']
+    for record in records:
+        job=record['job'];label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
+        for n in record['couplings']+record['materials']:
+            details.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Потребность',n['name'],n['unit'],Decimal(n['need']),Decimal(n['missing']),''])
     for m in consumption_movements(allowed):
         job=m.job or m.reverses.job;label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
-        rows.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Списание' if m.kind=='consume' else 'Отмена',m.item.name,m.item.get_unit_display(),str(-m.quantity if m.kind=='reversal' else m.quantity),'',m.note])
-    response=HttpResponse(workbook(rows,['Контракт','Объект','Нефтепровод','Дефекты общей конструкции','Код ремонта','Вид записи','Материал','Единица','Количество / норма (отмена со знаком минус)','К поставке','Основание'],'Материалы'),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="repair-materials.xlsx"';return response
+        actual.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Списание' if m.kind=='consume' else 'Отмена',m.item.name,m.item.get_unit_display(),-m.quantity if m.kind=='reversal' else m.quantity,'',m.note])
+    sheets=[
+        ('Потребность',['Материал / конструкция','Единица','Нужно','Обеспечено','Не хватает'],[[n['name'],n['unit'],n['need'],n['need']-n['missing'],n['missing']] for n in grouped]),
+        ('По работам',headers,details),
+        ('Нужно уточнить',['Объект','Работы','Причина'],[[r['job'].section.project_object.name,r['label'],r['reason']] for r in issues]),
+        ('Расход',headers,actual),
+    ]
+    response=HttpResponse(workbook(sheets),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="repair-materials.xlsx"';response['Cache-Control']='private, no-store';return response
 
 @login_required
 @require_POST

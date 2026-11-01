@@ -205,7 +205,14 @@ def coverage(request):
             row=grouped.setdefault(key,{'method':dict(METHODS)[line['method']],'diameter':line['diameter'],'length':line['length'],'wall':line['wall'],'need':0,'reserved':0,'free':0,'missing':0})
             row['need']+=line['need'];row['reserved']+=line['reserved'];row['missing']+=line['missing'];row['free']+=line['need']-line['reserved']-line['missing']
     rows=[grouped[k] for k in sorted(grouped)]
-    return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'scoped':bool(request.GET.get('contract') or request.GET.get('object'))})
+    if request.GET.get('export')=='xlsx':
+        from django.http import HttpResponse
+        from .report_excel import workbook
+        sheets=[('Муфты',['Тип','Диаметр, мм','Длина, мм','Стенка, мм','Требуется, шт.','Закреплено, шт.','Подобрано из свободных, шт.','Не хватает, шт.'],[[r[k] for k in ('method','diameter','length','wall','need','reserved','free','missing')] for r in rows]),
+                ('Нужно уточнить',['Работы','Причина'],[[r['label'],r['reason']] for r in unknown])]
+        response=HttpResponse(workbook(sheets),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="coupling-coverage.xlsx"';response['Cache-Control']='private, no-store';return response
+    query=request.GET.copy();query['export']='xlsx'
+    return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'scoped':bool(request.GET.get('contract') or request.GET.get('object')),'export_query':query.urlencode()})
 
 
 
