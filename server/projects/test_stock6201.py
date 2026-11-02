@@ -19,7 +19,7 @@ class Stock6201Tests(TestCase):
         self.assertTemplateUsed(self.client.get(reverse('stock_warehouses')),'projects/stock_home.html')
     def test_legacy_card_attach_uses_existing_position_and_returns_to_materials(self):
         wh=self.wh('Володя Барабинск');i=self.item(kind='coupling',unit='pcs',method='p1',diameter_mm=720,length_mm=1500,wall_mm=10);self.client.force_login(self.leader)
-        response=self.client.get(reverse('stock'),follow=True);self.assertContains(response,'Указать склад и количество')
+        response=self.client.get(reverse('stock'),follow=True);self.assertContains(response,'Оформить поступление');self.assertContains(response,reverse('stock_receive')+'?item='+str(i.pk)+'&amp;return_inventory=1')
         form=self.client.get(reverse('stock_receive'),{'item':i.pk,'return_inventory':'1'}).context['form']
         self.assertEqual(form.initial['warehouse'].pk,wh.pk);self.assertEqual(form.initial['catalogue_item'].pk,i.pk)
         response=self.client.post(reverse('stock_receive'),{'return_inventory':'on','catalogue_item':i.pk,'catalogue_version':i.version,'warehouse':wh.pk,'quantity':1,'date':str(self.today),'note':'Уточнение начального остатка','token':uuid.uuid4(),'name':i.name,'kind':'coupling','unit':'pcs','method':'p1','diameter_mm':720,'length_mm':1500,'wall_mm':10,'serial':''})
