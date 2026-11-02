@@ -197,6 +197,12 @@ def move(user,item_id,kind,raw,source_id,destination_id,date,note,token,job_id=N
         elif kind=='return' and item.reservation_origin=='issue':reserve(actor,item.pk,item.version,None)
     return row
 
+def deletion_loss(row):
+    return bool(row.kind=='loss' and row.automatic and row.source_id and not row.destination_id
+                and not row.job_id and not row.report_id
+                and row.note.startswith('Удаление ошибочной позиции: '))
+
+
 @transaction.atomic
 def reverse(user,pk,note,token):
     actor=manager(user);lock();row=movements(actor).get(pk=pk)
@@ -205,13 +211,18 @@ def reverse(user,pk,note,token):
         if previous.reverses_id==row.pk and previous.created_by_id==actor.pk and previous.note==note:return previous
         raise ValidationError('Этот запрос уже использован.')
     if row.item.reserved_job_id:raise ValidationError('Сначала снимите закрепление муфты за работой.')
-    if row.automatic:raise ValidationError('Автоматическое списание меняется через исправление результата ремонта.')
+    deleted_position=deletion_loss(row)
+    if row.automatic and not deleted_position:raise ValidationError('Автоматическое списание меняется через исправление результата ремонта.')
     if row.reverses_id or StockMovement.objects.filter(reverses=row).exists():raise ValidationError('Операция уже отменена либо сама является отменой.')
     if row.item.coupling_id:
         from repairs.models import CouplingUse
         if CouplingUse.objects.filter(coupling_id=row.item.coupling_id).exists():raise ValidationError('Муфта установлена. Сначала исправьте результат ремонта.')
         if row.kind in ('issue','transfer','return'):raise ValidationError('Перемещение конкретной муфты возвращайте отдельной обратной операцией, чтобы сохранить её привязку к объекту.')
-    return post_locked(actor,row.item,'reversal',row.quantity,row.destination,row.source,timezone.localdate(),note,token,reverses=row)
+    item=row.item
+    if deleted_position and item.deleted_at:
+        item.deleted_at=None;item.archived=False;item.version+=1
+        item.save(update_fields=['deleted_at','archived','version'])
+    return post_locked(actor,item,'reversal',row.quantity,row.destination,row.source,timezone.localdate(),note,token,reverses=row)
 
 def reconcile_installation(actor,job,report,selected):
     """Called under StockLock and coupling locks, inside the repair transaction."""

@@ -37,6 +37,15 @@ class StockConcurrencyTests(TransactionTestCase):
         token=uuid.uuid4()
         self.race(lambda i:stock.move(self.leaders[i],self.item.pk,'receipt',10,None,self.a.pk,timezone.localdate(),'ТЕСТ',token))
         self.assertEqual(StockBalance.objects.get(warehouse=self.a,item=self.item).quantity,10);self.assertEqual(StockMovement.objects.count(),1)
+    def test_two_people_cannot_restore_deleted_stock_twice(self):
+        from .stock_planning import delete
+        stock.move(self.leaders[0],self.item.pk,'receipt',24,None,self.a.pk,timezone.localdate(),'ТЕСТ',uuid.uuid4())
+        self.item.refresh_from_db();delete(self.leaders[0],self.item.pk,self.item.version,'ТЕСТ ошибочно удалили')
+        loss=StockMovement.objects.get(item=self.item,kind='loss')
+        self.race(lambda i:stock.reverse(self.leaders[i],loss.pk,'ТЕСТ восстановление',uuid.uuid4()))
+        self.item.refresh_from_db();self.assertIsNone(self.item.deleted_at);self.assertFalse(self.item.archived)
+        self.assertEqual(StockBalance.objects.get(warehouse=self.a,item=self.item).quantity,24)
+        self.assertEqual(StockMovement.objects.filter(reverses=loss).count(),1)
     def test_repair_and_material_posting_on_same_job_do_not_deadlock(self):
         from unittest.mock import patch
         from repairs.models import Section,Job,Coupling

@@ -47,13 +47,30 @@ def coating(job,pieces=None):
     return lines
 
 
+def p1_kits(job,pieces=None):
+    from .p1_coating import dimensions
+    values=kits(job.section.diameter_mm,dimensions(job,pieces))
+    return [{'kind':k,'name':'Герметик' if k=='sealant' else 'Композит','quantity':str(v),'unit':'компл.','source':'РД-108-10, табл. 3/5'} for k,v in values.items()]
+
+
+def norm_groups(job,pieces=None):
+    from .p1_coating import coating as p1_coating
+    providers=[p1_kits,p1_coating] if job.method=='p1' else [coating] if job.method=='p2' else []
+    for provider in providers:
+        try:yield provider(job,pieces),[]
+        except ValidationError as error:yield [],error.messages
+
+
 def norm(job,pieces=None):
-    if job.method=='p1':
-        length=sum(c.length_mm for c in pieces) if pieces else int(Decimal(job.length_m or 0)*1000)
-        values=kits(job.section.diameter_mm,length)
-        return [{'kind':k,'name':'Герметик' if k=='sealant' else 'Композит','quantity':str(v),'unit':'компл.','source':'РД-108-10, табл. 3/5'} for k,v in values.items()]
-    if job.method=='p2':return coating(job,pieces)
-    return []
+    lines=[];errors=[]
+    for group,issues in norm_groups(job,pieces):lines.extend(group);errors.extend(issues)
+    if errors:raise ValidationError(errors)
+    return lines
+
+
+def matches(line,item):
+    units=('kg',) if line['unit']=='кг' else ('kit','pcs')
+    return item.unit in units and (str(item.pk)==line['item'] if line.get('item') else item.kind==line['kind'])
 
 
 def _fingerprint(job,pieces):
@@ -64,43 +81,49 @@ def _post(actor,job,report,lines):
     warehouses=list(Warehouse.objects.filter(legal_entity__tax_id=COMPANY_TAX_ID).prefetch_related('served_objects','served_brigades'))
     permitted_wh={w.pk for w in warehouses if eligible(w,job)}
     # Resolve all legs before writing any. A shortage never consumes half a set.
-    wanted=Counter();items={}
-    for line in lines:
-        item=StockItem.objects.get(pk=line['item']);items[item.pk]=item
-        if item.legal_entity.tax_id!=COMPANY_TAX_ID or item.unit!='kg':raise ValidationError('Профиль содержит неподходящую складскую позицию.')
-        wanted[item.pk]+=Decimal(line['quantity'])
-    legs=[]
-    for item_id,amount in wanted.items():
-        balances=StockBalance.objects.select_for_update().filter(item_id=item_id,warehouse_id__in=permitted_wh,quantity__gt=0).select_related('warehouse').order_by('warehouse_id')
+    selected=Q(item_id__in=[line['item'] for line in lines if line.get('item')])|Q(item__kind__in=[line['kind'] for line in lines if not line.get('item')])
+    balances=list(StockBalance.objects.select_for_update(of=('self',)).filter(selected,
+        warehouse_id__in=permitted_wh,quantity__gt=0,item__legal_entity__tax_id=COMPANY_TAX_ID,
+        item__archived=False,item__deleted_at__isnull=True,item__reserved_job__isnull=True,
+    ).select_related('item','warehouse').order_by('warehouse_id','item_id'))
+    left={balance.pk:balance.quantity for balance in balances};legs=[]
+    for index,line in enumerate(lines):
+        amount=Decimal(line['quantity'])
         for balance in balances:
-            take=min(balance.quantity,amount)
-            if take:legs.append((items[item_id],balance.warehouse,take));amount-=take
+            if not matches(line,balance.item):continue
+            take=min(left[balance.pk],amount)
+            if take:legs.append((index,balance.item,balance.warehouse,take));amount-=take;left[balance.pk]-=take
             if not amount:break
-        if amount:raise ValidationError('Не хватает материала для списания: '+items[item_id].name+'. Ремонт сохранён; уточните остатки/склад и повторите списание.')
+        if amount:raise ValidationError('Не хватает материала для списания: '+line['name']+'. Ремонт сохранён; уточните остатки/склад и повторите списание.')
     movements=[]
-    for n,(item,wh,q) in enumerate(legs):
-        row=stock.post_locked(actor,item,'consume',q,wh,None,report.performed_date,'Автоматически по норме после ремонта П2',uuid.uuid5(report.token,'coating:'+str(n)),job,report,automatic=True);movements.append(str(row.pk))
+    for line in lines:line['movements']=[];line['allocations']=[]
+    for n,(index,item,wh,q) in enumerate(legs):
+        row=stock.post_locked(actor,item,'consume',q,wh,None,report.performed_date,'Автоматически по норме после ремонта '+job.get_method_display(),uuid.uuid5(report.token,'coating:'+str(n)),job,report,automatic=True);movements.append(str(row.pk))
+        lines[index]['movements'].append(str(row.pk));lines[index]['allocations'].append({'item':str(item.pk),'warehouse':str(wh.pk),'quantity':str(q),'movement':str(row.pk)})
     return movements
 
 
 def reconcile(actor,job,report,pieces):
     """Caller owns stock lock and repair transaction. Missing norms do not erase work."""
-    if job.method!='p2' or report.outcome!='complete':return
+    if job.method not in ('p1','p2') or report.outcome!='complete':return
     fingerprint=_fingerprint(job,pieces)
     previous=RepairConsumption.objects.select_for_update().filter(job=job).first()
     if previous and previous.state=='posted':
         if previous.fingerprint==fingerprint:return previous
-        previous.state='review';previous.message='Изменена установленная конструкция. Ранее списанные материалы сохранены; требуется проверка расхода руководителем.';previous.save(update_fields=['state','message','updated_at']);return previous
-    if previous and previous.state=='review':return previous
+        previous.state='review';previous.review_reason='installation';previous.message='Изменена установленная конструкция. Ранее списанные материалы сохранены; требуется проверка расхода руководителем.';previous.save(update_fields=['state','review_reason','message','updated_at']);return previous
+    if previous and previous.state=='review' and previous.review_reason!='manual':return previous
+    if job.method=='p1' and previous is None and job.reports.filter(outcome='complete').exclude(pk=report.pk).exists():
+        return RepairConsumption.objects.create(job=job,report=report,fingerprint=fingerprint,state='review',review_reason='legacy',lines=[],message='П1 уже была выполнена до подключения табличного расхода. Автоматическое списание задним числом не проводится; проверьте прежний фактический расход.')
+    if job.method=='p1' and StockMovement.objects.filter(job=job,kind='consume',automatic=False,reversal__isnull=True,item__kind__in=['sealant','composite','primer','ksizol','wrapper']).exists():
+        return RepairConsumption.objects.update_or_create(job=job,defaults={'report':report,'fingerprint':fingerprint,'state':'review','review_reason':'manual','lines':previous.lines if previous else [],'message':'Для этой П1 уже есть ручное списание материалов. Оно сохранено; повторное автоматическое списание не выполнено. ПТО должен сверить расход.'})[0]
     lines=[]
     try:
         if not pieces:raise ValidationError('Не указана установленная муфта. Ремонт сохранён; проверьте фактическую конструкцию перед списанием изоляции.')
-        lines=coating(job,pieces)
-        with transaction.atomic():movements=_post(actor,job,report,lines)
-        for line in lines:line['movements']=movements
+        lines=norm(job,pieces)
+        with transaction.atomic():_post(actor,job,report,lines)
         state='posted';message='Материалы списаны автоматически по рабочей норме.'
     except ValidationError as e:state='pending';message='; '.join(e.messages)
-    return RepairConsumption.objects.update_or_create(job=job,defaults={'report':report,'fingerprint':fingerprint,'state':state,'lines':lines,'message':message})[0]
+    return RepairConsumption.objects.update_or_create(job=job,defaults={'report':report,'fingerprint':fingerprint,'state':state,'review_reason':'','lines':lines,'message':message})[0]
 
 @transaction.atomic
 def retry(user,job):
@@ -108,7 +131,7 @@ def retry(user,job):
     from repairs.access import visible_jobs
     job=visible_jobs(actor).select_for_update(of=('self',)).get(pk=job.pk)
     row=RepairConsumption.objects.select_for_update().filter(job=job).first()
-    if not row or row.state!='pending':raise ValidationError('Нет ожидающего списания. Проверьте историю расхода.')
+    if not row or not (row.state=='pending' or row.state=='review' and row.review_reason=='manual'):raise ValidationError('Нет ожидающего списания. Проверьте историю расхода.')
     pieces=[u.coupling for u in job.installed_couplings.select_related('coupling')]
     return reconcile(actor,job,row.report,pieces)
 
@@ -190,15 +213,14 @@ def all_demand(user=None):
         if s['item'].kind!='coupling' and not s['item'].reserved_job_id:edge(source,('material_stock',index),s['left'])
     for row in rows:
         job=row['job']
-        try:
-            for line in norm(job):
+        for lines,issues in norm_groups(job):
+            row['issues'].extend(issues)
+            for line in lines:
                 amount=Decimal(line['quantity']);line={**line,'need':amount,'missing':amount};row['materials'].append(line)
                 node=('material_need',len(nodes));nodes.append((node,line));edge(node,sink,amount)
                 for n,s in enumerate(supply):
                     item=s['item']
-                    matches=(item.kind==line['kind'] and item.unit in ('pcs','kit')) if job.method=='p1' else str(item.pk)==line['item']
-                    if matches and not item.reserved_job_id and eligible(s['warehouse'],job):edge(('material_stock',n),node,min(s['left'],amount))
-        except ValidationError as e:row['issues'].extend(e.messages)
+                    if matches(line,item) and not item.reserved_job_id and eligible(s['warehouse'],job):edge(('material_stock',n),node,min(s['left'],amount))
     while True:
         parent={source:None};queue=deque([source])
         while queue and sink not in parent:

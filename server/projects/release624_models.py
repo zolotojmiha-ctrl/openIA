@@ -108,6 +108,7 @@ class RepairConsumption(models.Model):
     report=models.ForeignKey('repairs.Report',on_delete=models.PROTECT)
     fingerprint=models.CharField(max_length=64)
     state=models.CharField(max_length=12,choices=[('posted','Списано по норме'),('pending','Требует списания'),('review','Требует проверки исправления')])
+    review_reason=models.CharField('Причина проверки',max_length=24,blank=True,default='',choices=[('manual','Ручное списание'),('legacy','Прежний результат П1'),('installation','Изменена конструкция')])
     lines=models.JSONField(default=list)
     message=models.CharField(max_length=2000,blank=True)
     updated_at=models.DateTimeField(auto_now=True)

@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, Exists, OuterRef
 from django.shortcuts import get_object_or_404,render,redirect
 from django.utils import timezone
 from accounts.permissions import permission_required,permitted
@@ -15,7 +15,7 @@ from accounts.views import audit
 from documents.access import sharing_users
 from repairs.models import Coupling,Job,METHODS
 from repairs.access import visible_jobs
-from .models import Warehouse,WarehouseAccess,StockItem,StockBalance,STOCK_KINDS
+from .models import Warehouse,WarehouseAccess,StockItem,StockBalance,StockMovement,STOCK_KINDS
 from .access import visible_objects
 from .crews import visible_assignments,visible_crews
 from . import stock
@@ -91,8 +91,12 @@ def detail(request,pk):
     wh=get_object_or_404(stock.warehouses(request.user),pk=pk)
     from .stock_groups import groups
     rows=groups(request.user,wh)
-    history=stock.movements(request.user).filter(Q(source=wh)|Q(destination=wh)).order_by('-created_at','-pk')
-    return render(request,'projects/stock_detail.html',{'warehouse':wh,'rows':rows,'page':Paginator(history,30).get_page(request.GET.get('page')),'served_objects':wh.served_objects.filter(pk__in=visible_objects(request.user)).order_by('name'),'served_brigades':wh.served_brigades.filter(pk__in=visible_crews(request.user)).order_by('name'),'object_visible':wh.project_object_id and visible_objects(request.user).filter(pk=wh.project_object_id).exists()})
+    history=stock.movements(request.user).filter(Q(source=wh)|Q(destination=wh)).annotate(is_reversed=Exists(StockMovement.objects.filter(reverses_id=OuterRef('pk')))).order_by('-created_at','-pk')
+    page=Paginator(history,30).get_page(request.GET.get('page'))
+    for movement in page:
+        movement.deleted_position=stock.deletion_loss(movement)
+        movement.can_cancel=not movement.reverses_id and not movement.is_reversed and (not movement.automatic or movement.deleted_position)
+    return render(request,'projects/stock_detail.html',{'warehouse':wh,'rows':rows,'page':page,'served_objects':wh.served_objects.filter(pk__in=visible_objects(request.user)).order_by('name'),'served_brigades':wh.served_brigades.filter(pk__in=visible_crews(request.user)).order_by('name'),'object_visible':wh.project_object_id and visible_objects(request.user).filter(pk=wh.project_object_id).exists()})
 
 @permission_required('stock.manage')
 def warehouse_edit(request,pk=None):
@@ -145,8 +149,10 @@ def reversal(request,pk):
     if request.method=='POST' and form.is_valid():
         try:stock.reverse(request.user,pk,form.cleaned_data['note'],form.cleaned_data['token'])
         except ValidationError as e:form.add_error(None,e);status=409
-        else:return redirect('stock_detail',pk=row.destination_id or row.source_id)
-    return render(request,'projects/stock_form.html',{'form':form,'title':'Отменить складскую операцию','original':row},status=status)
+        else:
+            messages.success(request,'Операция отменена. Остаток скорректирован обратной записью; история сохранена.')
+            return redirect('stock_detail',pk=row.destination_id or row.source_id)
+    return render(request,'projects/stock_form.html',{'form':form,'title':'Отменить складскую операцию','original':row,'restoring_deleted':stock.deletion_loss(row)},status=status)
 
 class AccessForm(forms.Form):
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=None)

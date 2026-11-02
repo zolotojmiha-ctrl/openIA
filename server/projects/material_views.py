@@ -27,6 +27,7 @@ class ProfileForm(forms.ModelForm):
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         for key in ['tape','wrapper','primer']:self.fields[key].queryset=stock.items(user).filter(archived=False,unit='kg')
+        if not self.instance.pk or self.instance.method=='p2':self.fields['method'].choices=[('p2','П2')]
         self.fields['area_per_m'].help_text='Подтверждённая площадь на метр для этого диаметра/конструкции. Пример 2,55 не переносится на все трубы.'
         self.fields['full_length_mm'].help_text='Полный габарит с кольцами, а не требуемая длина дефекта. Для вашего примера П2 1500 мм полный габарит 1960 мм.'
     def clean(self):
@@ -45,7 +46,7 @@ def demand_report(user):
     grouped={};issues=[]
     for row in rows:
         job=row['job'];label='; '.join('км '+d.km+' № '+d.number for d in job.active_defects)
-        if row['issues']:issues.append({'job':job,'label':label,'reason':friendly_issue(job,row['issues']),'missing_profile':any('площадь покрытия' in s for s in row['issues'])})
+        if row['issues']:issues.append({'job':job,'label':label,'reason':friendly_issue(job,row['issues']),'missing_profile':any('площадь покрытия' in s for s in row['issues']),'missing_p1_norm':any('В таблице ПТО нет' in s for s in row['issues'])})
         for n in row['couplings']+row['materials']:
             key=(n['name'],n['unit']);r=grouped.setdefault(key,{'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[]})
             r['need']+=Decimal(n['need']);r['missing']+=Decimal(n['missing'])
@@ -64,6 +65,7 @@ def listing(request):
 def friendly_issue(job,issues):
     if not job.section.diameter_mm:return 'Нужно указать диаметр трубопровода.'
     if not job.wall_mm:return 'Нужно указать толщину стенки конструкции.'
+    if any('В таблице ПТО нет' in s for s in issues):return 'В таблице ПТО нет нормы покрытия П1 для этой длины или диаметра.'
     if any('площадь покрытия' in s for s in issues):return 'Для этого типоразмера ещё не заданы нормы изоляции.'
     return 'Нужно уточнить размеры конструкции или норму расхода.'
 
@@ -73,7 +75,13 @@ def job_panel(user,job):
     for m in consumption_movements([job.pk]):
         key=m.item_id;r=total.setdefault(key,{'name':m.item.name,'unit':m.item.get_unit_display(),'quantity':Decimal(0)})
         r['quantity']+=-m.quantity if m.kind=='reversal' else m.quantity
-    return {'totals':[r for r in total.values() if r['quantity']],'entry':RepairConsumption.objects.filter(job=job).first(),'can_manage':permitted(user,'stock.manage')}
+    geometry=None
+    if job.method=='p1':
+        from .p1_coating import row,dimensions
+        pieces=[u.coupling for u in job.installed_couplings.select_related('coupling')] if job.state in ('reported','confirmed') else None
+        try:geometry=row(job.section.diameter_mm,dimensions(job,pieces))
+        except ValidationError:pass
+    return {'totals':[r for r in total.values() if r['quantity']],'entry':RepairConsumption.objects.filter(job=job).first(),'can_manage':permitted(user,'stock.manage'),'coating_geometry':geometry}
 
 @login_required
 def profiles(request,pk=None):
@@ -87,7 +95,8 @@ def profiles(request,pk=None):
             if old and old.version!=form.cleaned_data['expected_version']:form.add_error(None,'Профиль изменён. Обновите страницу.')
             else:
                 row=form.save(commit=False);row.created_by=old.created_by if old else actor;row.version=(old.version if old else 0)+1;row.save();audit(actor,'stock_updated',kind='coating_profile',profile=str(row.pk));return redirect('coating_profiles')
-    return render(request,'projects/coating_profiles.html',{'form':form,'profiles':CoatingProfile.objects.all(),'editing':profile})
+    from .p1_coating import TABLE,row
+    return render(request,'projects/coating_profiles.html',{'form':form,'profiles':CoatingProfile.objects.all(),'editing':profile,'p1_rows':[row(720,int(length)) for length in TABLE['rows']]})
 
 @login_required
 @require_POST
