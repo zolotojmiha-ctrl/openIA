@@ -98,11 +98,18 @@ def listing(request):
     rental_map={}
     for r in rentals.visible(request.user).filter(placement__equipment__in=page.object_list,placement__start_date__lte=timezone.localdate()).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=timezone.localdate())):rental_map.setdefault(r.placement.equipment_id,[]).append(r)
     rows=[{'item':item,'locations':location_map.get(item.pk,[]),'has_rental':item.pk in rental_map} for item in page.object_list]
-    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'selected_objects':values(request.GET,'object'),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','ownership':request.GET.get('ownership',''),'ownerships':Equipment._meta.get_field('ownership').choices,'states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
+    query=request.GET.copy();query.pop('page',None)
+    return render(request,'projects/equipment_list.html',{'page':page,'rows':rows,'filter_query':query.urlencode(),'objects':visible_objects(request.user),'q':request.GET.get('q',''),'selected_object':request.GET.get('object',''),'selected_objects':values(request.GET,'object'),'state':request.GET.get('state',''),'target_object':target,'target_crew':target_crew,'archive':request.GET.get('archive')=='1' or request.GET.get('state')=='archived','ownership':request.GET.get('ownership',''),'ownerships':Equipment._meta.get_field('ownership').choices,'states':Equipment._meta.get_field('status').choices,'due':service.due_documents(request.user)})
 
 @login_required
 def detail(request,pk):
     item=get_object_or_404(service.visible_equipment(request.user),pk=pk)
+    from urllib.parse import urlsplit
+    back=request.GET.get('return_to','')
+    try:parsed=urlsplit(back)
+    except ValueError:back=''
+    else:
+        if len(back)>4096 or '\\' in back or parsed.scheme or parsed.netloc or parsed.path!=reverse('equipment'):back=''
     cards={c.pk:contract_card(c,request.user) for c in visible_contracts(request.user)}
     from .crews import visible_assignments
     crews={a.pk:a.brigade.name for a in visible_assignments(request.user)}
@@ -116,6 +123,11 @@ def detail(request,pk):
     available=rentals.visible(request.user).filter(placement__equipment=item).order_by('-placement__start_date','pk')
     today=timezone.localdate()
     active=available.filter(placement__start_date__lte=today).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=today)).first()
+    if request.method=='GET' and request.GET.get('rental'):
+        from django.http import Http404
+        try:rental_id=UUID(request.GET['rental'])
+        except (ValueError,TypeError):raise Http404
+        active=get_object_or_404(available,pk=rental_id)
     panel={}
     if request.method=='POST':
         from django.http import Http404
@@ -126,7 +138,7 @@ def detail(request,pk):
         panel=rental_views.detail(request,active.pk,embedded=True)
         from django.http.response import HttpResponseBase
         if isinstance(panel,HttpResponseBase):return panel
-    return render(request,'projects/equipment_detail.html',{**panel,'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
+    return render(request,'projects/equipment_detail.html',{**panel,'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

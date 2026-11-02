@@ -46,6 +46,22 @@ class EquipmentTests(TestCase):
     def test_own_rent_subcontractor_choices(self):
         for n,kind in enumerate(('own','rent','subcontractor')):self.make(inventory_number=str(n),ownership=kind)
         with self.assertRaises(ValidationError):self.make(inventory_number='4',ownership='invalid')
+    def test_equipment_filters_survive_pagination_and_return_from_card(self):
+        from urllib.parse import parse_qs,urlencode
+        for i in range(26):
+            item=self.make(inventory_number=str(i),ownership='rent')
+            self.assignment(item,obj=self.a if i%2 else self.b)
+        self.client.force_login(self.leader)
+        params=[('ownership','rent'),('object',str(self.a.pk)),('object',str(self.b.pk)),('q','Экскаватор')]
+        query=urlencode(params);url=reverse('equipment')+'?'+query
+        page=self.client.get(url);self.assertTrue(page.context['page'].has_next())
+        kept=parse_qs(page.context['filter_query']);self.assertEqual(kept['object'],[str(self.a.pk),str(self.b.pk)]);self.assertEqual(kept['ownership'],['rent'])
+        second=self.client.get(url+'&page=2');item=second.context['rows'][0]['item']
+        self.assertContains(second,'return_to=')
+        detail=self.client.get(reverse('equipment_detail',args=[item.pk]),{'return_to':url+'&page=2'})
+        self.assertEqual(detail.context['equipment_back'],url+'&page=2')
+        bad=self.client.get(reverse('equipment_detail',args=[item.pk]),{'return_to':'https://example.org/cabinet/equipment/'})
+        self.assertEqual(bad.context['equipment_back'],reverse('equipment'))
     def test_view_scope_and_no_implicit_object_or_file_access(self):
         item=self.make();doc=self.doc();self.assertFalse(service.visible_equipment(self.worker).exists())
         self.assignment(item)

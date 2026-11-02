@@ -1,0 +1,14 @@
+#agreement-form{max-width:900px}
+#agreement-form>p>label,#agreement-files>details>label{font-size:14px;line-height:1.4}
+#agreement-form .errorlist{color:#922f36;background:#fff2f1;border-left:3px solid #bd6568;border-radius:5px;padding:10px 12px;margin:8px 0;list-style:none}
+#agreement-form .errorlist:focus{outline:3px solid #c5b5e5;outline-offset:3px}
+#agreement-files h2{margin-bottom:14px}
+#agreement-files [data-attachment-names] p{overflow-wrap:anywhere}
+#agreement-files>details>summary{min-height:44px;padding:10px 0;cursor:pointer}
+#agreement-form [data-agreement-status]:not(:empty){line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:700px){
+ #agreement-form input:not([type=file]):not([type=hidden]):not([type=checkbox]),#agreement-form select,#agreement-form textarea{font-size:16px}
+ #agreement-form input:not([type=file]):not([type=hidden]):not([type=checkbox]),#agreement-form select{min-height:44px}
+ #agreement-form>button[type=submit]{width:100%;min-height:48px;margin-top:14px}
+ #agreement-files>label.button,#agreement-files button{min-height:44px}
+}

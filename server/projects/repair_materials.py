@@ -74,7 +74,7 @@ def matches(line,item):
 
 
 def _fingerprint(job,pieces):
-    return hashlib.sha256(json.dumps([job.method,job.section.diameter_mm,sorted((str(c.pk),c.length_mm,str(c.wall_mm)) for c in pieces)],sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([job.method,job.section.diameter_mm,sorted((str(c.pk),c.length_mm,str(c.wall_mm)) for c in pieces)]+([str(job.actual_cleaning_length_m)] if getattr(job,'actual_cleaning_length_m',None) is not None else []),sort_keys=True).encode()).hexdigest()
 
 
 def _post(actor,job,report,lines):
@@ -106,6 +106,7 @@ def _post(actor,job,report,lines):
 def reconcile(actor,job,report,pieces):
     """Caller owns stock lock and repair transaction. Missing norms do not erase work."""
     if job.method not in ('p1','p2') or report.outcome!='complete':return
+    job.actual_cleaning_length_m=report.context.get('actual_cleaning_length_m')
     fingerprint=_fingerprint(job,pieces)
     previous=RepairConsumption.objects.select_for_update().filter(job=job).first()
     if previous and previous.state=='posted':

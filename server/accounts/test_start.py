@@ -26,6 +26,8 @@ class RoleHomeTests(TestCase):
         response=self.client.get(reverse('dashboard'),{'role':'foreman'})
         self.assertContains(response,'Проверки и сводка объектов')
         self.assertFalse(response.context['role_home']['common_collapsed'])
+        self.assertEqual(response.context['role_home']['extras'],[])
+        self.assertNotContains(response,'Дополнительно выданные полномочия')
 
     def test_delegated_powers_remain_available_without_changing_role(self):
         self.user.role='foreman';self.user.save()
@@ -43,6 +45,14 @@ class RoleHomeTests(TestCase):
             self.assertIn(reverse(name),[x['url'] for x in result['cards']])
         self.assertIn(reverse('equipment')+'?state=repair',[x['url'] for x in result['cards']])
 
+    def test_pto_stock_is_a_primary_card_only_with_permission(self):
+        self.user.role='pto';self.user.save()
+        self.assertNotIn(reverse('stock'),[x['url'] for x in role_home(self.user)['cards']])
+        AccessGrant.objects.create(user=self.user,permission='stock.manage',granted_by=self.user)
+        home=role_home(self.user)
+        self.assertIn(reverse('stock'),[x['url'] for x in home['cards']])
+        self.assertNotIn(reverse('stock'),[x['url'] for x in home['extras']])
+
     def test_inactive_has_no_start_screen(self):
         self.user.is_active=False
         self.assertIsNone(role_home(self.user))
@@ -59,16 +69,26 @@ class RoleHomeTests(TestCase):
         section=Section.objects.create(project_object=obj,rnu='ТЕСТ',pipeline='ТЕСТ',name='Участок')
         self.user.role='foreman';self.user.save()
         AccessGrant.objects.create(user=self.user,permission='repairs.prepare',granted_by=self.user)
-        for number,assigned in [('001',self.user),('999',None)]:
-            job=Job.objects.create(contract=contract,section=section,assigned_to=assigned,method='grind',created_by=self.user)
+        for number,assigned,state in [('001',self.user,'planned'),('999',None,'planned'),('777',self.user,'unrepairable')]:
+            job=Job.objects.create(contract=contract,section=section,assigned_to=assigned,method='grind',state=state,created_by=self.user)
             defect=Defect.objects.create(contract=contract,section=section,kilometre='100.123',number=number,pipe_section='0001')
             JobDefect.objects.create(job=job,defect=defect)
         result=role_home(self.user)
         self.assertEqual(len(result['rows']),1)
         self.assertIn('001',result['rows'][0]['title'])
         self.assertNotIn('999',result['rows'][0]['title'])
+        self.assertNotIn('777',result['rows'][0]['title'])
+        self.assertIn('/cabinet/repairs/',result['rows'][0]['url'])
+        self.assertNotIn('/report/',result['rows'][0]['url'])
+        self.assertFalse(result['todo_more'])
+        for i in range(8):
+            job=Job.objects.create(contract=contract,section=section,assigned_to=self.user,method='grind',created_by=self.user)
+            defect=Defect.objects.create(contract=contract,section=section,kilometre='101.123',number='extra'+str(i))
+            JobDefect.objects.create(job=job,defect=defect)
+        result=role_home(self.user);self.assertTrue(result['todo_more']);self.assertEqual(len(result['rows']),8)
         self.client.force_login(self.user)
-        self.assertContains(self.client.get(reverse('dashboard')),'Внести результат')
+        self.assertContains(self.client.get(reverse('dashboard')),'Открыть задание')
+        self.assertContains(self.client.get(reverse('dashboard')),'Показаны первые 8 заданий')
 
     def test_safety_role_does_not_reveal_unshared_expiry_documents(self):
         from documents.models import Document

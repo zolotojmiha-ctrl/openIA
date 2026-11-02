@@ -26,8 +26,9 @@ def validate_change(current,target):
 def record_change(actor,job,before,note=''):
     after=snapshot(job)
     if not before or before==after:return []
-    parts=planned_parts(job.length_m,job.composition,job.method)[1] if job.method in COUPLING_METHODS else []
-    left=Counter(int(p*1000) for p in parts)
+    from projects.stock_planning import requirements
+    parts=requirements(job) or []
+    left=Counter(parts)
     held=list(StockItem.objects.select_for_update().filter(reserved_job=job,legal_entity=job.section.project_object.legal_entity).order_by('length_mm','pk'))
     mixed=job.method=='p1' and len(parts)>1 and len({i.wall_mm for i in held})>1
     released=[]
@@ -38,8 +39,9 @@ def record_change(actor,job,before,note=''):
             item.reserved_job=None;item.reservation_origin='';item.version+=1;item.save(update_fields=['reserved_job','reservation_origin','version'])
             audit(actor,'stock_reserved',item=str(item.pk),job='',previous_job=str(job.pk),reason='Изменены требования конструкции')
         else:left=remaining
+    assigned=reserve_replacements(actor,job)
     job.materials='unknown';job.save(update_fields=['materials'])
-    Report.objects.create(job=job,author=actor,kind='plan_change',performed_date=timezone.localdate(),note=note.strip() or 'Уточнены параметры задания.',context={'previous_plan':dict(before,method_label=dict(METHODS).get(before['method'],before['method'])),'new_plan':dict(after,method_label=job.get_method_display()),'released_reservations':released})
+    Report.objects.create(job=job,author=actor,kind='plan_change',performed_date=timezone.localdate(),note=note.strip() or 'Уточнены параметры задания.',context={'previous_plan':dict(before,method_label=dict(METHODS).get(before['method'],before['method'])),'new_plan':dict(after,method_label=job.get_method_display()),'released_reservations':released,'replacement_reservations':assigned})
     audit(actor,'repair_prepared',kind='construction_changed',entity_id=str(job.pk),previous=before,current=after,released=[r['id'] for r in released])
     return released
 
@@ -63,3 +65,67 @@ def revise(user,pk,expected_version,values,reason):
     if before==snapshot(job):return job,[]
     job.version+=1;job.save(update_fields=[*FIELDS,'version'])
     return job,record_change(actor,job,before,reason)
+
+
+def reserve_replacements(actor, job):
+    """Fill exact planned sizes from eligible stock under the caller's stock lock."""
+    from accounts.permissions import permitted
+    from projects import stock_planning
+    from projects.repair_materials import eligible
+    from projects.models import StockBalance
+    if not permitted(actor, 'stock.manage'):
+        return []
+    required = stock_planning.requirements(job)
+    if required is None:
+        return []
+    held, installed = stock_fit.occupied(job)
+    remaining = stock_fit.consume(job, held, Counter(required))
+    assigned = []
+    chosen_wall = None
+    if job.method == 'p1':
+        if held or installed:
+            chosen_wall = (held + installed)[0].wall_mm
+        else:
+            available_by_wall = {}
+            for balance in StockBalance.objects.filter(
+                quantity__gte=1, item__kind='coupling', item__reserved_job__isnull=True,
+                item__archived=False, item__deleted_at__isnull=True,
+                item__legal_entity=job.section.project_object.legal_entity,
+                item__method=job.method, item__length_mm__in=remaining,
+                item__coupling__installation__isnull=True,
+            ).select_related('item','warehouse'):
+                if eligible(balance.warehouse,job) and not stock_fit.reason(balance.item,job):
+                    counts=available_by_wall.setdefault(balance.item.wall_mm,Counter())
+                    counts[balance.item.length_mm]+=int(balance.quantity)
+            if available_by_wall:
+                chosen_wall=min(available_by_wall,key=lambda wall:(
+                    -sum(min(count,available_by_wall[wall][length]) for length,count in remaining.items()),wall))
+    for length, count in sorted(remaining.items(), reverse=True):
+        for _ in range(count):
+            balances = StockBalance.objects.filter(
+                quantity__gte=1, item__kind='coupling', item__reserved_job__isnull=True,
+                item__archived=False, item__deleted_at__isnull=True,
+                item__legal_entity=job.section.project_object.legal_entity,
+                item__method=job.method, item__length_mm=length,
+                item__coupling__installation__isnull=True,
+            ).select_related('item','warehouse').order_by('item__wall_mm','item__sku','warehouse_id')
+            chosen = None
+            for balance in balances:
+                item = balance.item
+                if chosen_wall is not None and item.wall_mm != chosen_wall:
+                    continue
+                if not eligible(balance.warehouse, job) or stock_fit.reason(item, job):
+                    continue
+                if not stock_fit.capacity(job, item, held, installed):
+                    continue
+                chosen = balance
+                break
+            if chosen is None:
+                continue
+            item = chosen.item
+            if not item.individual and not item.coupling_id and (chosen.quantity > 1 or item.balances.filter(quantity__gt=0).count() > 1):
+                item = stock_planning.split(actor,item.pk,item.version,chosen.warehouse_id)
+            item = stock_planning.reserve(actor,item.pk,item.version,job.pk)
+            held.append(item)
+            assigned.append(str(item.pk))
+    return assigned

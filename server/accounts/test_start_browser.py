@@ -11,9 +11,9 @@ class StartBrowserTests(StaticLiveServerTestCase):
     def test_role_screens(self):
         LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID,defaults={'name':'ТЕСТ компания'})
         password=secrets.token_urlsafe(24)
-        for i,role in enumerate(['leader','foreman','technician','mechanic','safety','supply'],1):
+        for i,role in enumerate(['leader','foreman','technician','mechanic','safety','supply','pto'],1):
             user=User.objects.create_user('+7000000080'+str(i),password,full_name='ТЕСТ '+role,role=role if role!='leader' else 'other',leader_slot=1 if role=='leader' else None,must_change_password=False)
-            for permission in {'technician':['repairs.prepare','personnel.manage'],'mechanic':['equipment.manage'],'safety':['document.upload'],'supply':['stock.manage']}.get(role,[]):
+            for permission in {'technician':['repairs.prepare','personnel.manage'],'mechanic':['equipment.manage'],'safety':['document.upload'],'supply':['stock.manage'],'pto':['stock.manage','repairs.prepare']}.get(role,[]):
                 AccessGrant.objects.create(user=user,permission=permission,granted_by=user)
         from projects.models import ProjectObject,Contract,ContractObject,ObjectAccess,ContractAccess
         from repairs.models import Section,Job,Defect,JobDefect

@@ -40,6 +40,6 @@ def revise(request,pk):
             job,released=plans.revise(request.user,job.pk,form.cleaned_data['expected_version'],{k:form.cleaned_data[k] for k in plans.FIELDS},form.cleaned_data['reason'])
         except ValidationError as e:form.add_error(None,e)
         else:
-            messages.success(request,'Параметры задания сохранены.'+(' Неподходящее закрепление снято, сама муфта осталась на складе. Выберите изделие на новый размер.' if released else ''))
+            messages.success(request,'Параметры задания сохранены.'+(' Неподходящее закрепление снято; свободные муфты подходящего размера подобраны автоматически в пределах складских прав. Проверьте состав и недостающие изделия.' if released else ''))
             return redirect('repair_detail',pk=job.pk)
     return render(request,'repairs/construction.html',{'form':form,'job':job})

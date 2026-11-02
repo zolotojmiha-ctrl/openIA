@@ -87,6 +87,8 @@ class StockReportTests(TestCase):
         self.move(items['primer'], 'consume', Decimal('1.25'), src=warehouse, job=job)
         self.client.force_login(self.pto)
         response = self.client.get(reverse('repair_materials'))
+        self.assertContains(response, 'Где не хватает')
+        self.assertContains(response, 'Работы с нехваткой')
         expected = response.context['grouped']
         movements = StockMovement.objects.count()
         download = self.client.get(reverse('repair_materials_export'))
@@ -117,6 +119,9 @@ class StockReportTests(TestCase):
         params = {'contract': str(self.contract.pk), 'object': str(self.obj.pk)}
         page = self.client.get(url, params)
         self.assertContains(page, 'Ведомость в Excel')
+        self.assertContains(page, 'Расчёт неполный: требуют уточнения')
+        self.assertContains(page, 'все доступные работы')
+        self.assertLess(page.content.index('Расчёт неполный'.encode()), page.content.index('<table'.encode()))
         self.assertIn('contract=', page.context['export_query'])
         self.assertIn('object=', page.context['export_query'])
         response = self.client.get(url, dict(params, export='xlsx'))
@@ -128,6 +133,9 @@ class StockReportTests(TestCase):
         self.assertEqual(row['need'], 1)
         self.assertEqual(row['free'], 1)
         self.assertEqual(len(page.context['unknown']), 1)
+        needs = self.client.get(reverse('repair_materials'))
+        self.assertContains(needs, 'Расчёт неполный: нужно уточнить данные')
+        self.assertLess(needs.content.index('Расчёт неполный'.encode()), needs.content.index('<table'.encode()))
         self.assertTrue(self.sheet(response.content, 'Нужно уточнить')[(2, 2)])
         self.assertEqual(self.client.get(url, dict(params, contract='invalid', export='xlsx')).status_code, 404)
         other_filter = self.client.get(url, {'contract': str(self.contract.pk), 'object': str(job.pk), 'export': 'xlsx'})

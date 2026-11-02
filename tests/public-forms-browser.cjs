@@ -11,8 +11,27 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
   }
  }
  await page.goto(base+'/');
+ for(const width of [390,1201,1280,1440]){await page.setViewportSize({width,height:900});if(width===390||width===1440)await page.screenshot({path:'/tmp/armada-site-home-'+width+'.png',fullPage:true});if(width>=1201){const positions=await page.locator('#navigation a').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));assert.equal(new Set(positions).size,1,'desktop menu wraps');}}
  assert.equal(await page.locator('.review-bar').count(),0);
  assert.equal((await page.locator('body').innerText()).includes('Версия для согласования'),false);
+ await page.setViewportSize({width:390,height:844});const contact=page.locator('.hero-links').getByRole('link',{name:'Связаться с нами',exact:true});assert.ok((await contact.boundingBox()).height>=44);await contact.click();await page.getByRole('heading',{name:'Связь с компанией',exact:true}).waitFor();await page.goto(base+'/');
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Меню',exact:true}).click();
+ await page.locator('nav').getByRole('link',{name:'Аренда техники',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Меню',exact:true}).getAttribute('aria-expanded'),'false');
+ await page.getByRole('button',{name:'Меню',exact:true}).click();
+ await page.locator('nav').getByRole('link',{name:'Аренда техники',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Меню',exact:true}).getAttribute('aria-expanded'),'false');
+ await page.getByRole('button',{name:'Меню',exact:true}).click();await page.keyboard.press('Escape');
+ assert.equal(await page.getByRole('button',{name:'Меню',exact:true}).getAttribute('aria-expanded'),'false');
+ for(const [route,id] of [['rental','rental-callback'],['couplings','couplings-request'],['centralizers','centralizers-request']]){
+  await page.goto(base+'/#'+id);await page.waitForFunction(route=>!document.querySelector('[data-page="/'+route+'"]').hidden,route);
+  assert.equal(await page.locator('#'+id).isVisible(),true);
+ }
+ await page.goto(base+'/#rental-callback');await page.locator('#rental-phone').fill('+7 (900) 000-00-03');
+ await page.locator('#rental-callback').getByRole('link',{name:'Политика обработки данных'}).click();await page.goBack();
+ await page.waitForFunction(()=>!document.querySelector('[data-page="/rental"]').hidden);
+ assert.equal(await page.locator('#rental-phone').inputValue(),'+7 (900) 000-00-03');
  await page.goto(base+'/#careers');
  const form=page.locator('#candidate');
  for(const [name,value] of Object.entries({name:'ТЕСТ Кандидат',phone:'+7 (900) 000-00-01',email:'candidate@example.invalid',city:'ТЕСТ Город',profession:'Монтажник',experience:'Опыт 5 лет'}))await form.locator('[name='+name+']').fill(value);
@@ -24,17 +43,20 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
  await form.locator('[name=resume]').setInputFiles({name:'oversized.pdf',mimeType:'application/pdf',buffer:Buffer.alloc(5*1024*1024+1)});
  await form.getByRole('button',{name:'Отправить анкету',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#candidate .form-status').textContent.includes('до 5 МБ'));
+ assert.equal(await form.locator('.form-status').evaluate(e=>document.activeElement===e),true);
  assert.equal(sent,0);
  await form.locator('[name=resume]').setInputFiles({name:'Резюме кандидата.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nsynthetic browser resume')});
  await fit('candidate');
  await page.route('**/forms/candidate/',async route=>{await route.fetch();await route.abort('failed');});
  await form.getByRole('button',{name:'Отправить анкету',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#candidate .form-status').textContent.includes('Данные остались'));
+ assert.equal(await form.locator('.form-status').evaluate(e=>document.activeElement===e),true);
  assert.equal(await form.locator('[name=name]').inputValue(),'ТЕСТ Кандидат');
  assert.equal(await form.locator('[name=resume]').evaluate(e=>e.files.length),1);
  await page.unroute('**/forms/candidate/');
  await form.getByRole('button',{name:'Отправить анкету',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#candidate .form-status').textContent.includes('Анкета принята'));
+ assert.equal(await form.locator('.form-status').evaluate(e=>document.activeElement===e),true);
  assert.equal(sent,2);
  assert.equal(await form.locator('[name=resume]').evaluate(e=>e.files.length),0);
  for(const [route,id] of [['rental','rental-callback'],['couplings','couplings-request'],['centralizers','centralizers-request']]){

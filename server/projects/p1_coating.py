@@ -1,6 +1,6 @@
 """Approved rounded PTO values. Never infer other sizes from grey columns."""
 import json
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from pathlib import Path
 from django.core.exceptions import ValidationError
 
@@ -20,9 +20,13 @@ def row(diameter_mm, length_mm):
 
 def coating(job, pieces=None):
     values = row(job.section.diameter_mm, dimensions(job, pieces))
-    return [{'kind': kind, 'name': name, 'quantity': values[kind + '_kg'], 'unit': 'кг',
+    actual = getattr(job, 'actual_cleaning_length_m', None)
+    extra = max(Decimal(0), Decimal(actual) - Decimal(values['cleaning_length_m'])) if actual is not None else Decimal(0)
+    extra_area = extra * Decimal('0.720') * Decimal('3.14')
+    rates = {'primer': Decimal('.21'), 'ksizol': Decimal('5.19'), 'wrapper': Decimal('.81')}
+    return [{'kind': kind, 'name': name, 'quantity': str(Decimal(values[kind + '_kg']) + (extra_area * rates[kind]).quantize(Decimal('.001'), rounding=ROUND_CEILING)) if extra else values[kind + '_kg'], 'unit': 'кг',
              'source': TABLE['source'], 'norm_revision': TABLE['revision'],
              'length_mm': values['length_mm'], 'pipe_diameter_mm': 720, 'coupling_diameter_mm': 760,
-             'area': values['area_m2'], 'cleaning_length_m': values['cleaning_length_m'],
+             'area': str(Decimal(values['area_m2']) + extra_area), 'norm_quantity': values[kind + '_kg'], 'actual_cleaning_length_m': str(actual) if actual is not None else '', 'extra_area_m2': str(extra_area), 'cleaning_length_m': values['cleaning_length_m'],
              'cleaning_area_m2': values['cleaning_area_m2']}
             for kind, name in [('primer', 'Грунт / праймер'), ('ksizol', 'Ксизол'), ('wrapper', 'Обёртка Полилен')]]

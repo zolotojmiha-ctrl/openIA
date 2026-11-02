@@ -64,7 +64,10 @@ class AgreementForm(MoneyModelForm):
         selected=valid
         linked=self.instance.documents.values('pk') if self.instance.pk else []
         allowed=Q(pk__in=linked)|Q(pk__in=selected or [])
-        if query:allowed|=Q(pk__in=available.filter(Q(title__icontains=query)|Q(current_version__original_name__icontains=query)).order_by('title').values('pk')[:50])
+        matches=list(available.filter(Q(title__icontains=query)|Q(current_version__original_name__icontains=query)).order_by('title').values_list('pk',flat=True).distinct()[:51]) if query else []
+        self.document_search_count=min(len(matches),50)
+        self.document_search_more=len(matches)>50
+        if query:allowed|=Q(pk__in=matches[:50])
         self.fields['documents'].queryset=available.filter(allowed).distinct().order_by('title')
         self.fields['documents'].label='Прикреплённые и выбранные файлы'
         self.fields['documents'].help_text=''
@@ -140,7 +143,7 @@ def edit(request,pk=None):
         try:result=save(request.user,pk,request.POST,uploads=request.FILES.getlist('attachments'))
         except ValidationError as e:form.add_error(None,e)
         else:return redirect('agreement_detail',pk=result.pk)
-    return render(request,'projects/agreement_form.html',{'form':form,'row':row,'document_search':request.POST.get('document_search','') if request.method=='POST' else request.GET.get('document_search','')})
+    return render(request,'projects/agreement_form.html',{'form':form,'row':row,'document_search':request.POST.get('document_search','') if request.method=='POST' else request.GET.get('document_search',''),'searching_documents':request.method=='POST' and request.POST.get('_search_documents')=='1'})
 
 @login_required
 def detail(request,pk):

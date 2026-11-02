@@ -264,6 +264,13 @@ class RepairsTests(TestCase):
         self.assertEqual(r.status_code,200);batch.refresh_from_db();self.assertIsNone(batch.applied_at)
     def test_filter_pagination_and_invalid_ids_do_not_crash(self):
         for params in [{'section':'broken'},{'object':'broken'},{'q':'NaN'},{'q':'99999999999999999999999'},{'year':'notyear'}]:self.assertEqual(self.client.get(reverse('repairs'),params).status_code,200)
+    def test_search_keeps_selected_status_and_archive_links(self):
+        self.client.force_login(self.leader)
+        response=self.client.get(reverse('repairs'),{'state':'reported','q':'100'})
+        self.assertContains(response,'name="state" value="reported"',html=False)
+        archived=self.client.get(reverse('repairs'),{'archive':'1','state':'revision'})
+        self.assertContains(archived,'name="state" value="revision"',html=False)
+        self.assertContains(archived,'archive=1&amp;object=')
     def test_batch_assignment_restricts_master_and_assigns_atomically(self):
         first=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)
         second=Job.objects.create(contract=self.contract,section=self.section,method='grind',created_by=self.leader)

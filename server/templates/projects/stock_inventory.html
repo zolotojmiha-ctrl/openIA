@@ -1,6 +1,6 @@
 {% extends 'accounts/base.html' %}{% block content %}
 <link rel="stylesheet" href="/static/equipment/equipment.css">
-<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}"><div class="stock-page stock-workspace">{% include 'projects/stock_navigation.html' with stock_section='materials' %}<h1>Склады · материалы и остатки</h1>
+<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}&amp;ui=3"><div class="stock-page stock-workspace">{% include 'projects/stock_navigation.html' with stock_section='materials' %}<h1>Склады · материалы и остатки</h1>
 {% if mode %}
 <link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
 <form method="post" data-stock-grid data-mode="{{ mode }}" data-return-url="{{ return_url }}">
@@ -26,18 +26,21 @@
 <div class="stock-actions stock-actions-secondary">
 <a class="button action-view" href="{% url 'repair_materials' %}">Потребность на работы</a>
 <a class="button action-view" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
+</div>
+<details class="stock-extra-actions"><summary>Excel и справочник</summary><div class="stock-actions">
 <a class="button action-view" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
 <a class="button action-view" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>
 <a class="button action-view" href="{% url 'stock_items' %}">Справочник карточек / архив</a>
-</div>
-<p>Закреплённые муфты остаются в складском остатке до монтажа. Материалы одного типоразмера на разных складах показаны разными строками.</p>
+</div></details>
+<p>Закреплённые муфты входят в остаток до монтажа.</p>
 <form method="get" class="equipment-actions stock-filters">
-<input name="q" value="{{ q }}" placeholder="Название, заводской №, км или дефект">
-<select name="warehouse"><option value="">Все склады</option>{% for wh in warehouses %}<option value="{{ wh.pk }}" {% if selected_warehouse == wh.pk|stringformat:'s' %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}</select>
-<select name="kind"><option value="">Все категории</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-<select name="state"><option value="">Все состояния</option><option value="free" {% if selected_state == 'free' %}selected{% endif %}>Свободна</option><option value="reserved" {% if selected_state == 'reserved' %}selected{% endif %}>Закреплена</option><option value="installed" {% if selected_state == 'installed' %}selected{% endif %}>Смонтирована</option><option value="catalogue" {% if selected_state == 'catalogue' %}selected{% endif %}>Нет на складе</option></select>
+<input name="q" aria-label="Поиск материалов" value="{{ q }}" placeholder="Название, заводской №, км или дефект">
+<select name="warehouse" aria-label="Склад"><option value="">Все склады</option>{% for wh in warehouses %}<option value="{{ wh.pk }}" {% if selected_warehouse == wh.pk|stringformat:'s' %}selected{% endif %}>{{ wh.name }}</option>{% endfor %}</select>
+<select name="kind" aria-label="Категория"><option value="">Все категории</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<select name="state" aria-label="Состояние"><option value="">Все состояния</option><option value="free" {% if selected_state == 'free' %}selected{% endif %}>Свободна</option><option value="reserved" {% if selected_state == 'reserved' %}selected{% endif %}>Закреплена</option><option value="installed" {% if selected_state == 'installed' %}selected{% endif %}>Смонтирована</option><option value="catalogue" {% if selected_state == 'catalogue' %}selected{% endif %}>Нет на складе</option></select>
 <label><input type="checkbox" name="archive" value="1" {% if request.GET.archive == '1' %}checked{% endif %}> Показать архив</label><button class="button">Найти</button><a href="{% url 'stock_inventory' %}">Сбросить</a>
 </form>
+<p role="status">Найдено строк: {{ page.paginator.count }}</p>
 {% include 'projects/stock_inventory_rows.html' %}
 {% if page.has_other_pages %}<nav class="pagination">{% if page.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page.previous_page_number }}">←</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?{{ filter_query }}&amp;page={{ page.next_page_number }}">→</a>{% endif %}</nav>{% endif %}
 {% endif %}</div>{% endblock %}

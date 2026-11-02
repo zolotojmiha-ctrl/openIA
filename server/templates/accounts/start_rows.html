@@ -1,0 +1,1 @@
+{% for row in role_home.rows %}<a class="panel home-row" href="{{ row.url }}"><span><strong>{{ row.title }}</strong><small>{{ row.detail }}</small></span><span>{{ row.action }} →</span></a>{% empty %}{% if role_home.role == 'foreman' %}<p class="panel">Нет заданий, ожидающих выполнения.</p>{% endif %}{% endfor %}

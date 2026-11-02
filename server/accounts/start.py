@@ -7,7 +7,7 @@ from projects.subcontracts import orders,can_report
 from projects.closure import pending_contracts
 from documents.access import visible_documents,unsorted_documents
 from documents.deadlines import due_documents
-from repairs.access import visible_jobs,reportable_jobs
+from repairs.access import visible_jobs
 
 TITLES={
  'leader':('Проверки и сводка объектов','Результаты работ, заявки на закрытие и состояние объектов'),
@@ -30,7 +30,7 @@ def role_home(user):
     title,description=TITLES[role]
     grants=set(user.grants.values_list('permission',flat=True))
     def can(key):return user.is_leader or key in grants
-    cards=[];rows=[];due=[];equipment_dates=[];locations=[]
+    cards=[];rows=[];due=[];equipment_dates=[];locations=[];todo_more=False
     objects=visible_objects(user).exclude(status='archived')
     contracts=visible_contracts(user).exclude(status='archived')
     docs=visible_documents(user).filter(archived=False)
@@ -49,18 +49,18 @@ def role_home(user):
         card('Действующие объекты','objects',objects.count())
         if not objects.exists():
             card('Создать объект','object_new',detail='Затем добавьте контракт и укажите связанные объекты')
+        cards.sort(key=lambda item:item['count']==0)
         rows=[{'title':j.defect_status+' · '+', '.join('км '+d.km+' · № '+d.number for d in j.active_defects),'detail':j.section.name,'url':reverse('repair_detail',args=[j.pk]),'action':'Проверить результат','tone':j.status_tone} for j in jobs.filter(state='reported').order_by('pk')[:5]]
     elif role=='foreman':
-        card('Черновики на этом устройстве','repair_drafts',detail='Неотправленные сведения и фотографии')
         own=jobs.filter(assigned_to=user)
-        todo=own.exclude(state__in=['confirmed','reported'])
+        todo=own.exclude(state__in=['confirmed','reported','unrepairable'])
         card('Все назначенные мне работы','repairs',own.count(),'?master='+str(user.pk))
         card('Мои результаты на проверке','repairs',own.filter(state='reported').count(),'?master='+str(user.pk)+'&state=reported')
         card('Вернули мне на доработку','repairs',own.exclude(review_note='').count(),'?master='+str(user.pk)+'&state=revision')
-        selected=list(todo.order_by('planned_date','pk')[:8])
-        allowed=set(reportable_jobs(user).filter(pk__in=[j.pk for j in selected]).values_list('pk',flat=True))
-        for job in selected:
-            rows.append({'title':', '.join('км '+d.km+' · № '+d.number for d in job.active_defects),'detail':job.section.name+' · '+job.get_method_display()+' · '+(job.review_note or job.reason_display or job.defect_status),'url':reverse('repair_report',args=[job.pk,'repaired']) if job.pk in allowed else reverse('repair_detail',args=[job.pk]),'action':'Внести результат' if job.pk in allowed else 'Открыть задание','tone':job.status_tone})
+        card('Черновики на этом устройстве','repair_drafts',detail='Неотправленные сведения и фотографии')
+        selected=list(todo.order_by('planned_date','pk')[:9]);todo_more=len(selected)>8
+        for job in selected[:8]:
+            rows.append({'title':', '.join('км '+d.km+' · № '+d.number for d in job.active_defects),'detail':job.section.name+' · '+job.get_method_display()+' · '+(job.review_note or job.reason_display or job.defect_status),'url':reverse('repair_detail',args=[job.pk]),'action':'Открыть задание','tone':job.status_tone})
     elif role=='technician':
         work()
         if can('repairs.prepare'):card('Подготовить ведомость','work_home',detail='Откройте контракт и участок для загрузки Excel')
@@ -97,6 +97,7 @@ def role_home(user):
         card('Доступные акты и сметы','documents',docs.filter(section='acts').count(),'?section=acts')
     elif role in ('pto','as_built'):
         work()
+        if role=='pto' and can('stock.manage'):card('Склады и материалы','stock',detail='Остатки, потребность и нормы расхода')
         card('Исполнительная документация','documents',docs.filter(section='as_built').count(),'?section=as_built')
         card('Документы на разбор','documents',unsorted_documents(user).count(),'?mode=unsorted')
         if can('document.upload'):card('Загрузить документацию','document_upload')
@@ -107,6 +108,6 @@ def role_home(user):
     # Delegated powers remain reachable even when the employee's primary role is different.
     extras=[]
     for permission,label,name in [('repairs.prepare','Подготовка работ','work_home'),('personnel.manage','Бригады и назначения','brigades'),('equipment.manage','Управление техникой','equipment'),('stock.manage','Управление складами','stock'),('subcontract.manage','Субподрядчики','subcontracts'),('users.manage','Учётные записи и права','users'),('projects.access','Объекты и доступ','objects')]:
-        if can(permission) and reverse(name) not in {c['url'].split('?')[0] for c in cards}:
+        if not user.is_leader and can(permission) and reverse(name) not in {c['url'].split('?')[0] for c in cards}:
             extras.append({'title':label,'url':reverse(name)})
-    return {'role':role,'title':title,'description':description,'cards':cards,'rows':rows,'due':due[:8],'due_count':len(due),'equipment_due':equipment_dates[:8],'equipment_due_count':len(equipment_dates),'locations':locations,'extras':extras,'common_collapsed':not user.is_leader}
+    return {'role':role,'title':title,'description':description,'cards':cards,'rows':rows,'todo_more':todo_more,'due':due[:8],'due_count':len(due),'equipment_due':equipment_dates[:8],'equipment_due_count':len(equipment_dates),'locations':locations,'extras':extras,'common_collapsed':not user.is_leader}

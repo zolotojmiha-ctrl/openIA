@@ -131,6 +131,7 @@ class ReportForm(forms.Form):
     outcome=forms.ChoiceField(label='Результат',choices=[('partial','Выполнено частично'),('complete','Работа выполнена')],initial='complete',widget=forms.RadioSelect)
     method=forms.ChoiceField(label='Фактический метод ремонта',choices=METHODS,required=False)
     length_m=forms.DecimalField(label='Фактическая длина, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False)
+    actual_cleaning_length_m=forms.DecimalField(label='Фактическая длина снятия старой изоляции, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False,help_text='Для П1 720/760. Оставьте пустым для нормы ПТО. Превышение увеличит расход грунта, Ксизола и обёртки.')
     composition=forms.CharField(label='Фактический состав, м',max_length=200,required=False)
     couplings=forms.ModelMultipleChoiceField(label='Все муфты, установленные на этой работе',queryset=Coupling.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     problem=forms.ChoiceField(label='Почему дефект не устранён',choices=PROBLEMS,required=False)
@@ -175,6 +176,11 @@ class ReportForm(forms.Form):
                 self.fields['coordinates']=forms.CharField(label='Координаты точки ремонта',max_length=100,required=action=='result',
                     widget=forms.TextInput(attrs={'placeholder':'56.123456, 73.123456','autocomplete':'off'}),
                     help_text='Вставьте координаты из карты: 56.123456, 73.123456 или 55°20′22.2″N 77°49′47.4″E.')
+        if action not in ('result','correction') or job.method!='p1' or job.section.diameter_mm!=720:
+            self.fields.pop('actual_cleaning_length_m',None)
+        elif action=='correction':
+            latest=job.reports.filter(outcome__in=['complete','partial']).order_by('-created_at').first()
+            if latest:self.initial['actual_cleaning_length_m']=latest.context.get('actual_cleaning_length_m')
         self.stock_serial_fields=[]
         if action=='result' and job.method in ('p1','p2','p3','p4','p5u'):
             from projects.stock import prepared_couplings

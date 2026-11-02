@@ -81,7 +81,9 @@ def job_panel(user,job):
         pieces=[u.coupling for u in job.installed_couplings.select_related('coupling')] if job.state in ('reported','confirmed') else None
         try:geometry=row(job.section.diameter_mm,dimensions(job,pieces))
         except ValidationError:pass
-    return {'totals':[r for r in total.values() if r['quantity']],'entry':RepairConsumption.objects.filter(job=job).first(),'can_manage':permitted(user,'stock.manage'),'coating_geometry':geometry}
+    entry=RepairConsumption.objects.filter(job=job).first()
+    actual_coating=next((line for line in entry.lines if line.get('actual_cleaning_length_m')),None) if entry else None
+    return {'actual_coating':actual_coating,'totals':[r for r in total.values() if r['quantity']],'entry':entry,'can_manage':permitted(user,'stock.manage'),'coating_geometry':geometry}
 
 @login_required
 def profiles(request,pk=None):

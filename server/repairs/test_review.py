@@ -77,7 +77,24 @@ class ReviewTests(TestCase):
         j,r=self.make_job();return_for_revision(self.leader,j.pk,j.version,'Уточните координаты')
         j.refresh_from_db();r.refresh_from_db();self.assertEqual(j.state,'progress');self.assertEqual(r.latitude,55);self.assertEqual(r.author,self.worker);self.assertEqual(j.reports.filter(kind='revision').count(),1)
         self.client.force_login(self.worker);self.assertContains(self.client.get(reverse('dashboard')),'Возвращено на доработку: 1')
-        self.assertContains(self.client.get(reverse('repair_detail',args=[j.pk])),'Уточните координаты')
+        page=self.client.get(reverse('repair_detail',args=[j.pk]))
+        self.assertContains(page,'Уточните координаты');self.assertContains(page,'Предыдущий результат')
+        self.assertLess(page.content.index('Вернули на доработку'.encode()),page.content.index('repair-main-actions'.encode()))
+    def test_master_sees_result_review_status(self):
+        j,r=self.make_job();self.client.force_login(self.worker);url=reverse('repair_detail',args=[j.pk])
+        self.assertContains(self.client.get(url),'Результат отправлен руководителю и ожидает проверки.')
+        confirm_many(self.leader,self.versions(j))
+        self.assertContains(self.client.get(url),'Руководитель подтвердил результат.')
+    def test_detail_keeps_filtered_list_in_result_link(self):
+        from urllib.parse import quote
+        j,r=self.make_job();return_for_revision(self.leader,j.pk,j.version,'Уточните координаты')
+        self.client.force_login(self.worker);back=reverse('repairs')+'?state=revision&page=2'
+        page=self.client.get(reverse('repair_detail',args=[j.pk]),{'return_to':back})
+        report=reverse('repair_report',args=[j.pk,'repaired'])
+        self.assertContains(page,report+'?return_to='+quote(back,safe='/'))
+        form=self.client.get(report,{'return_to':back})
+        self.assertEqual(form.context['report_back'],back)
+        self.assertContains(form,'name="return_to" value="'+back.replace('&','&amp;')+'"',html=False)
     def test_return_requires_note_and_current_pending_state(self):
         j,r=self.make_job()
         with self.assertRaises(ValidationError):return_for_revision(self.leader,j.pk,j.version,'  ')

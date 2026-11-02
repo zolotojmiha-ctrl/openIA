@@ -1,0 +1,5 @@
+#rental-hours .rental-day-actions .button{font-size:15px;line-height:1.4}
+#rental-hours #rental-day-form label{font-size:14px;line-height:1.4}
+#rental-hours #rental-correction>summary{cursor:pointer;line-height:1.5;padding:10px 0;min-height:44px}
+#rental-hours #rental-correction>summary:focus-visible{outline:3px solid #6551a6;outline-offset:3px}
+@media(max-width:700px){#rental-hours #rental-day-form input:not([type=hidden]){font-size:16px;min-height:44px}#rental-hours .rental-table td{font-size:14px;line-height:1.5}#rental-hours .rental-table td[data-label]::before{color:#5c5b70;font-size:13px}}

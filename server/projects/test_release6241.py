@@ -1,4 +1,5 @@
 import importlib
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from django.apps import apps
@@ -25,6 +26,30 @@ class Release6241Tests(TestCase):
         self.assertEqual(self.client.post(url,{'rental_id':row.pk,'action':'day','kind':'work','date':self.today,'version':0}).status_code,302)
         self.assertEqual(row.days.get().hours,10);self.assertIsNone(row.days.get().rate_id)
         self.assertContains(self.client.get(url),'Отметка за')
+    def test_foreman_home_shows_pending_hours_once_and_other_pages_keep_reminder(self):
+        eq=self.machine();equipment.assign(self.leader,eq.pk,eq.version,self.obj,self.contract,self.today,crew_assignment=self.crew())
+        self.client.force_login(self.worker)
+        home=self.client.get(reverse('dashboard'))
+        self.assertContains(home,'Нужно отметить часы техники')
+        self.assertContains(home,reverse('equipment_detail',args=[eq.pk])+'?rental='+str(EquipmentRental.objects.get(placement__equipment=eq).pk)+'#rental-hours',count=1)
+        self.assertNotContains(home,'Открыть табель')
+        self.assertContains(self.client.get(reverse('equipment')),'Открыть табель')
+    def test_reminder_opens_the_correct_past_rental_period(self):
+        yesterday=self.today-timedelta(days=1);crew=self.crew();crew.start_date=yesterday;crew.save(update_fields=['start_date'])
+        eq=self.machine();past=equipment.assign(self.leader,eq.pk,eq.version,self.obj,self.contract,yesterday,end=yesterday,crew_assignment=crew)
+        eq.refresh_from_db();current=equipment.assign(self.leader,eq.pk,eq.version,self.obj,self.contract,self.today,crew_assignment=crew)
+        old=EquipmentRental.objects.get(placement=past);new=EquipmentRental.objects.get(placement=current)
+        self.client.force_login(self.worker);url=reverse('equipment_detail',args=[eq.pk])
+        home=self.client.get(reverse('dashboard'))
+        self.assertContains(home,url+'?rental='+str(old.pk)+'#rental-hours')
+        response=self.client.get(url,{'rental':str(old.pk)})
+        self.assertEqual(response.context['rental'].pk,old.pk)
+        self.assertEqual(response.context['day_form']['date'].value(),yesterday)
+        self.assertEqual(self.client.get(url).context['rental'].pk,new.pk)
+        self.assertEqual(self.client.get(url,{'rental':'invalid'}).status_code,404)
+        saved=self.client.post(url,{'rental_id':old.pk,'action':'day','kind':'work','date':yesterday,'version':0})
+        self.assertEqual(saved.status_code,302);self.assertEqual(saved.url,url+'?rental='+str(old.pk))
+        self.assertEqual(old.days.get().hours,10);self.assertFalse(new.days.exists())
     def test_existing_assigned_machine_becomes_rental_without_activation(self):
         eq=self.machine('own');p=equipment.assign(self.leader,eq.pk,eq.version,self.obj,self.contract,self.today);eq.refresh_from_db()
         values={k:getattr(eq,k) for k in equipment.FIELDS};values['ownership']='rent'

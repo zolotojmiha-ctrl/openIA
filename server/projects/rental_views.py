@@ -105,7 +105,14 @@ def detail(request,pk,embedded=False):
                 elif action=='finance_link':rentals.link_finance(request.user,pk,**bound.cleaned_data)
                 else:rentals.close_period(request.user,pk,**bound.cleaned_data)
             except ValidationError as e:bound.add_error(None,e)
-            else:return redirect('equipment_detail',pk=rental.placement.equipment_id) if embedded else redirect('rental_detail',pk=pk)
+            else:
+                if embedded and action=='day':
+                    from django.urls import reverse
+                    from urllib.parse import urlencode
+                    params={'rental':str(rental.pk)}
+                    if request.GET.get('return_to'):params['return_to']=request.GET['return_to'][:4096]
+                    return redirect(reverse('equipment_detail',args=[rental.placement.equipment_id])+'?'+urlencode(params))
+                return redirect('equipment_detail',pk=rental.placement.equipment_id) if embedded else redirect('rental_detail',pk=pk)
         if action=='day':day=bound
         elif action=='rate':rate=bound
         elif action=='payment':payment=bound
