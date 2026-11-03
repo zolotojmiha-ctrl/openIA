@@ -1,4 +1,4 @@
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 """One checked transaction for edits made directly in the stock table."""
 import hashlib,json,uuid
 from decimal import Decimal
@@ -37,6 +37,7 @@ class RowForm(forms.Form):
         i=group['item'];initial={k:getattr(i,k) for k in ('name',*SPEC)}
         initial.update(warehouse=group['warehouse'].pk if group['warehouse'] else None,quantity=group['quantity'],receipt_date=next(iter(dates)) if len(dates)==1 else None,receipt_origin=next(iter(sources)) if len(sources)==1 else '')
         super().__init__(*args,initial=initial,**kwargs)
+        preserve_legacy(self.fields['diameter_mm'],i.diameter_mm)
         self.fields['warehouse'].queryset=stock.warehouses(user).order_by('name')
         self.mutable_spec=bool(active) and all(not m['movements'] and not m['item'].coupling_id for m in group['members'])
         for name,field in self.fields.items():

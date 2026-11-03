@@ -1,4 +1,4 @@
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 import re
 import uuid
 from decimal import Decimal,InvalidOperation
@@ -23,6 +23,7 @@ class SectionForm(forms.ModelForm):
         labels={'project_object':'Участок работ','name':'Название ведомости'}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
+        preserve_legacy(self.fields['diameter_mm'],self.instance.diameter_mm)
         self.fields['project_object'].queryset=visible_objects(user).exclude(status='archived')
 
 class JobForm(forms.ModelForm):

@@ -1,5 +1,5 @@
 from projects.diameters import label as dn_label
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 import uuid
 from collections import Counter
 from decimal import Decimal
@@ -221,6 +221,9 @@ def coverage(request):
 class DiameterForm(forms.Form):
     expected_diameter=forms.IntegerField(widget=forms.HiddenInput,min_value=0)
     diameter_mm=DiameterField()
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        preserve_legacy(self.fields['diameter_mm'],self.initial.get('diameter_mm'))
 
 @permission_required('stock.manage')
 def diameter(request,pk):

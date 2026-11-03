@@ -51,3 +51,10 @@ class DiameterIntegrationTests(TestCase):
         stock_exchange.apply(self.leader,tables)
         item.refresh_from_db();self.assertEqual(item.diameter_mm,720)
         self.assertEqual(StockBalance.objects.get(item=item).quantity,3)
+
+    def test_unknown_legacy_size_survives_an_unrelated_section_edit(self):
+        self.section.diameter_mm=721;self.section.save()
+        form=SectionForm({'project_object':str(self.obj.pk),'rnu':self.section.rnu,'pipeline':self.section.pipeline,'name':self.section.name+' новая','diameter_mm':'721'},user=self.leader,instance=self.section)
+        self.assertTrue(form.is_valid(),form.errors)
+        form.save();self.section.refresh_from_db()
+        self.assertEqual(self.section.diameter_mm,721)

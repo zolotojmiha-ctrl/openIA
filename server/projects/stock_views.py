@@ -1,4 +1,4 @@
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 from projects.scope_widgets import ScopeChecklist
 import uuid
 from decimal import Decimal
@@ -44,7 +44,7 @@ class ItemForm(forms.ModelForm):
     class Meta:
         model=StockItem;fields=[*stock.ITEM_FIELDS,'serial','receipt_origin','electrode_brand','electrode_diameter','coupling']
     def __init__(self,*args,user,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['coupling'].queryset=Coupling.objects.filter(project_object__in=visible_objects(user))
+        super().__init__(*args,**kwargs);preserve_legacy(self.fields['diameter_mm'],self.instance.diameter_mm);self.fields['coupling'].queryset=Coupling.objects.filter(project_object__in=visible_objects(user))
         self.fields['coupling'].help_text='Необязательно. Конкретная муфта списывается автоматически при установке. Остальные позиции учитываются количеством.'
         if not self.instance._state.adding:self.fields['coupling'].disabled=True
 

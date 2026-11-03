@@ -1,4 +1,4 @@
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 """Daily quantities keep immutable revisions; customer changes never recalculate history."""
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from datetime import date
@@ -42,6 +42,7 @@ class WorkForm(forms.Form):
     change=forms.ModelChoiceField(label='Подтверждённое указание заказчика',queryset=ContractChangeRevision.objects.none(),required=False)
     def __init__(self,*args,user,contract,obj,kind,**kwargs):
         super().__init__(*args,**kwargs);self.fields['stage'].choices=WORK_STAGES.get(kind,[])
+        preserve_legacy(self.fields['diameter'],self.initial.get('diameter'))
         self.fields['crew'].queryset=visible_assignments(user).filter(contract=contract,project_object=obj)
         self.fields['change'].queryset=ContractChangeRevision.objects.filter(change__contract=contract,decision__action='approved')
         self.fields['change'].label_from_instance=lambda r:f'{r.title} · редакция {r.number}'

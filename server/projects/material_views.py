@@ -1,4 +1,4 @@
-from projects.diameters import DiameterField
+from projects.diameters import DiameterField,preserve_legacy
 from decimal import Decimal
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -28,6 +28,7 @@ class ProfileForm(forms.ModelForm):
         fields=['method','diameter_mm','length_mm','full_length_mm','area_per_m','extra_length_mm','tape','wrapper','primer','basis','active']
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
+        preserve_legacy(self.fields['diameter_mm'],self.instance.diameter_mm)
         for key in ['tape','wrapper','primer']:self.fields[key].queryset=stock.items(user).filter(archived=False,unit='kg')
         if not self.instance.pk or self.instance.method=='p2':self.fields['method'].choices=[('p2','П2')]
         self.fields['area_per_m'].help_text='Подтверждённая площадь на метр для этого диаметра/конструкции. Пример 2,55 не переносится на все трубы.'

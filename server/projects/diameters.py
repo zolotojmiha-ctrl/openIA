@@ -36,3 +36,11 @@ class DiameterField(forms.TypedChoiceField):
         kwargs['choices']=[('','—'),*((od,f'DN {dn}') for dn,od in DN_TO_OD.items())]
         kwargs['coerce']=int;kwargs['empty_value']=None
         super().__init__(*args,**kwargs)
+
+def preserve_legacy(field,value):
+    """An unrelated edit must not clear an existing size outside the agreed registry."""
+    if value in ('',None):return
+    try:value=int(value)
+    except (ValueError,TypeError):return
+    if value not in OD_TO_DN:
+        field.choices=[*field.choices,(value,label(value))]
