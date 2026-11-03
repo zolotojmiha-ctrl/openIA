@@ -570,3 +570,5 @@ class StockActionReceipt(models.Model):
 from .release624_models import (EquipmentRental, RentalRate, RentalPeriod, RentalDay, RentalDayRevision, RentalPayment, CoatingProfile, RepairConsumption, CustomerDocumentLink)
 
 from .demand_mail_models import DemandMailing, DemandMailRun, DemandMailDelivery
+
+from .disk_backup_models import DiskBackupSettings, DiskBackupJob

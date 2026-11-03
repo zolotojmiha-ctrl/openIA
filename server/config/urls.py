@@ -309,3 +309,6 @@ urlpatterns += [
  path('cabinet/stock/coverage/mail/<uuid:pk>/preview/',demand_mail_views.preview,name='demand_mail_preview'),
  path('cabinet/stock/coverage/mail/<uuid:pk>/history/',demand_mail_views.history,name='demand_mail_history'),
 ]
+
+from projects import disk_backup_views
+urlpatterns += [path('cabinet/settings/backups/',disk_backup_views.settings,name='disk_backup_settings')]
