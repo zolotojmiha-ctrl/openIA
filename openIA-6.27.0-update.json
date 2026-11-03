@@ -1,0 +1,28 @@
+{
+  "version": "6.27.0",
+  "source_commit": "615117145a4b1009ede7486aba5b66f18e2ef013",
+  "archive": "openIA-6.27.0-update.zip",
+  "archive_sha256": "f8cc6bbb5aac43cba6153b55e3670aac51a9864ac6cb7b4e60ad4a5b4c873f07",
+  "archive_size": 30380552,
+  "source_files": 787,
+  "installer": "install-6.27.0.sh",
+  "installer_sha256": "28321a2babadb0710b99ef889a3eb8c88154d7b4a0ecffe864bf44cf3adbaf73",
+  "built_at_utc": "2026-11-03T17:20:52.925718+00:00",
+  "validation": {
+    "postgresql_tests": 1016,
+    "postgresql_result": "OK",
+    "final_profile_tests": 38,
+    "final_profile_result": "OK",
+    "upgrade_from": [
+      "6.25.0",
+      "6.25.1",
+      "6.26.0"
+    ],
+    "backup_and_restore": "All three source versions backed up, upgraded and restored on isolated synthetic installations with final ZIP-built image",
+    "installer_guards": "6 passed, including local archive",
+    "production_installed": false,
+    "production_mail_verified": false
+  },
+  "image_id": "sha256:69689fdb11655f431a0f029c73fae624f2898acd5214e822a388ad97f0f2f0fe",
+  "image_verified_files": 626
+}
