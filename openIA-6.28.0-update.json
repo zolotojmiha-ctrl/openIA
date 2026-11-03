@@ -1,0 +1,10 @@
+{
+  "version": "6.28.0",
+  "source_commit": "7c33879edf9efaced359d84280c36acfa1aa1b93",
+  "postgresql_tests": 1049,
+  "archive": "openIA-6.28.0-update.zip",
+  "installer": "install-6.28.0.sh",
+  "production_installed": false,
+  "archive_sha256": "89aac7f0a13ca87e819c8754ce209ae435d4664360cb48d4d3630df0d10c8841",
+  "installer_sha256": "15caebc09f54ae84647cc1bd22467bee51e88bc222cda4ce93b1d05fc5d996b7"
+}
