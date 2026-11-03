@@ -1,3 +1,4 @@
+from projects.diameters import label as dn_label, physical as dn_physical
 from accounts import xlsx as human_xlsx
 import uuid
 from datetime import date
@@ -64,7 +65,7 @@ def apply_rows(user,kind,rows):
                 if v[0]:
                     existing=stock.items(actor).get(pk=uuid.UUID(v[0]))
                     if existing.coupling_id and not v[10]:raise ValidationError('Не удаляйте связь с конкретной муфтой; для правки нужен доступ к её объекту.')
-                stock.save_item(actor,uuid.UUID(v[0]) if v[0] else None,int(v[11]) if v[0] else None,dict(sku=v[1],name=v[2],kind=v[3],unit=v[4],method=v[5],diameter_mm=integer(v[6]),length_mm=integer(v[7]),wall_mm=integer(v[8]),archived=flag(v[9]),coupling=coupling))
+                stock.save_item(actor,uuid.UUID(v[0]) if v[0] else None,int(v[11]) if v[0] else None,dict(sku=v[1],name=v[2],kind=v[3],unit=v[4],method=v[5],diameter_mm=dn_physical(v[6]),length_mm=integer(v[7]),wall_mm=integer(v[8]),archived=flag(v[9]),coupling=coupling))
             elif kind=='movements':
                 if v[0]:
                     existing=stock.movements(actor).get(pk=uuid.UUID(v[0]));expected=export_rows_for_movement(actor,existing)

@@ -16,6 +16,10 @@ class Command(BaseCommand):
         while True:
             close_old_connections()
             Letter.objects.filter(state='sending',updated_at__lt=timezone.now()-timedelta(minutes=10)).update(state='uncertain',error='Рабочий процесс прерван. Проверьте отправленные перед повторной отправкой.')
+            from projects.demand_mail import queue_due
+            if ticks%6==0:
+                try:queue_due()
+                except Exception:self.stderr.write('Не удалось подготовить рассылку потребности; настройки сохранены.')
             for _ in range(20):
                 try:
                     if not process_one():break

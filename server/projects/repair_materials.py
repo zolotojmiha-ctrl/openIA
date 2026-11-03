@@ -1,3 +1,4 @@
+from projects.diameters import label as dn_label, physical as dn_physical
 """Normative material demand and idempotent posting, separate from plan lengths."""
 from collections import Counter
 from decimal import Decimal, ROUND_CEILING
@@ -37,7 +38,7 @@ def eligible(warehouse,job):
 def coating(job,pieces=None):
     length=sum(c.length_mm for c in pieces) if pieces else int(Decimal(job.length_m or 0)*1000)
     profile=CoatingProfile.objects.select_related('tape','wrapper','primer').filter(active=True,method=job.method,diameter_mm=job.section.diameter_mm,length_mm=length).first()
-    if not profile:raise ValidationError(f'Не настроена площадь покрытия: {job.get_method_display()} Ø{job.section.diameter_mm or "?"}, длина {length} мм. Укажите профиль изоляции один раз.')
+    if not profile:raise ValidationError(f'Не настроена площадь покрытия: {job.get_method_display()} {dn_label(job.section.diameter_mm)}, длина {length} мм. Укажите профиль изоляции один раз.')
     area=Decimal(profile.full_length_mm+profile.extra_length_mm)/1000*profile.area_per_m
     lines=[]
     for name,rate in RATES.items():
@@ -186,7 +187,7 @@ def all_demand(user=None):
                 candidates=[(n,s) for n,s in candidates if Decimal(s['item'].wall_mm)==wall]
             for length,count in initial.items():
                 if not count:continue
-                line={'method':job.method,'diameter':job.section.diameter_mm,'length':length,'wall':job.wall_mm,'name':f'{job.get_method_display()} Ø{job.section.diameter_mm} · {length} × {job.wall_mm} мм','need':count,'reserved':count-remaining[length],'missing':remaining[length],'unit':'шт.'};row['couplings'].append(line)
+                line={'method':job.method,'diameter':job.section.diameter_mm,'length':length,'wall':job.wall_mm,'name':f'{job.get_method_display()} {dn_label(job.section.diameter_mm)} · {length} × {job.wall_mm} мм','need':count,'reserved':count-remaining[length],'missing':remaining[length],'unit':'шт.'};row['couplings'].append(line)
                 if not remaining[length]:continue
                 node=('need',len(nodes));nodes.append((node,line));edge(node,sink,remaining[length])
                 for n,s in candidates:

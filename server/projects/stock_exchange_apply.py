@@ -1,3 +1,4 @@
+from projects.diameters import physical as dn_physical
 """Transactional command plan for stock spreadsheet round trips."""
 import uuid
 from collections import defaultdict
@@ -40,7 +41,7 @@ def apply(user,tables,token=None,dry=False,source_label='Excel'):
             n=x.numeric(value)
             if n is None or n<=0 or n!=n.to_integral_value() or n>100000:raise ValidationError('Размер нужен положительным целым числом в мм.')
             return int(n)
-        return dict(sku='',name=r[3],kind=kind,unit=unit,method=x.method(r[6]) or '',diameter_mm=mm(r[7]),length_mm=mm(r[8]),wall_mm=mm(r[9]),electrode_brand=r[10],electrode_diameter=x.numeric(r[11]) if r[11] else None,archived=False,serial='',receipt_origin=r[19])
+        return dict(sku='',name=r[3],kind=kind,unit=unit,method=x.method(r[6]) or '',diameter_mm=dn_physical(r[7]),length_mm=mm(r[8]),wall_mm=mm(r[9]),electrode_brand=r[10],electrode_diameter=x.numeric(r[11]) if r[11] else None,archived=False,serial='',receipt_origin=r[19])
     # Validate every original snapshot before making any changes.
     for entry in tables['Остатки']:
         r=list(entry['values'])+['']*max(0,len(x.HEADERS['Остатки'])-len(entry['values']));key=r[0]

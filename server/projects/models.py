@@ -1,3 +1,4 @@
+from projects.diameters import label as dn_label, physical as dn_physical, display_text as dn_text
 from projects.archive import ArchiveProtectedModel
 import uuid
 from django.conf import settings
@@ -254,7 +255,7 @@ class StockItem(models.Model):
     reserved_job=models.ForeignKey('repairs.Job',on_delete=models.PROTECT,null=True,blank=True,related_name='reserved_stock')
     deleted_at=models.DateTimeField(null=True,blank=True)
     def __str__(self):
-        if self.kind=='coupling':return f'{self.name} · {self.method_label} · Ø {self.diameter_mm or "—"} · {self.length_mm or "—"}×{self.wall_mm or "—"} мм · № {self.serial or "пока не указан"} · {self.sku}'
+        if self.kind=='coupling':return f'{dn_text(self.name)} · {self.method_label} · {dn_label(self.diameter_mm)} · {self.length_mm or "—"}×{self.wall_mm or "—"} мм · № {self.serial or "пока не указан"} · {self.sku}'
         return f'{self.name} · {self.get_unit_display()} · {self.sku}'
 
 class StockBalance(models.Model):
@@ -567,3 +568,5 @@ class StockActionReceipt(models.Model):
     digest=models.CharField(max_length=64)
 
 from .release624_models import (EquipmentRental, RentalRate, RentalPeriod, RentalDay, RentalDayRevision, RentalPayment, CoatingProfile, RepairConsumption, CustomerDocumentLink)
+
+from .demand_mail_models import DemandMailing, DemandMailRun, DemandMailDelivery

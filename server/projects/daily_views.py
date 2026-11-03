@@ -87,6 +87,9 @@ def detail(request,record_id):
         values=[]
         for field in daily.FIELDS:
             value=r.data.get(field,'')
+            if field=='diameter' and value:
+                from .diameters import label
+                value=label(value)
             if field=='stage':value=dict(WORK_STAGES[row.kind]).get(value,value)
             if field=='crew':value=crew_names.get(value,'Назначение больше недоступно' if value else '')
             if field=='change' and value:

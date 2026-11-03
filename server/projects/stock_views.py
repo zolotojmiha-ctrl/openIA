@@ -1,3 +1,4 @@
+from projects.diameters import DiameterField
 from projects.scope_widgets import ScopeChecklist
 import uuid
 from decimal import Decimal
@@ -37,6 +38,7 @@ class WarehouseForm(forms.ModelForm):
         self.fields['served_brigades'].help_text='Можно выбрать несколько бригад, даже если они работают на разных участках.'
 
 class ItemForm(forms.ModelForm):
+    diameter_mm=DiameterField(required=False)
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
     method=forms.ChoiceField(label='Метод ремонта / тип муфты',choices=[('','—'),*METHODS[:5]],required=False)
     class Meta:

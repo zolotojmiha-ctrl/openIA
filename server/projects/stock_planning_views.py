@@ -1,3 +1,5 @@
+from projects.diameters import label as dn_label
+from projects.diameters import DiameterField
 import uuid
 from collections import Counter
 from decimal import Decimal
@@ -201,14 +203,14 @@ def coverage(request):
         for issue in record['coupling_issues']:
             unknown.append({'label':planning.job_label(job),'job':job,'section':job.section if not job.section.diameter_mm else None,'reason':issue})
         for line in record['couplings']:
-            key=(line['method'],line['diameter'],line['length'],line['wall'])
-            row=grouped.setdefault(key,{'method':dict(METHODS)[line['method']],'diameter':line['diameter'],'length':line['length'],'wall':line['wall'],'need':0,'reserved':0,'free':0,'missing':0})
+            key=(job.section.project_object.name,job.section.name,str(job.section.project_object_id),str(job.section_id),line['method'],line['diameter'],line['length'],line['wall'])
+            row=grouped.setdefault(key,{'scope_id':(str(job.section.project_object_id),str(job.section_id)),'object':job.section.project_object.name,'section':job.section.name,'method':dict(METHODS)[line['method']],'diameter':line['diameter'],'length':line['length'],'wall':line['wall'],'need':0,'reserved':0,'free':0,'missing':0})
             row['need']+=line['need'];row['reserved']+=line['reserved'];row['missing']+=line['missing'];row['free']+=line['need']-line['reserved']-line['missing']
     rows=[grouped[k] for k in sorted(grouped)]
     if request.GET.get('export')=='xlsx':
         from django.http import HttpResponse
         from .report_excel import workbook
-        sheets=[('Муфты',['Тип','Диаметр, мм','Длина, мм','Стенка, мм','Требуется, шт.','Закреплено, шт.','Подобрано из свободных, шт.','Не хватает, шт.'],[[r[k] for k in ('method','diameter','length','wall','need','reserved','free','missing')] for r in rows]),
+        sheets=[('Муфты',['Тип','Диаметр, мм','Длина, мм','Стенка, мм','Требуется, шт.','Закреплено, шт.','Подобрано из свободных, шт.','Не хватает, шт.','Объект','Участок'],[[dn_label(r[k]) if k=='diameter' else r[k] for k in ('method','diameter','length','wall','need','reserved','free','missing','object','section')] for r in rows]),
                 ('Нужно уточнить',['Работы','Причина'],[[r['label'],r['reason']] for r in unknown])]
         response=HttpResponse(workbook(sheets),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="coupling-coverage.xlsx"';response['Cache-Control']='private, no-store';return response
     query=request.GET.copy();query['export']='xlsx'
@@ -218,7 +220,7 @@ def coverage(request):
 
 class DiameterForm(forms.Form):
     expected_diameter=forms.IntegerField(widget=forms.HiddenInput,min_value=0)
-    diameter_mm=forms.IntegerField(label='Наружный диаметр нефтепровода, мм',min_value=1,max_value=10000)
+    diameter_mm=DiameterField()
 
 @permission_required('stock.manage')
 def diameter(request,pk):

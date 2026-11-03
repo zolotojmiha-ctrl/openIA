@@ -1,3 +1,4 @@
+from projects.diameters import DiameterField
 """One checked transaction for edits made directly in the stock table."""
 import hashlib,json,uuid
 from decimal import Decimal
@@ -19,7 +20,7 @@ class RowForm(forms.Form):
     kind=forms.ChoiceField(label='Категория',choices=StockItem._meta.get_field('kind').choices)
     unit=forms.ChoiceField(label='Единица',choices=StockItem._meta.get_field('unit').choices)
     method=forms.ChoiceField(label='Тип муфты',choices=[('','—'),*METHODS[:5]],required=False)
-    diameter_mm=forms.IntegerField(label='Диаметр, мм',min_value=1,max_value=100000,required=False)
+    diameter_mm=DiameterField(required=False)
     length_mm=forms.IntegerField(label='Длина, мм',min_value=1,max_value=100000,required=False)
     wall_mm=forms.IntegerField(label='Стенка, мм',min_value=1,max_value=100000,required=False)
     electrode_brand=forms.CharField(label='Марка электродов',max_length=100,required=False)

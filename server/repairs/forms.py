@@ -1,3 +1,4 @@
+from projects.diameters import DiameterField
 import re
 import uuid
 from decimal import Decimal,InvalidOperation
@@ -15,6 +16,7 @@ from .models import Section, Job, Defect, Coupling, Report, METHODS, PROBLEMS
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 
 class SectionForm(forms.ModelForm):
+    diameter_mm=DiameterField(required=False)
     class Meta:
         model=Section
         fields=['project_object','rnu','pipeline','name','diameter_mm']

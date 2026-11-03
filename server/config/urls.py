@@ -300,3 +300,12 @@ urlpatterns += [
  path('cabinet/repair-materials/<uuid:pk>/retry/',material_views.retry,name='repair_materials_retry'),
 ]
 urlpatterns += [path('cabinet/customer/excel/<uuid:contract_id>/<uuid:object_id>/',customer_documents.excel,name='customer_excel')]
+
+from projects import demand_mail_views
+urlpatterns += [
+ path('cabinet/stock/coverage/mail/',demand_mail_views.listing,name='demand_mail_list'),
+ path('cabinet/stock/coverage/mail/new/',demand_mail_views.settings,name='demand_mail_new'),
+ path('cabinet/stock/coverage/mail/<uuid:pk>/',demand_mail_views.settings,name='demand_mail_edit'),
+ path('cabinet/stock/coverage/mail/<uuid:pk>/preview/',demand_mail_views.preview,name='demand_mail_preview'),
+ path('cabinet/stock/coverage/mail/<uuid:pk>/history/',demand_mail_views.history,name='demand_mail_history'),
+]

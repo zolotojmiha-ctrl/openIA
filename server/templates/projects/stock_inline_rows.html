@@ -1,11 +1,11 @@
 {% load l10n %}<div class="stock-grid-scroll"><table class="equipment-table stock-grid-table"><thead><tr>
 <th>{% if mode == 'delete' %}<label><input type="checkbox" data-grid-select-all> Выбрать все</label>{% else %}№{% endif %}</th><th>Материал / категория</th><th>Характеристики</th><th>Склад</th><th>На складе</th><th>Закреплено</th><th>Получение / заводские номера</th>
 </tr></thead><tbody>
-{% for row in rows %}<tr data-grid-row data-group="{{ row.id }}" data-token="{{ row.token }}" data-delete-label="{{ row.item.name }} · {{ row.warehouse.name|default:'Склад не указан' }} · {{ row.quantity|floatformat:'-3' }} {{ row.item.get_unit_display }}">
-<td data-label="№">{% if mode == 'delete' %}<input type="checkbox" data-grid-selected aria-label="Выбрать {{ row.item.name }} со склада {{ row.warehouse.name }}" {% if not row.can_delete or row.reserved %}disabled{% endif %}>{% endif %} {{ forloop.counter }}</td>
-<td data-label="Материал / категория">{% if mode == 'edit' %}{{ row.editor.name }}{{ row.editor.kind }}{{ row.editor.unit }}{% else %}{{ row.item.name }}<small>{{ row.item.get_kind_display }}</small>{% endif %}</td>
+{% for row in rows %}<tr data-grid-row data-group="{{ row.id }}" data-token="{{ row.token }}" data-delete-label="{{ row.item.name|dn_text }} · {{ row.warehouse.name|default:'Склад не указан' }} · {{ row.quantity|floatformat:'-3' }} {{ row.item.get_unit_display }}">
+<td data-label="№">{% if mode == 'delete' %}<input type="checkbox" data-grid-selected aria-label="Выбрать {{ row.item.name|dn_text }} со склада {{ row.warehouse.name }}" {% if not row.can_delete or row.reserved %}disabled{% endif %}>{% endif %} {{ forloop.counter }}</td>
+<td data-label="Материал / категория">{% if mode == 'edit' %}{{ row.editor.name }}{{ row.editor.kind }}{{ row.editor.unit }}{% else %}{{ row.item.name|dn_text }}<small>{{ row.item.get_kind_display }}</small>{% endif %}</td>
 <td data-label="Характеристики">{% if mode == 'edit' %}
-<div data-grid-kind="coupling"><label>Тип {{ row.editor.method }}</label><label>Диаметр, мм {{ row.editor.diameter_mm }}</label><label>Длина, мм {{ row.editor.length_mm }}</label><label>Стенка, мм {{ row.editor.wall_mm }}</label></div>
+<div data-grid-kind="coupling"><label>Тип {{ row.editor.method }}</label><label>Диаметр, мм {{ row.editor.diameter_mm|dn }}</label><label>Длина, мм {{ row.editor.length_mm }}</label><label>Стенка, мм {{ row.editor.wall_mm }}</label></div>
 <div data-grid-kind="electrode"><label>Марка {{ row.editor.electrode_brand }}</label><label>Диаметр, мм {{ row.editor.electrode_diameter }}</label></div>
 {% if not row.editor.mutable_spec %}<small>Характеристики позиции с историей сохранены.</small>{% endif %}
 {% else %}{{ row.item.method_label }}{% if row.item.length_mm %} · {{ row.item.length_mm }} мм · стенка {{ row.item.wall_mm }} мм{% endif %}{% endif %}</td>

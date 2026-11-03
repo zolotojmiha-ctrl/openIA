@@ -1,3 +1,4 @@
+from projects.diameters import DiameterField
 """Daily quantities keep immutable revisions; customer changes never recalculate history."""
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from datetime import date
@@ -30,7 +31,7 @@ class WorkForm(forms.Form):
     length=forms.DecimalField(label='Длина, м',required=False,max_digits=12,decimal_places=3,min_value=0)
     area=forms.DecimalField(label='Площадь, м²',required=False,max_digits=12,decimal_places=3,min_value=0)
     width=forms.IntegerField(label='Ширина зачистки / шлифовки, мм',required=False,min_value=1)
-    diameter=forms.IntegerField(label='Диаметр трубы, мм',required=False,min_value=1)
+    diameter=DiameterField(required=False)
     quantity=forms.DecimalField(label='Количество (для иных СМР)',required=False,max_digits=12,decimal_places=3,min_value=0)
     unit=forms.ChoiceField(label='Единица количества',required=False,choices=[('','—'),('шт','шт'),('м','м'),('м²','м²'),('компл','компл')])
     downtime=forms.DecimalField(label='Простой, часов',required=False,max_digits=7,decimal_places=2,min_value=0)

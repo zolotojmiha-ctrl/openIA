@@ -2,7 +2,7 @@
 <link rel="stylesheet" href="/static/equipment/equipment.css"><link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
 <a class="back-link" href="{% url 'stock_inventory' %}">← Материалы и остатки</a>
 <h1>Закрепить муфты за дефектами</h1>
-<p><strong>{{ group.item.method_label }} · Ø {{ group.item.diameter_mm|default_if_none:'—' }} мм · длина {{ group.item.length_mm }} мм · стенка {{ group.item.wall_mm }} мм</strong> · {{ group.warehouse.name }}.</p>
+<p><strong>{{ group.item.method_label }} · {{ group.item.diameter_mm|default_if_none:'—'|dn }} · длина {{ group.item.length_mm }} мм · стенка {{ group.item.wall_mm }} мм</strong> · {{ group.warehouse.name }}.</p>
 <p>На складе {{ group.quantity|floatformat:'-3' }} шт., закреплено {{ group.reserved|floatformat:'-3' }}, свободно {{ group.free|floatformat:'-3' }}.</p>
 <p>Для П1 и П2 можно выбрать муфту того же типа и диаметра с длиной и стенкой не меньше требуемых. Одна муфта заменяет одну часть конструкции.</p>
 <form method="post" data-stock-assignment {% if item_id %}data-single="1"{% endif %}>
@@ -18,7 +18,7 @@
 <td data-label="Контракт / участок / нефтепровод"><strong>{{ row.job.contract.number|default:'—' }}</strong><small>{{ row.job.section.project_object.name }}</small><p>{{ row.job.section.pipeline }} · {{ row.job.section.name }}</p></td>
 <td data-label="Км / № дефектов / секции">{% for d in row.defects %}<p><strong>км {{ d.km }} · № {{ d.number }}</strong><small>Секция {{ d.pipe_section|default:'—' }}</small>{% if d.description %}<small>{{ d.description }}</small>{% endif %}{% endfor %}</td>
 <td data-label="Тип / длина / состав конструкции"><strong>{{ row.job.get_method_display }}</strong><p>Длина: {{ row.job.length_m|floatformat:'-3'|default:'—' }} м</p><p>Состав: {{ row.job.composition|default:'—' }}</p></td>
-<td data-label="Диаметр / стенка">Ø {{ row.job.section.diameter_mm|default_if_none:'—' }} мм<p>Стенка {{ row.job.wall_display }} мм</p></td>
+<td data-label="Диаметр / стенка">{{ row.job.section.diameter_mm|default_if_none:'—'|dn }}<p>Стенка {{ row.job.wall_display }} мм</p></td>
 <td data-label="Мастер / план / состояние">{{ row.job.assigned_to.full_name|default:'Не назначен' }}<small>{{ row.job.planned_date|date:'d.m.Y'|default:'Дата не задана' }}</small><small>{{ row.job.get_state_display }}</small>{% if row.reason %}<p>{{ row.reason }}</p>{% endif %}</td>
 <td data-label="Закрепить, шт."><input type="number" data-assignment-quantity value="{{ row.current|unlocalize }}" min="0" max="{% if item_id %}1{% else %}{{ row.maximum }}{% endif %}" step="1" aria-label="Количество для {% for d in row.defects %}км {{ d.km }} № {{ d.number }} {% endfor %}" {% if not row.maximum and not row.current %}disabled{% endif %}><small>Можно закрепить: {{ row.maximum }}</small></td>
 </tr>{% empty %}<tr><td colspan="7">Доступных дефектов для закрепления нет.</td></tr>{% endfor %}

@@ -10,6 +10,6 @@
 <p><a class="button secondary" href="{% url 'stock_group_transfer' %}?group={{ token|urlencode }}">Изменить склад — переместить количество</a></p>
 {% endif %}
 <h2>Характеристики и заводские номера</h2>
-{% for m in group.members %}<article class="panel"><p>{{ m.item.name }} · {{ m.item.method_label }} · {{ m.item.length_mm|default_if_none:'—' }} мм · стенка {{ m.item.wall_mm|default_if_none:'—' }} мм{% if m.item.kind == 'coupling' %} · заводской № {{ m.serial|default:'—' }}{% endif %} · {{ m.quantity|floatformat:'-3' }} {{ m.item.get_unit_display }}</p>
+{% for m in group.members %}<article class="panel"><p>{{ m.item.name|dn_text }} · {{ m.item.method_label }} · {{ m.item.length_mm|default_if_none:'—' }} мм · стенка {{ m.item.wall_mm|default_if_none:'—' }} мм{% if m.item.kind == 'coupling' %} · заводской № {{ m.serial|default:'—' }}{% endif %} · {{ m.quantity|floatformat:'-3' }} {{ m.item.get_unit_display }}</p>
 <p><a class="button secondary" href="{% url 'stock_item_edit' m.item.pk %}">Изменить характеристики</a>{% if m.state == 'catalogue' %} <a class="button" href="{% url 'stock_receive' %}?item={{ m.item.pk }}&amp;return_inventory=1">Указать склад и количество</a>{% endif %}</p></article>{% endfor %}
 {% endblock %}

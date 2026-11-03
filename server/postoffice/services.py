@@ -107,6 +107,10 @@ def process_one():
     with transaction.atomic():
         row=Letter.objects.select_for_update(skip_locked=True).filter(state='queued').order_by('created_at').first()
         if not row:return False
+        from projects.demand_mail import authorize_letter
+        delivery_error=authorize_letter(row)
+        if delivery_error:
+            row.state='failed';row.error=delivery_error;row.save();return True
         fresh=User.objects.get(pk=row.author_id)
         if not boxes(fresh).filter(pk=row.mailbox_id,state='active').exists():
             row.state='failed';row.error='Доступ автора или ящика изменён.';row.save();return True
@@ -114,7 +118,9 @@ def process_one():
     error='';state='sent'
     try:
         msg=message_for(row);refused=transport.deliver(row.mailbox,msg,addresses(row.to)+addresses(row.cc)+addresses(row.bcc))
-        if refused:error='Часть получателей не принята сервером. Проверьте адресатов; повторная отправка не выполняется автоматически.'
+        if refused and hasattr(row,'demand_delivery'):
+            state='failed';error='Получатель не принят почтовым сервером.'
+        elif refused:error='Часть получателей не принята сервером. Проверьте адресатов; повторная отправка не выполняется автоматически.'
     except (smtplib.SMTPAuthenticationError,smtplib.SMTPRecipientsRefused,smtplib.SMTPSenderRefused,smtplib.SMTPDataError,ValidationError):state='failed';error='Сервер не принял письмо. Проверьте реквизиты ящика и адресатов.'
     except (OSError,smtplib.SMTPException):state='uncertain';error='Соединение оборвалось. Перед повторной отправкой проверьте отправленные и получателя.'
     if state=='sent':

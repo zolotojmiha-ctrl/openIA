@@ -1,3 +1,4 @@
+from projects.diameters import label as dn_label, physical as dn_physical
 """Simple new-stock worksheet: only material facts, no ledger IDs or versions."""
 from django.core.exceptions import ValidationError
 from accounts.xlsx import normal_date
@@ -9,7 +10,7 @@ HEADERS=['Склад','Категория','Тип муфты','Диаметр, 
 def parse(book):
     from . import stock_exchange as exchange
     if book['formulas']:raise ValidationError('Замените формулы значениями.')
-    cells=book['cells'];columns={str(v).strip():c for (r,c),v in cells.items() if r==1 and str(v).strip()}
+    cells=book['cells'];columns={('Диаметр, мм' if str(v).strip()=='Номинальный диаметр' else str(v).strip()):c for (r,c),v in cells.items() if r==1 and str(v).strip()}
     if not {'Склад','Количество','Дата получения'}.issubset(columns):
         raise ValidationError('Нужны столбцы «Склад», «Количество» и «Дата получения».')
     unknown=set(columns)-set(HEADERS)
@@ -33,7 +34,7 @@ def parse(book):
             unit=get('Единица') or units.get('m2' if kind=='insulation' else 'kg' if kind in ('electrode','abrasive','ksizol','wrapper','primer') else 'kit' if kind in ('composite','sealant') else 'pcs')
             name=get('Наименование')
             if not name:
-                name=f'Муфта {method} Ø{diameter} × {length} мм, стенка {wall} мм' if kind=='coupling' else dict(StockItem._meta.get_field('kind').choices)[kind]
+                name=f'Муфта {method} {dn_label(dn_physical(diameter))} × {length} мм, стенка {wall} мм' if kind=='coupling' else dict(StockItem._meta.get_field('kind').choices)[kind]
             key=f'НОВАЯ-{number}'
             row=[key,'',get('Склад'),name,dict(StockItem._meta.get_field('kind').choices)[kind],unit,method,diameter,length,wall,get('Марка электродов'),get('Диаметр электрода, мм'),'','','','',str(quantity),'нет',normal_date(get('Дата получения'),book['epoch']),get('Откуда получено'),'','','']
             if not get('Дата получения'):raise ValidationError('Укажите фактическую дату получения.')

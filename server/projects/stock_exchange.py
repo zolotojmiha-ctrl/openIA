@@ -1,3 +1,4 @@
+from projects.diameters import label as dn_label, physical as dn_physical, display_text as dn_text
 """Checked, atomic XLSX round trip for warehouse groups and repair reservations."""
 import io,json,uuid,zipfile
 from collections import defaultdict,Counter
@@ -40,7 +41,10 @@ def book(sheets):
         for n,(name,headers,rows) in enumerate(sheets,1):
             hidden={'Остатки':(0,1),'Распределение':(0,),'Изделия':(0,1,2),'Перемещения':(0,)}.get(name,())
             options={1:list(KIND.values()),2:['П1','П2','П3','П4','П5У'],7:list(UNIT.values())} if name=='Поступление' else None
-            with zipfile.ZipFile(io.BytesIO(workbook(rows,headers,sheet_name=name,hidden_columns=hidden,column_choices=options))) as one:
+            if options is not None:
+                from .diameters import DN_TO_OD
+                options[3]=[f'DN {dn}' for dn in DN_TO_OD]
+            with zipfile.ZipFile(io.BytesIO(workbook(rows,['Номинальный диаметр' if h=='Диаметр, мм' else h for h in headers],sheet_name=name,hidden_columns=hidden,column_choices=options))) as one:
                 out.writestr(f'xl/worksheets/sheet{n}.xml',one.read('xl/worksheets/sheet1.xml'))
             ET.SubElement(nodes,'sheet',name=name,sheetId=str(n),attrib={'{'+rel+'}id':f'rId{n}'})
             ET.SubElement(rels,'Relationship',Id=f'rId{n}',Type=rel+'/worksheet',Target=f'worksheets/sheet{n}.xml')
@@ -50,13 +54,13 @@ def book(sheets):
     return stream.getvalue()
 
 def material_label(row):
-    if row[4]=='Муфта':return f'{row[6]} · Ø{row[7]} · {row[8]} × {row[9]} мм · {row[2]}'
+    if row[4]=='Муфта':return f'{row[6]} · {row[7]} · {row[8]} × {row[9]} мм · {row[2]}'
     return f'{row[3]} · {row[4]} · {row[5]} · {row[2]}'
 
 
 def main_row(g):
     i=g['item'];dates={str(m['receipt_date'] or '') for m in g['members']};sources={m['receipt_source'] for m in g['members']}
-    row=[g['id'],g['token'],g['warehouse'].name if g['warehouse'] else '',i.name,KIND[i.kind],UNIT[i.unit],i.method_label,i.diameter_mm or '',i.length_mm or '',i.wall_mm or '',i.electrode_brand,str(i.electrode_diameter or ''),str(g['quantity']),str(g['reserved']),str(g['free']),str(g['installed']),str(g['quantity']),'да' if i.kind=='coupling' and g['warehouse'] and sum(d['quantity'] for d in g['distribution'] if d['state']=='reserved')==g['reserved'] else 'нет',next(iter(dates)) if len(dates)==1 else 'Разные',next(iter(sources)) if len(sources)==1 else 'Разные','','','']
+    row=[g['id'],g['token'],g['warehouse'].name if g['warehouse'] else '',dn_text(i.name) if i.kind=='coupling' else i.name,KIND[i.kind],UNIT[i.unit],i.method_label,dn_label(i.diameter_mm) if i.diameter_mm else '',i.length_mm or '',i.wall_mm or '',i.electrode_brand,str(i.electrode_diameter or ''),str(g['quantity']),str(g['reserved']),str(g['free']),str(g['installed']),str(g['quantity']),'да' if i.kind=='coupling' and g['warehouse'] and sum(d['quantity'] for d in g['distribution'] if d['state']=='reserved')==g['reserved'] else 'нет',next(iter(dates)) if len(dates)==1 else 'Разные',next(iter(sources)) if len(sources)==1 else 'Разные','','','']
     return row+[material_label(row)]
 
 def closed_label(job):return planning.job_label(job)+f' · Завершено / закрыто: только снятие · ID {job.pk}'
@@ -106,6 +110,7 @@ def parse(upload):
         cells=sheet['cells'];headers=HEADERS[name]
         if sheet['formulas']:raise ValidationError(f'Лист «{name}»: замените формулы значениями.')
         incoming=[str(cells.get((1,c),'')).strip() for c in range(1,len(headers)+1)]
+        incoming=[expected if value=='Номинальный диаметр' and expected=='Диаметр, мм' else value for expected,value in zip(headers,incoming)]
         if name=='Изделия':incoming=[{'Склад (справочно)':'Склад','Назначение (справочно)':'Назначение'}.get(v,v) for v in incoming]
         old_count={'Остатки':23,'Распределение':4,'Изделия':11,'Перемещения':6}[name]
         legacy=headers[:old_count]+['']*(len(headers)-old_count)
@@ -151,7 +156,7 @@ def validate_existing(row,g):
     # Name is editable. Source/date in a grouped record are informational.
     for c in [0,4,5,6,7,8,9,10,11,12,13,14,15]+([18,19] if g['warehouse'] else []):
         a=row[c];b=expected[c]
-        equal=numeric(a)==numeric(b) if c in [7,8,9,11,12,13,14,15] and a and b else a==b
+        equal=dn_physical(a)==dn_physical(b) if c==7 and a and b else numeric(a)==numeric(b) if c in [7,8,9,11,12,13,14,15] and a and b else a==b
         if not equal:raise ValidationError(f'Не меняйте справочную колонку «{HEADERS["Остатки"][c]}». Для другого склада / типоразмера добавьте новую строку.')
 
 def fresh_group(user,key):

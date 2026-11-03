@@ -44,6 +44,7 @@ REFS = {
     'ID указания заказчика':'changes',
 }
 LABELS = {
+    'Диаметр, мм':'Номинальный диаметр','Диаметр мм':'Номинальный диаметр',
     'ID дополнительных контрактов':'Дополнительные контракты', 'ID дополнительных объектов':'Дополнительные объекты',
     'ID объекта':'Участок работ', 'ID объектов (через ;)':'Участки работ (через ;)',
     'ID контракта':'Контракт', 'ID контракта заказчика':'Контракт заказчика',
@@ -74,6 +75,9 @@ def label(header):
 
 
 def choices(header):
+    if header in ('Диаметр, мм','Диаметр мм'):
+        from projects.diameters import DN_TO_OD
+        return {str(od):f'DN {dn}' for dn,od in DN_TO_OD.items()}
     if header=='Этап':
         from projects.models import WORK_STAGES
         return dict(pair for stages in WORK_STAGES.values() for pair in stages)
@@ -168,6 +172,9 @@ def workbook(user,topic,rows,headers,sheet_name='Данные'):
                 values[n]='; '.join(refs.name(REFS[h],v.strip()) for v in str(values[n]).split(';') if v.strip()) if 'через ;' in h or 'дополнительных' in h else refs.name(REFS[h],values[n])
                 links[str(n)]={'value':str(row[n]),'label':values[n]}
             elif choices(h):values[n]=choices(h).get(str(values[n]),values[n])
+            elif h in ('Диаметр, мм','Диаметр мм'):
+                from projects.diameters import label as dn_label
+                values[n]=dn_label(values[n]) if values[n] not in ('',None) else ''
             elif '₽' in h:values[n]=money_value(values[n],1000)
         data.append(values)
         metadata.append(signing.dumps({'actor':str(user.pk),'topic':topic,'links':links},salt='human-excel-links',compress=True))
@@ -182,7 +189,13 @@ def workbook(user,topic,rows,headers,sheet_name='Данные'):
 def normalize(user,topic,book,headers):
     cells=book['cells'];incoming={str(v).strip():c for (r,c),v in cells.items() if r==1 and str(v).strip()}
     full=[str(cells.get((1,n+1),'')).strip() for n in range(len(headers))]
-    if full==headers:return book  # old files keep their exact validation rules
+    if full==headers:
+        from projects.diameters import physical
+        cells=dict(cells)
+        for (r,c),value in list(cells.items()):
+            if r>1 and c<=len(headers) and headers[c-1] in ('Диаметр, мм','Диаметр мм') and str(value).strip().upper().startswith('DN'):
+                cells[(r,c)]=str(physical(value))
+        return {**book,'cells':cells}  # old physical sizes remain unchanged
     metadata_column=incoming.pop(PREFIX+'Связи',None)
     hidden=system(topic,headers);known={}
     for n,h in enumerate(headers):
@@ -212,6 +225,9 @@ def normalize(user,topic,book,headers):
                     original=links.get(str(n))
                     if original and value==original['label']:value=original['value']
                     values[n]=';'.join(refs.resolve(REFS[h],v.strip(),label(h)) for v in value.split(';') if v.strip()) if 'через ;' in h or 'дополнительных' in h else refs.resolve(REFS[h],value,label(h))
+                elif h in ('Диаметр, мм','Диаметр мм') and value:
+                    from projects.diameters import physical
+                    values[n]=str(physical(value))
                 elif choices(h):
                     option=choices(h);inverse={v.casefold():k for k,v in option.items()}
                     if not value:

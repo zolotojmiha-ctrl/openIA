@@ -8,4 +8,5 @@ register=template.Library()
 def compact_stock_name(item):
     name=item.name.strip()
     if name in ('','-','—') or re.match(r'^муфта\s+п(?:1|2|3|4|5у)\b',name,re.I):return ''
-    return name
+    from projects.diameters import display_text
+    return display_text(name)
