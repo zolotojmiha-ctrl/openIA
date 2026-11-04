@@ -82,7 +82,15 @@ class SubcontractTests(TestCase):
     def test_result_author_qty_retry_and_pending_notice(self):
         order=self.order();self.grant(order);data=self.data(order);first=s.submit_result(self.rep,order.pk,data);again=s.submit_result(self.rep,order.pk,data)
         self.assertEqual(first.pk,again.pk);self.assertEqual(first.author,self.rep);self.assertEqual(SubcontractResult.objects.count(),1)
-        self.client.force_login(self.leader);self.assertContains(self.client.get(reverse('dashboard')),'Выполнение субподрядчиков на проверке: 1')
+        self.client.force_login(self.leader)
+        response=self.client.get(reverse('dashboard'))
+        self.assertContains(response,'Результаты субподрядчиков')
+        cards=[card for card in response.context['role_home']['cards'] if card['title']=='Результаты субподрядчиков']
+        self.assertEqual(len(cards),1)
+        self.assertEqual(cards[0]['count'],1)
+        self.assertEqual(cards[0]['url'],reverse('subcontracts'))
+        self.assertNotContains(response,'Выполнение субподрядчиков на проверке: 1')
+        self.assertContains(self.client.get(reverse('subcontracts')),'Выполнение субподрядчиков на проверке: 1')
         with self.assertRaises(ValidationError):s.submit_result(self.rep,order.pk,{**data,'note':'Изменено'})
     def test_partial_quantities_are_cumulative_not_summed(self):
         order=self.order();self.grant(order);s.submit_result(self.rep,order.pk,self.data(order,outcome='partial',quantity=Decimal(1)));order.refresh_from_db();s.submit_result(self.rep,order.pk,self.data(order,quantity=Decimal(2)))
