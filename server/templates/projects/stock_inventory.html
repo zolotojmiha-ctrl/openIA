@@ -1,6 +1,6 @@
 {% extends 'accounts/base.html' %}{% block content %}
 <link rel="stylesheet" href="/static/equipment/equipment.css">
-<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}&amp;ui=3"><div class="stock-page stock-workspace">{% include 'projects/stock_navigation.html' with stock_section='materials' %}<h1>Склады · материалы и остатки</h1>
+<link rel="stylesheet" href="/static/equipment/stock-compact.css?v={{ release_version }}&amp;ui=4"><div class="stock-page stock-workspace">{% include 'projects/stock_navigation.html' with stock_section='materials' %}<h1>Склады · материалы и остатки</h1>
 {% if mode %}
 <link rel="stylesheet" href="/static/equipment/stock-inline.css?v={{ release_version }}">
 <form method="post" data-stock-grid data-mode="{{ mode }}" data-return-url="{{ return_url }}">
@@ -21,16 +21,16 @@
 <a class="button" href="{% url 'stock_receive' %}?return_inventory=1">＋ Добавить на склад</a>
 <a class="button action-edit" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=edit">Редактировать список</a>
 <a class="button action-move" href="{% url 'stock_move' %}">Переместить материалы</a>
-<a class="button action-danger stock-delete-action" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить</a>
 </div>
 <div class="stock-actions stock-actions-secondary">
 <a class="button action-view" href="{% url 'repair_materials' %}">Потребность на работы</a>
 <a class="button action-view" href="{% url 'stock_coverage' %}">Хватит ли муфт на работы?</a>
 </div>
-<details class="stock-extra-actions"><summary>Excel и справочник</summary><div class="stock-actions">
+<details class="stock-extra-actions"><summary>Другие действия · Excel и справочник</summary><div class="stock-actions">
 <a class="button action-view" href="{% url 'stock_inventory_export' %}?{{ filter_query }}">↓ Наличие и назначение в Excel</a>
 <a class="button action-view" href="{% url 'stock_inventory_import' %}">↑ Загрузить Excel</a>
 <a class="button action-view" href="{% url 'stock_items' %}">Справочник карточек / архив</a>
+<a class="button action-danger stock-delete-action" href="?{{ filter_query }}{% if filter_query %}&amp;{% endif %}mode=delete">Удалить позиции</a>
 </div></details>
 <p>Закреплённые муфты входят в остаток до монтажа.</p>
 <form method="get" class="equipment-actions stock-filters">

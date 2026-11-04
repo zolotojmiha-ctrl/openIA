@@ -28,6 +28,9 @@ class RoleHomeTests(TestCase):
         self.assertFalse(response.context['role_home']['common_collapsed'])
         self.assertEqual(response.context['role_home']['extras'],[])
         self.assertNotContains(response,'Дополнительно выданные полномочия')
+        self.assertContains(response,'Остальные проверки · нет ожидающих')
+        self.assertTrue(response.context['role_home']['quiet_cards'])
+        self.assertTrue(all(card['count'] != 0 for card in response.context['role_home']['cards']))
 
     def test_delegated_powers_remain_available_without_changing_role(self):
         self.user.role='foreman';self.user.save()
@@ -48,10 +51,16 @@ class RoleHomeTests(TestCase):
     def test_pto_stock_is_a_primary_card_only_with_permission(self):
         self.user.role='pto';self.user.save()
         self.assertNotIn(reverse('stock'),[x['url'] for x in role_home(self.user)['cards']])
+        self.assertEqual(role_home(self.user)['shortcuts'],[])
         AccessGrant.objects.create(user=self.user,permission='stock.manage',granted_by=self.user)
         home=role_home(self.user)
         self.assertIn(reverse('stock'),[x['url'] for x in home['cards']])
         self.assertNotIn(reverse('stock'),[x['url'] for x in home['extras']])
+        self.assertEqual({x['url'] for x in home['shortcuts']},{reverse('repair_materials'),reverse('stock_coverage')})
+        AccessGrant.objects.create(user=self.user,permission='document.upload',granted_by=self.user)
+        self.client.force_login(self.user)
+        response=self.client.get(reverse('dashboard'))
+        self.assertContains(response,'href="'+reverse('document_upload')+'"',count=1)
 
     def test_inactive_has_no_start_screen(self):
         self.user.is_active=False

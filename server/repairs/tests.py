@@ -47,7 +47,9 @@ class RepairsTests(TestCase):
         for leader in (self.leader,self.second):
             self.client.force_login(leader)
             response=self.client.get(reverse('dashboard'))
-            self.assertContains(response,'На проверку устранения: 1')
+            self.assertContains(response,'Результаты ремонтов на проверке')
+            self.assertNotContains(response,'repair-review-notice')
+            self.assertContains(self.client.get(reverse('repairs')),'На проверку устранения: 1')
             self.assertContains(response,'href="'+reverse('repairs')+'?state=reported"')
         self.client.force_login(self.worker)
         self.assertNotContains(self.client.get(reverse('dashboard')),'repair-review-notice')
