@@ -1,0 +1,20 @@
+{% extends 'accounts/base.html' %}
+{% block content %}
+<h1>Подключение MAX</h1>
+<section class="panel">
+  <p>Отправляйте результаты и фотографии по назначенным вам работам. Отчёт поступает на проверку в «Армада Управление».</p>
+  {% if binding %}
+    <p><strong>MAX подключён.</strong> Аккаунт MAX: {{ binding.max_user }}. Если вы меняли пароль или завершали сеансы, подключите MAX заново.</p>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="revoke"><button class="button secondary">Отключить MAX</button></form>
+  {% endif %}
+  {% if max_enabled %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="issue"><button class="button">Создать ссылку подключения</button></form>
+    {% if max_link %}<p>1. Откройте бота. Ссылка действует 10 минут, не передавайте её другим людям.</p><a class="button" href="{{ max_link }}" rel="noreferrer">Открыть бота в MAX</a><p>2. После запуска бота вернитесь сюда и обновите страницу, чтобы подтвердить запрос.</p>{% endif %}
+    {% for ticket in pending %}
+      <div class="panel"><p>Запрос от аккаунта MAX <strong>{{ ticket.max_user }}</strong>.</p><p>Подтверждайте, только если вы сами только что открыли бота по своей ссылке. При сомнении создайте новую ссылку.</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="approve"><input type="hidden" name="ticket" value="{{ ticket.pk }}"><button class="button">Подтвердить мой аккаунт MAX</button></form></div>
+    {% endfor %}
+  {% else %}<p>Подключение ещё не включено администратором. Работа через личный кабинет доступна как обычно.</p>{% endif %}
+</section>
+<a href="{% url 'profile' %}">Вернуться в профиль</a>
+{% endblock %}

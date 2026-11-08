@@ -30,6 +30,12 @@ x-app: &app
     ARMADA_SMTP_HOST: ${ARMADA_SMTP_HOST:-smtp.beget.com}
     ARMADA_SMTP_PORT: ${ARMADA_SMTP_PORT:-465}
     ARMADA_SMTP_STARTTLS: ${ARMADA_SMTP_STARTTLS:-0}
+    ARMADA_MAX_ENABLED: ${ARMADA_MAX_ENABLED:-0}
+    ARMADA_MAX_TOKEN_FILE: ${ARMADA_MAX_TOKEN_FILE:-}
+    ARMADA_MAX_WEBHOOK_SECRET_FILE: ${ARMADA_MAX_WEBHOOK_SECRET_FILE:-}
+    ARMADA_MAX_BOT_NAME: ${ARMADA_MAX_BOT_NAME:-}
+    ARMADA_MAX_PHOTO_HOSTS: ${ARMADA_MAX_PHOTO_HOSTS:-}
+    ARMADA_MAX_PUBLIC_ORIGIN: ${ARMADA_MAX_PUBLIC_ORIGIN:-https://app.armada-sibir.ru}
   volumes:
     - config:/run/armada:ro
     - documents:/var/lib/armada-documents
@@ -92,6 +98,14 @@ services:
     <<: *app
     mem_limit: 256m
     command: [python, server/manage.py, process_mail, --loop]
+    depends_on:
+      web:
+        condition: service_healthy
+  maxworker:
+    <<: *app
+    profiles: [max]
+    mem_limit: 256m
+    command: [python, server/manage.py, process_max, --loop, --deliver]
     depends_on:
       web:
         condition: service_healthy

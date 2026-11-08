@@ -12,6 +12,9 @@ armada-sibir.ru, www.armada-sibir.ru {
 }
 app.armada-sibir.ru {
     encode zstd gzip
+    request_body /integrations/max/webhook/ {
+        max_size 64KB
+    }
     request_body {
         max_size 64MB
     }

@@ -42,7 +42,7 @@ if LAN_TEST:
             raise ImproperlyConfigured('LAN test hosts must be explicit local IPv4 addresses.')
         if address.version != 4 or not any(address in network for network in private_networks):
             raise ImproperlyConfigured('LAN test is restricted to local IPv4 addresses.')
-INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects', 'documents', 'finance', 'repairs', 'postoffice']
+INSTALLED_APPS = ['django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'accounts', 'projects', 'documents', 'finance', 'repairs', 'postoffice', 'maxbot.apps.MaxbotConfig']
 MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'whitenoise.middleware.WhiteNoiseMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'repairs.middleware.FieldUploads', 'postoffice.site_middleware.PublicFormsUploads', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware', 'accounts.middleware.AccountStateMiddleware', 'django.contrib.messages.middleware.MessageMiddleware', 'django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -107,3 +107,19 @@ if DEVELOPMENT and not ARMADA_MAIL_KEY:
         with open(mail_key,'x',opener=lambda p,flags:os.open(p,flags,0o600)) as f:f.write(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())
     except FileExistsError:pass
     ARMADA_MAIL_KEY=mail_key.read_text().strip()
+
+# MAX is opt-in. Secrets support *_FILE and must never be committed.
+ARMADA_MAX_ENABLED = os.environ.get('ARMADA_MAX_ENABLED') == '1'
+ARMADA_MAX_TOKEN = read_secret('ARMADA_MAX_TOKEN')
+ARMADA_MAX_WEBHOOK_SECRET = read_secret('ARMADA_MAX_WEBHOOK_SECRET')
+ARMADA_MAX_BOT_NAME = os.environ.get('ARMADA_MAX_BOT_NAME', '')
+ARMADA_MAX_PUBLIC_ORIGIN = os.environ.get('ARMADA_MAX_PUBLIC_ORIGIN', 'https://app.armada-sibir.ru')
+ARMADA_MAX_PHOTO_HOSTS = tuple(v.strip().lower() for v in os.environ.get('ARMADA_MAX_PHOTO_HOSTS', '').split(',') if v.strip())
+if ARMADA_MAX_ENABLED:
+    import re
+    origin = urlsplit(ARMADA_MAX_PUBLIC_ORIGIN)
+    if (not ARMADA_MAX_TOKEN or not re.fullmatch(r'[A-Za-z0-9_-]{32,256}', ARMADA_MAX_WEBHOOK_SECRET)
+            or not re.fullmatch(r'[A-Za-z0-9_]{1,100}', ARMADA_MAX_BOT_NAME)
+            or origin.scheme != 'https' or not origin.hostname or origin.username or origin.password
+            or origin.path not in ('', '/') or origin.query or origin.fragment or origin.port not in (None, 443)):
+        raise ImproperlyConfigured('MAX requires bot credentials, webhook secret, bot name and an HTTPS public origin.')

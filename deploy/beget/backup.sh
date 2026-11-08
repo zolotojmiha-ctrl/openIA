@@ -13,9 +13,16 @@ staging=$(mktemp -d "$backup_root/.pending.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
 compose=(docker compose -f compose.yml)
 # Stop application writes, not PostgreSQL; pg_dump remains transactionally consistent.
-"${compose[@]}" stop web mailworker
-resume() { "${compose[@]}" start web mailworker >/dev/null; }
+# Freeze every running writer, including the opt-in MAX worker. Resume only
+# services which actually ran before backup; never enable MAX as a side effect.
+running_writers=$("${compose[@]}" --profile max ps --services --status running web mailworker maxworker)
+writers=()
+while IFS= read -r service; do
+  case "$service" in web|mailworker|maxworker) writers+=("$service");; '') ;; *) printf 'Unexpected writer service.\n' >&2; exit 1;; esac
+done <<< "$running_writers"
+resume() { if (( ${#writers[@]} )); then "${compose[@]}" --profile max start "${writers[@]}" >/dev/null; fi; }
 trap 'resume; rm -rf -- "$staging"' EXIT
+if (( ${#writers[@]} )); then "${compose[@]}" --profile max stop "${writers[@]}"; fi
 "${compose[@]}" exec -T db pg_dump -U armada_admin -d armada --no-owner --no-acl -Fc > "$staging/database.dump"
 "${compose[@]}" run --rm --no-deps --user 0:0 --entrypoint tar web -C /run/armada -cf - . > "$staging/config.tar"
 "${compose[@]}" run --rm --no-deps --user 0:0 --entrypoint tar web -C /var/lib/armada-documents -cf - . > "$staging/documents.tar"
