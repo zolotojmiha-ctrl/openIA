@@ -27,7 +27,7 @@ def archive(path,extra=None,wrong=False):
 for name in ('valid','traversal','symlink','wrongversion'):
  archive(root/(name+'.zip'),extra=name,wrong=name=='wrongversion')
 template=(repo/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',version)
-cases=['success','localarchive','relativearchive','badchecksum','wrongversion','traversal','symlink','buildfail','backupfail','healthfail','migrationfail','unsupported','updatelock','backuplock','maxon','lowspace']
+cases=['success','localarchive','relativearchive','badchecksum','wrongversion','traversal','symlink','buildfail','backupfail','healthfail','migrationfail','unsupported','updatelock','backuplock','maxon','lowspace','diskworkerlock']
 for case in cases:
  selected=case if case in ('wrongversion','traversal','symlink') else 'valid'
  sha=hashlib.sha256((root/(selected+'.zip')).read_bytes()).hexdigest()
@@ -72,7 +72,7 @@ if [[ $CASE == lowspace ]]; then printf 'Filesystem 1024-blocks Used Available C
 (root/'run').write_text('''#!/bin/bash
 set -eu
 export PATH=/fixtures:$PATH
-for CASE in success localarchive relativearchive badchecksum wrongversion traversal symlink buildfail backupfail healthfail migrationfail unsupported updatelock backuplock maxon lowspace; do
+for CASE in success localarchive relativearchive badchecksum wrongversion traversal symlink buildfail backupfail healthfail migrationfail unsupported updatelock backuplock maxon lowspace diskworkerlock; do
  export CASE
  unset ARMADA_UPDATE_ARCHIVE
  rm -rf /tmp/install-smoke /tmp/relative-installer
@@ -89,6 +89,7 @@ printf 'BACKUP\\n' >> /tmp/install-smoke/commands
 SH
  if [[ $CASE == localarchive ]]; then export ARMADA_UPDATE_ARCHIVE=/fixtures/valid.zip; fi
  if [[ $CASE == updatelock ]]; then exec 7>"$ARMADA_APP_ROOT/.armada-update.lock"; flock -n 7; fi
+ if [[ $CASE == diskworkerlock ]]; then exec 7>"$ARMADA_BACKUP_DIR/.disk-worker.lock"; flock -n 7; fi
  if [[ $CASE == backuplock ]]; then exec 7>"$ARMADA_BACKUP_DIR/.backup.lock"; flock -n 7; fi
  status=0
  if [[ $CASE == relativearchive ]]; then
@@ -99,7 +100,7 @@ SH
  else
   bash "/fixtures/installer-$CASE.sh" > /tmp/install-smoke/output 2>&1 || status=$?
  fi
- if [[ $CASE == updatelock || $CASE == backuplock ]]; then flock -u 7; exec 7>&-; fi
+ if [[ $CASE == updatelock || $CASE == backuplock || $CASE == diskworkerlock ]]; then flock -u 7; exec 7>&-; fi
  if [[ $CASE == success || $CASE == localarchive || $CASE == relativearchive || $CASE == maxon ]]; then
   [[ $status == 0 && $(cat "$ARMADA_APP_ROOT/index.html") == NEW ]]
   [[ $(cat "$ARMADA_APP_ROOT/deploy/beget/.env") == PRESERVED ]]
@@ -128,6 +129,6 @@ done
 for name in ('docker','curl','unzip','sleep','df','run'):(root/name).chmod(0o755)
 env=os.environ.copy()
 for key in ('DOCKER_HOST','DOCKER_CONTEXT','DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'):env.pop(key,None)
-result=subprocess.run(['docker','--host=unix:///var/run/docker.sock','run','--rm','--network','none','--user','0:0','--mount',f'type=bind,src={root},dst=/fixtures,readonly','--entrypoint','bash','armada-web:6.29.0','/fixtures/run'],env=env)
+result=subprocess.run(['docker','--host=unix:///var/run/docker.sock','run','--rm','--network','none','--user','0:0','--mount',f'type=bind,src={root},dst=/fixtures,readonly','--entrypoint','bash','python:3.12-slim-bookworm','/fixtures/run'],env=env)
 if result.returncode:print('Installer evidence:',root)
 raise SystemExit(result.returncode)

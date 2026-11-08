@@ -67,10 +67,15 @@ unzip -oq "$staging/update.zip" -d "$staging/source"
 package_root="$staging/source/openIA-feature-accounts-foundation"
 printf 'Собираем __VERSION__ до остановки работающего приложения.\n'
 docker build -f "$package_root/deploy/synology/Dockerfile" -t armada-web:__VERSION__ "$package_root"
+# Scheduled Disk jobs must not be claimed while web is stopped: holding only
+# backup.lock would allow a job to be claimed and stranded during maintenance.
+backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
+mkdir -p -- "$backup_root"
+exec 7>"$backup_root/.disk-worker.lock"
+flock -n 7 || { printf 'Обработчик резервирования занят. Повторите после его завершения.\n' >&2; exit 1; }
 printf 'Создаём резервную копию базы, файлов, настроек и ключей.\n'
 bash deploy/beget/backup.sh
 # Hold the same lock as host backups until migration and worker restart finish.
-backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
 exec 8>"$backup_root/.backup.lock"
 flock -n 8 || { printf 'Параллельно началось резервирование. Обновление остановлено до замены файлов.\n' >&2; exit 1; }
 services=$("${compose[@]}" --profile max config --services)
