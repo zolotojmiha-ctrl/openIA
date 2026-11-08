@@ -231,6 +231,7 @@ from pathlib import Path
 args=sys.argv[1:]
 with open(os.environ['TEST_LOG'],'a') as log:log.write(json.dumps(args)+'\\n')
 if args[-1]=='claim':print('12345678-1234-1234-1234-123456789abc')
+elif 'ps' in args:print(chr(10).join(['web','mailworker','maxworker']))
 elif 'pg_dump' in args:
     if os.environ['FAIL_STAGE']=='capture':sys.exit(1)
     sys.stdout.buffer.write(b'synthetic dump')
@@ -249,6 +250,8 @@ elif 'tar' in args:sys.stdout.buffer.write(b'synthetic tar')
         self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(count,1)
         self.assertLess(next(i for i,c in enumerate(calls) if 'pg_dump' in c),next(i for i,c in enumerate(calls) if 'upload' in c))
         self.assertTrue(any('start' in c for c in calls))
+        self.assertEqual(next(c[-3:] for c in calls if 'stop' in c),['web','mailworker','maxworker'])
+        self.assertEqual(next(c[-3:] for c in calls if 'start' in c),['web','mailworker','maxworker'])
     def test_capture_failure_restarts_services_and_never_uploads(self):
         result,calls,count=self.run_worker('capture')
         self.assertNotEqual(result.returncode,0);self.assertEqual(count,0)
