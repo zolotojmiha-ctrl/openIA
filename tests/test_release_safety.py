@@ -71,6 +71,17 @@ class InstallerTests(unittest.TestCase):
     for n,data in files.items():z.writestr(prefix+n,data)
    template=(REPO/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',VERSION).replace('__ARCHIVE_SHA256__',hashlib.sha256(archive.read_bytes()).hexdigest())
    installer=root/'install.sh';installer.write_text(template)
+   key=root/'synthetic-signing.key';public=root/'trusted-public.pem'
+   def openssl(*args):subprocess.run(['openssl',*map(str,args)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+   openssl('genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:3072','-out',key)
+   key.chmod(0o600);openssl('pkey','-in',key,'-pubout','-out',public);public.chmod(0o644)
+   meta=root/'openIA-6.31.0-update.json';meta.write_text(json.dumps({'version':VERSION,'ready_for_install':case!='notvalidated','source_commit':'a'*40}))
+   manifest=root/'SHA256SUMS-6.31.0'
+   manifest.write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+name+'\n' for p,name in ((archive,archive.name),(installer,'install-6.31.0.sh'),(meta,meta.name))))
+   openssl('dgst','-sha256','-sign',key,'-out',str(manifest)+'.sig',manifest)
+   if case=='badmanifest':manifest.write_text(manifest.read_text()+'tampered\n')
+   if case=='badsignature':Path(str(manifest)+'.sig').write_bytes(b'INVALID')
+   if case=='tamperedarchive':archive.write_bytes(archive.read_bytes()+b'TAMPERED')
    bin=root/'bin';bin.mkdir();(bin/'docker').write_text(DOCKER)
    (bin/'curl').write_text('#!/bin/sh\nexit 97\n')
    (bin/'sleep').write_text('#!/bin/sh\nexit 0\n')
@@ -84,7 +95,7 @@ with zipfile.ZipFile(sys.argv[2]) as z:
   for i in z.infolist():os.chmod(os.path.join(sys.argv[4],i.filename),0o755 if i.is_dir() else 0o644)
 ''')
    for f in bin.iterdir():f.chmod(0o755)
-   env=os.environ|{'PATH':str(bin)+':'+os.environ['PATH'],'FIXTURE':td,'CASE':case,'ARMADA_APP_ROOT':str(app),'ARMADA_BACKUP_DIR':str(root/'backups')}
+   env=os.environ|{'PATH':str(bin)+':'+os.environ['PATH'],'FIXTURE':td,'CASE':case,'ARMADA_APP_ROOT':str(app),'ARMADA_BACKUP_DIR':str(root/'backups'),'ARMADA_RELEASE_PUBLIC_KEY':str(root/'missing' if case=='missingtrust' else public)}
    result=subprocess.run(['bash',str(installer)],env=env,capture_output=True,text=True,timeout=40)
    s=json.loads((root/'state.json').read_text())
    if case in ('success','maxon'):
@@ -94,7 +105,7 @@ with zipfile.ZipFile(sys.argv[2]) as z:
     self.assertEqual(set(s['running']),set(original));self.assertTrue(s['migration_attempted']);self.assertTrue(s['same_lock_inode'])
    else:
     self.assertNotEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
-    if case in ('buildfail','prefail','backupfail'):
+    if case in ('buildfail','prefail','backupfail','badmanifest','badsignature','tamperedarchive','missingtrust','notvalidated'):
      self.assertEqual((app/'index.html').read_text(),'OLD');self.assertEqual(set(s['running']),set(original))
      self.assertFalse(s['migration_attempted'])
      if case=='prefail':
@@ -107,6 +118,11 @@ with zipfile.ZipFile(sys.argv[2]) as z:
    self.assertEqual((d/'.env').read_text(),'SYNTHETIC=preserve\n');self.assertEqual(stat.S_IMODE((d/'.env').stat().st_mode),0o640)
    self.assertEqual((app/'.env').read_text(),'ROOT_SYNTHETIC=preserve\n')
 
+ def test_rejects_modified_signed_manifest(self):self.run_case('badmanifest')
+ def test_rejects_invalid_signature(self):self.run_case('badsignature')
+ def test_rejects_tampered_archive(self):self.run_case('tamperedarchive')
+ def test_rejects_missing_independent_trust_key(self):self.run_case('missingtrust')
+ def test_rejects_signed_but_not_validated_release(self):self.run_case('notvalidated')
  def test_success_without_max(self):self.run_case('success')
  def test_success_with_previously_active_max(self):self.run_case('maxon',True)
  def test_build_failure_does_not_stop_old_version(self):self.run_case('buildfail')

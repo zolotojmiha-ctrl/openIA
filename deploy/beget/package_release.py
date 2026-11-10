@@ -56,7 +56,7 @@ def main():
     data = {'version': args.version, 'source_commit': head, 'archive': archive.name, 'archive_sha256': sha(archive),
             'archive_files': files, 'installer': installer.name, 'installer_sha256': sha(installer),
             'status': 'candidate', 'ready_for_install': False, 'published': False,
-            'production_installed': False, 'max_default_enabled': False, 'live_max_checked': False}
+            'production_installed': False, 'max_default_enabled': False, 'live_max_checked': False,'signature_required':True,'signature_created':False,'checksums':f'SHA256SUMS-{args.version}','signature':f'SHA256SUMS-{args.version}.sig'}
     metadata.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
     (output / 'SHA256SUMS').write_text(''.join(sha(p) + '  ' + p.name + '\n' for p in (archive, installer)))
     print(json.dumps(data, ensure_ascii=False, indent=2))

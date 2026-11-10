@@ -5,7 +5,7 @@ umask 077
 app_root=${ARMADA_APP_ROOT:-/opt/armada/openIA-feature-accounts-foundation}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 if (( EUID != 0 )); then printf 'Запустите установщик от root.\n' >&2; exit 1; fi
-for command_name in curl sha256sum unzip docker flock df awk python3; do
+for command_name in curl sha256sum unzip docker flock df awk python3 openssl; do
   command -v "$command_name" >/dev/null || { printf 'Не найдена команда: %s\n' "$command_name" >&2; exit 1; }
 done
 if [[ -L "$app_root" || ! -f "$app_root/deploy/beget/compose.yml" || ! -f "$app_root/deploy/beget/backup.sh" || $(basename -- "$app_root") != openIA-feature-accounts-foundation ]]; then
@@ -84,7 +84,35 @@ if [[ -n "$archive_path" ]]; then
 else
   curl --fail --location --retry 3 --output "$staging/update.zip" 'https://github.com/zolotojmiha-ctrl/openIA/raw/refs/heads/downloads/nas-updates/openIA-__VERSION__-update.zip'
 fi
-(cd "$staging" && printf '%s  update.zip\n' '__ARCHIVE_SHA256__' | sha256sum --check -)
+# Trust anchor belongs to the operator, not to the downloaded archive.
+trust_key=${ARMADA_RELEASE_PUBLIC_KEY:-/etc/armada/release-signing-public.pem}
+[[ -f "$trust_key" && ! -L "$trust_key" ]] || { printf 'Нет независимого доверенного ключа подписи. Установка запрещена.\n' >&2; exit 1; }
+python3 - "$trust_key" <<'PY'
+import os,stat,sys
+s=os.stat(sys.argv[1]);assert s.st_uid==0 and not s.st_mode & 0o022,'Trust key must be root-owned and not writable by others'
+PY
+for artifact in SHA256SUMS-__VERSION__ SHA256SUMS-__VERSION__.sig openIA-__VERSION__-update.json; do
+  if [[ -f "$script_dir/$artifact" ]]; then
+    cp -- "$script_dir/$artifact" "$staging/$artifact"
+  else
+    curl --fail --location --retry 3 --output "$staging/$artifact" "https://github.com/zolotojmiha-ctrl/openIA/raw/refs/heads/downloads/nas-updates/$artifact"
+  fi
+done
+openssl dgst -sha256 -verify "$trust_key" -signature "$staging/SHA256SUMS-__VERSION__.sig" "$staging/SHA256SUMS-__VERSION__" >/dev/null 2>&1 || { printf 'Подпись выпуска не подтверждена. Установка запрещена.\n' >&2; exit 1; }
+python3 - "$staging" "${BASH_SOURCE[0]}" <<'PY'
+import hashlib,json,pathlib,re,sys
+root=pathlib.Path(sys.argv[1]);rows={}
+for line in (root/'SHA256SUMS-__VERSION__').read_text().splitlines():
+    m=re.fullmatch(r'([0-9a-f]{64})  ([A-Za-z0-9_.-]+)',line)
+    assert m and m[2] not in rows,'Invalid signed manifest';rows[m[2]]=m[1]
+files={'openIA-__VERSION__-update.zip':root/'update.zip','install-__VERSION__.sh':pathlib.Path(sys.argv[2]),'openIA-__VERSION__-update.json':root/'openIA-__VERSION__-update.json'}
+assert set(rows)==set(files),'Unexpected signed manifest contents'
+for name,path in files.items():assert hashlib.sha256(path.read_bytes()).hexdigest()==rows[name],'Signed artifact mismatch'
+assert rows['openIA-__VERSION__-update.zip']=='__ARCHIVE_SHA256__','Archive differs from installer'
+meta=json.loads(files['openIA-__VERSION__-update.json'].read_text())
+assert meta.get('version')=='__VERSION__' and meta.get('ready_for_install') is True,'Release is not validated'
+assert re.fullmatch('[0-9a-f]{40}',meta.get('source_commit','')),'Source commit missing'
+PY
 unzip -tq "$staging/update.zip"
 python3 - "$staging/update.zip" <<'PY'
 import ast,stat,sys,zipfile
