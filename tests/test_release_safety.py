@@ -1,5 +1,5 @@
 """Offline failure injection. Run as root in an isolated container, never on a VPS."""
-import hashlib,json,os,shutil,stat,subprocess,tempfile,unittest,zipfile
+import fcntl,hashlib,json,os,shutil,stat,subprocess,tempfile,unittest,zipfile
 from pathlib import Path
 REPO=Path(__file__).resolve().parents[1]
 VERSION='6.31.0'
@@ -21,7 +21,7 @@ elif a[0]=='compose':
  if 'ps' in a:
   if '--services' in a:print('\n'.join(x for x in s['running'] if x in a))
   elif '-q' in a and a[-1] in s['running']:print(a[-1])
- elif 'exec' in a and 'release_version' in ' '.join(a):print(VERSION if (app/'index.html').read_text()=='NEW' else '6.30.0')
+ elif 'exec' in a and 'release_version' in ' '.join(a):print('6.24.0' if case=='unsupported' else '6.31.0' if (app/'index.html').read_text()=='NEW' else '6.30.0')
  elif 'config' in a:
   if '--quiet' in a:
    probe('before_migrations')
@@ -67,9 +67,18 @@ class InstallerTests(unittest.TestCase):
    archive=root/'openIA-6.31.0-update.zip';prefix='openIA-feature-accounts-foundation/'
    files={'index.html':'NEW','server/config/settings.py':'','server/accounts/context.py':"def version(): return {'release_version':'6.31.0'}",'deploy/synology/Dockerfile':'FROM scratch'}
    for n in ('backup.sh','compose.yml','Caddyfile','switch_tree.py','backup_counts.sql','backup_manifest.py','backup_retention.py'):files['deploy/beget/'+n]=(REPO/'deploy/beget'/n).read_text()
+   if case=='wrongversion':files['server/accounts/context.py']="def version(): return {'release_version':'6.29.0'}"
    with zipfile.ZipFile(archive,'w') as z:
     for n,data in files.items():z.writestr(prefix+n,data)
    template=(REPO/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',VERSION).replace('__ARCHIVE_SHA256__',hashlib.sha256(archive.read_bytes()).hexdigest())
+   if case in ('traversal','symlink','duplicate'):
+    with zipfile.ZipFile(archive,'a') as z:
+     if case=='traversal':z.writestr(prefix+'../../escape','BAD')
+     elif case=='symlink':
+      i=zipfile.ZipInfo(prefix+'unsafe');i.create_system=3;i.external_attr=(stat.S_IFLNK|0o777)<<16;z.writestr(i,'/tmp/escape')
+     elif case=='duplicate':z.writestr(prefix+'index.html','BAD')
+     else:z.writestr(prefix+'server/accounts/context.py',"def version(): return {'release_version':'6.29.0'}")
+    template=(REPO/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',VERSION).replace('__ARCHIVE_SHA256__',hashlib.sha256(archive.read_bytes()).hexdigest())
    installer=root/'install.sh';installer.write_text(template)
    key=root/'synthetic-signing.key';public=root/'trusted-public.pem'
    def openssl(*args):subprocess.run(['openssl',*map(str,args)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -85,7 +94,7 @@ class InstallerTests(unittest.TestCase):
    bin=root/'bin';bin.mkdir();(bin/'docker').write_text(DOCKER)
    (bin/'curl').write_text('#!/bin/sh\nexit 97\n')
    (bin/'sleep').write_text('#!/bin/sh\nexit 0\n')
-   (bin/'df').write_text('#!/bin/sh\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 99999999 0 99999999 0%% /\\n"\n')
+   (bin/'df').write_text('#!/bin/sh\nif [ \"$CASE\" = lowspace ]; then printf \"Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 1000 900 100 90%% /\\n\"; exit; fi\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 99999999 0 99999999 0%% /\\n"\n')
    (bin/'unzip').write_text('''#!/usr/local/bin/python3
 import os,sys,zipfile
 with zipfile.ZipFile(sys.argv[2]) as z:
@@ -96,7 +105,13 @@ with zipfile.ZipFile(sys.argv[2]) as z:
 ''')
    for f in bin.iterdir():f.chmod(0o755)
    env=os.environ|{'PATH':str(bin)+':'+os.environ['PATH'],'FIXTURE':td,'CASE':case,'ARMADA_APP_ROOT':str(app),'ARMADA_BACKUP_DIR':str(root/'backups'),'ARMADA_RELEASE_PUBLIC_KEY':str(root/'missing' if case=='missingtrust' else public)}
+   lock=None
+   if case in ('updatelock','backuplock','diskworkerlock'):
+    backups=root/'backups';backups.mkdir(exist_ok=True)
+    lock_path=app/'.armada-update.lock' if case=='updatelock' else backups/('.backup.lock' if case=='backuplock' else '.disk-worker.lock')
+    lock=lock_path.open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
    result=subprocess.run(['bash',str(installer)],env=env,capture_output=True,text=True,timeout=40)
+   if lock:lock.close()
    s=json.loads((root/'state.json').read_text())
    if case in ('success','maxon'):
     self.assertEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
@@ -105,7 +120,7 @@ with zipfile.ZipFile(sys.argv[2]) as z:
     self.assertEqual(set(s['running']),set(original));self.assertTrue(s['migration_attempted']);self.assertTrue(s['same_lock_inode'])
    else:
     self.assertNotEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
-    if case in ('buildfail','prefail','backupfail','badmanifest','badsignature','tamperedarchive','missingtrust','notvalidated'):
+    if case in ('buildfail','prefail','backupfail','badmanifest','badsignature','tamperedarchive','missingtrust','notvalidated','traversal','symlink','duplicate','wrongversion','lowspace','updatelock','backuplock','diskworkerlock','unsupported'):
      self.assertEqual((app/'index.html').read_text(),'OLD');self.assertEqual(set(s['running']),set(original))
      self.assertFalse(s['migration_attempted'])
      if case=='prefail':
@@ -118,6 +133,15 @@ with zipfile.ZipFile(sys.argv[2]) as z:
    self.assertEqual((d/'.env').read_text(),'SYNTHETIC=preserve\n');self.assertEqual(stat.S_IMODE((d/'.env').stat().st_mode),0o640)
    self.assertEqual((app/'.env').read_text(),'ROOT_SYNTHETIC=preserve\n')
 
+ def test_rejects_traversal(self):self.run_case('traversal')
+ def test_rejects_symlink(self):self.run_case('symlink')
+ def test_rejects_duplicate_archive_member(self):self.run_case('duplicate')
+ def test_rejects_wrong_version(self):self.run_case('wrongversion')
+ def test_rejects_unsupported_running_version(self):self.run_case('unsupported')
+ def test_rejects_low_space(self):self.run_case('lowspace')
+ def test_rejects_parallel_update(self):self.run_case('updatelock')
+ def test_rejects_parallel_backup(self):self.run_case('backuplock')
+ def test_rejects_active_disk_worker(self):self.run_case('diskworkerlock')
  def test_rejects_modified_signed_manifest(self):self.run_case('badmanifest')
  def test_rejects_invalid_signature(self):self.run_case('badsignature')
  def test_rejects_tampered_archive(self):self.run_case('tamperedarchive')

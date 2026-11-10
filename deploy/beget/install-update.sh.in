@@ -60,10 +60,35 @@ finish() {
       original=()
       while IFS= read -r service; do [[ -z "$service" ]] || original+=("$service"); done < "$recovery/writers"
       if (( ${#original[@]} )); then
-        "${compose[@]}" -f "$recovery/images.json" --profile max up -d --no-build --no-deps --force-recreate "${original[@]}"
+        rollback_compose=("${compose[@]}" -f "$recovery/images.json" --profile max)
+        "${rollback_compose[@]}" up -d --no-build --no-deps --force-recreate web
         restore_status=$?
-        if (( restore_status == 0 )); then printf 'До миграций: прежние файлы и image ID возвращены; службы запущены.\n' >&2
-        else printf 'Автовозврат не завершён. См. %s/RECOVERY.md\n' "$recovery" >&2; fi
+        old_healthy=0
+        if (( restore_status == 0 )); then
+          for attempt in {1..30}; do
+            cid=$("${rollback_compose[@]}" ps -q web)
+            if [[ -n "$cid" && $(docker inspect --format '{{.State.Health.Status}}' "$cid") == healthy ]]; then old_healthy=1; break; fi
+            sleep 2
+          done
+        fi
+        if (( old_healthy )); then
+          "${rollback_compose[@]}" exec -T web python server/manage.py check &&
+          "${rollback_compose[@]}" exec -T web python server/manage.py migrate --check
+          restore_status=$?
+        else restore_status=1; fi
+        if (( restore_status == 0 )); then
+          resumed=()
+          for service in "${original[@]}"; do [[ "$service" == web ]] || resumed+=("$service"); done
+          if (( ${#resumed[@]} )); then
+            "${rollback_compose[@]}" up -d --no-build --no-deps --force-recreate "${resumed[@]}"
+            restore_status=$?
+          fi
+        fi
+        if (( restore_status == 0 )); then printf 'До миграций: прежнее приложение проверено, службы возобновлены.\n' >&2
+        else
+          "${rollback_compose[@]}" stop "${original[@]}"
+          printf 'Автовозврат не подтверждён; писатели остановлены. См. %s/RECOVERY.md\n' "$recovery" >&2
+        fi
       fi
     fi
   fi
