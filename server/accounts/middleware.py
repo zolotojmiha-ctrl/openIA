@@ -30,3 +30,12 @@ class AccountStateMiddleware:
             response['Pragma']='no-cache'
             response['X-Robots-Tag']='noindex, nofollow'
         return response
+
+
+class ContentPolicyMiddleware:
+    """Incremental CSP; private previews retain their stronger per-response policy."""
+    def __init__(self,get_response):self.get_response=get_response
+    def __call__(self,request):
+        response=self.get_response(request)
+        response.setdefault('Content-Security-Policy',"object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+        return response

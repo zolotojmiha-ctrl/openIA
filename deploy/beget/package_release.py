@@ -43,8 +43,16 @@ def main():
     metadata = output / f'openIA-{args.version}-update.json'
     if any(p.exists() for p in (archive, installer, metadata)):
         raise SystemExit('Refusing to overwrite existing release artifacts')
-    subprocess.run(['git', 'archive', '--format=zip', '--prefix=openIA-feature-accounts-foundation/',
-                    f'--output={archive}', head], cwd=root, check=True)
+    # Installable code only; the full immutable source remains in Git/bundle.
+    import io
+    raw=git('archive','--format=zip','--prefix=openIA-feature-accounts-foundation/',head)
+    excluded=[]
+    with zipfile.ZipFile(io.BytesIO(raw)) as src,zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as dst:
+        for item in src.infolist():
+            relative=Path(item.filename).relative_to('openIA-feature-accounts-foundation')
+            if relative.parts and (relative.parts[0] in ('previous-draft','tests') or relative.name=='AGENTS.md' or len(relative.parts)==1 and relative.suffix=='.md' and relative.name not in ('README.md',f'RELEASE_{"_".join(args.version.split(".")[:2])}.md')):
+                excluded.append(str(relative));continue
+            dst.writestr(item,src.read(item.filename))
     with zipfile.ZipFile(archive) as z:
         assert z.testzip() is None
         for name in z.namelist():
@@ -54,7 +62,7 @@ def main():
     installer.write_text(template.replace('__VERSION__', args.version).replace('__ARCHIVE_SHA256__', sha(archive)))
     installer.chmod(0o700)
     data = {'version': args.version, 'source_commit': head, 'archive': archive.name, 'archive_sha256': sha(archive),
-            'archive_files': files, 'installer': installer.name, 'installer_sha256': sha(installer),
+            'archive_files': files,'excluded_service_entries':len(excluded), 'installer': installer.name, 'installer_sha256': sha(installer),
             'status': 'candidate', 'ready_for_install': False, 'published': False,
             'production_installed': False, 'max_default_enabled': False, 'live_max_checked': False,'signature_required':True,'signature_created':False,'checksums':f'SHA256SUMS-{args.version}','signature':f'SHA256SUMS-{args.version}.sig'}
     metadata.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')

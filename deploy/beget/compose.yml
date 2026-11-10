@@ -8,6 +8,8 @@ x-app: &app
   restart: unless-stopped
   tmpfs:
     - /tmp:rw,size=256m,mode=1777
+  cap_drop: [ALL]
+  pids_limit: 128
   security_opt:
     - no-new-privileges:true
   logging:
@@ -21,10 +23,11 @@ x-app: &app
     ARMADA_MAIL_KEY_FILE: /run/armada/mail-key
     DATABASE_URL_FILE: /run/armada/database-url
     PRIVATE_DOCUMENT_ROOT: /var/lib/armada-documents
-    ARMADA_ALLOWED_HOSTS: armada-sibir.ru,www.armada-sibir.ru,app.armada-sibir.ru
-    ARMADA_CSRF_ORIGINS: https://armada-sibir.ru,https://www.armada-sibir.ru,https://app.armada-sibir.ru
+    ARMADA_ALLOWED_HOSTS: ${ARMADA_ALLOWED_HOSTS:-${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru},www.${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru},${ARMADA_APP_DOMAIN:-app.armada-sibir.ru}}
+    ARMADA_CSRF_ORIGINS: ${ARMADA_CSRF_ORIGINS:-https://${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru},https://www.${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru},https://${ARMADA_APP_DOMAIN:-app.armada-sibir.ru}}
     ARMADA_TRUST_PROXY: "1"
-    ARMADA_MAIL_DOMAIN: armada-sibir.ru
+    ARMADA_MAIL_DOMAIN: ${ARMADA_MAIL_DOMAIN:-${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru}}
+    ARMADA_APP_DOMAIN: ${ARMADA_APP_DOMAIN:-app.armada-sibir.ru}
     ARMADA_IMAP_HOST: ${ARMADA_IMAP_HOST:-imap.beget.com}
     ARMADA_IMAP_PORT: ${ARMADA_IMAP_PORT:-993}
     ARMADA_SMTP_HOST: ${ARMADA_SMTP_HOST:-smtp.beget.com}
@@ -35,7 +38,7 @@ x-app: &app
     ARMADA_MAX_WEBHOOK_SECRET_FILE: ${ARMADA_MAX_WEBHOOK_SECRET_FILE:-}
     ARMADA_MAX_BOT_NAME: ${ARMADA_MAX_BOT_NAME:-}
     ARMADA_MAX_PHOTO_HOSTS: ${ARMADA_MAX_PHOTO_HOSTS:-}
-    ARMADA_MAX_PUBLIC_ORIGIN: ${ARMADA_MAX_PUBLIC_ORIGIN:-https://app.armada-sibir.ru}
+    ARMADA_MAX_PUBLIC_ORIGIN: ${ARMADA_MAX_PUBLIC_ORIGIN:-https://${ARMADA_APP_DOMAIN:-app.armada-sibir.ru}}
   volumes:
     - config:/run/armada:ro
     - documents:/var/lib/armada-documents
@@ -54,7 +57,7 @@ services:
       - config:/run/armada
       - documents:/var/lib/armada-documents
   db:
-    image: armada-db:17
+    image: ${ARMADA_DATABASE_IMAGE:-armada-db:17}
     build:
       context: ../..
       dockerfile: deploy/synology/Dockerfile.postgres
@@ -89,7 +92,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/cabinet/login/',headers={'Host':'app.armada-sibir.ru','X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=4)"]
+      test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/cabinet/login/',headers={'Host':os.environ['ARMADA_APP_DOMAIN'],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=4)"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -115,6 +118,8 @@ services:
     mem_limit: 128m
     environment:
       TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL to an existing monitored email}
+      ARMADA_PUBLIC_DOMAIN: ${ARMADA_PUBLIC_DOMAIN:-armada-sibir.ru}
+      ARMADA_APP_DOMAIN: ${ARMADA_APP_DOMAIN:-app.armada-sibir.ru}
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

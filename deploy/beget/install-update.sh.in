@@ -200,7 +200,7 @@ printf 'migrations\n' > "$recovery/phase"
 "${compose[@]}" run --rm --no-deps -T --entrypoint python web server/manage.py check
 "${compose[@]}" run --rm --no-deps -T --entrypoint python web server/manage.py migrate --check
 phase=verify
-"${compose[@]}" up -d --no-build web mailworker
+"${compose[@]}" up -d --no-build --no-deps web mailworker
 "${compose[@]}" up -d --no-build --no-deps --force-recreate proxy
 healthy=0
 for attempt in {1..90}; do

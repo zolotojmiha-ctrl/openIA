@@ -1,16 +1,16 @@
 {
     email {$TLS_EMAIL}
 }
-armada-sibir.ru, www.armada-sibir.ru {
+{$ARMADA_PUBLIC_DOMAIN}, www.{$ARMADA_PUBLIC_DOMAIN} {
     encode zstd gzip
     request_body {
         max_size 6MB
     }
     header X-Content-Type-Options nosniff
-    redir /cabinet* https://app.armada-sibir.ru{uri} 308
+    redir /cabinet* https://{$ARMADA_APP_DOMAIN}{uri} 308
     reverse_proxy web:8000
 }
-app.armada-sibir.ru {
+{$ARMADA_APP_DOMAIN} {
     encode zstd gzip
     request_body /integrations/max/webhook/ {
         max_size 64KB

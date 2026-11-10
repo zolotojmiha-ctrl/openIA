@@ -47,8 +47,8 @@ resume() { if (( hold_writers == 0 && ${#writers[@]} )); then "${compose[@]}" --
 trap 'resume; rm -rf -- "$staging"' EXIT
 if (( ${#writers[@]} )); then "${compose[@]}" --profile max stop "${writers[@]}"; fi
 "${compose[@]}" exec -T db pg_dump -U armada_admin -d armada --no-owner --no-acl -Fc > "$staging/database.dump"
-"${compose[@]}" run --rm --no-deps --user 0:0 --entrypoint tar web -C /run/armada -cf - . > "$staging/config.tar"
-"${compose[@]}" run --rm --no-deps --user 0:0 --entrypoint tar web -C /var/lib/armada-documents -cf - . > "$staging/documents.tar"
+"${compose[@]}" run --rm --no-deps --cap-add DAC_OVERRIDE --user 0:0 --entrypoint tar web -C /run/armada -cf - . > "$staging/config.tar"
+"${compose[@]}" run --rm --no-deps --cap-add DAC_OVERRIDE --user 0:0 --entrypoint tar web -C /var/lib/armada-documents -cf - . > "$staging/documents.tar"
 "${compose[@]}" exec -T db psql -U armada_admin -d armada -At -c "$(cat "$tool_dir/backup_counts.sql")" > "$staging/row-counts.json"
 python3 "$tool_dir/backup_manifest.py" --directory "$staging"
 cp compose.yml Caddyfile "$staging/"
