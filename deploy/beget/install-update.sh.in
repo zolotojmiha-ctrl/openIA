@@ -21,7 +21,7 @@ compose=(docker compose -f deploy/beget/compose.yml)
 version_code='import ast,pathlib; tree=ast.parse(pathlib.Path("/app/server/accounts/context.py").read_text()); versions=[v.value for n in ast.walk(tree) if isinstance(n,ast.Dict) for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value=="release_version" and isinstance(v,ast.Constant)]; assert len(versions)==1; print(versions[0])'
 installed=$("${compose[@]}" exec -T web python -c "$version_code")
 case "$installed" in
-  6.25.0|6.25.1|6.26.0|6.27.0|6.28.0|6.29.0|__VERSION__) ;;
+  6.25.0|6.25.1|6.26.0|6.27.0|6.28.0|6.29.0|6.30.0|__VERSION__) ;;
   *) printf 'Версия работающего приложения не поддержана или не определена. Сначала проверьте восстановленную установку.\n' >&2; exit 1;;
 esac
 for target in "$app_root" /tmp; do
@@ -31,8 +31,48 @@ for target in "$app_root" /tmp; do
   fi
 done
 staging=$(mktemp -d /tmp/armada-update-__VERSION__.XXXXXX)
-trap 'rm -rf -- "$staging"' EXIT
-trap 'printf "Обновление не завершено. Не удаляйте тома и резервную копию; после остановки писателей не запускайте старую версию без проверки миграций.\n" >&2' ERR
+# EXIT also handles explicit failures, not only commands triggering ERR.
+recovery=
+phase=prepare
+original_web_id=
+original_web_tag=
+switched=0
+completed=0
+finish() {
+  status=$?
+  trap - EXIT INT TERM
+  if (( completed == 0 )) && [[ -n "$recovery" ]]; then
+    set +e
+    if [[ "$phase" == migrations || "$phase" == verify ]]; then
+      if ! "${compose[@]}" --profile max stop web mailworker maxworker; then
+        printf 'Не удалось подтвердить остановку: проверьте Docker и вручную остановите писателей.\n' >&2
+      fi
+      printf 'Установка остановлена после начала миграций. Подана команда остановки всех писателей.\nИнструкция: %s/RECOVERY.md\n' "$recovery" >&2
+    elif [[ -f "$recovery/writers" ]]; then
+      if (( switched )); then
+        "${compose[@]}" --profile max stop web mailworker maxworker
+        cp -a "$recovery/tree/." "$app_root/"
+      fi
+      if [[ "$original_web_tag" == armada-web:__VERSION__ && -n "$original_web_id" ]]; then
+        docker image tag "$original_web_id" "$original_web_tag"
+      fi
+      original=()
+      while IFS= read -r service; do [[ -z "$service" ]] || original+=("$service"); done < "$recovery/writers"
+      if (( ${#original[@]} )); then
+        "${compose[@]}" -f "$recovery/images.json" --profile max up -d --no-build --no-deps --force-recreate "${original[@]}"
+        restore_status=$?
+        if (( restore_status == 0 )); then printf 'До миграций: прежние файлы и image ID возвращены; службы запущены.\n' >&2
+        else printf 'Автовозврат не завершён. См. %s/RECOVERY.md\n' "$recovery" >&2; fi
+      fi
+    fi
+  fi
+  rm -rf -- "$staging"
+  if (( completed == 0 && status == 0 )); then status=1; fi
+  exit "$status"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 archive_path=${ARMADA_UPDATE_ARCHIVE:-}
 if [[ -z "$archive_path" && -f "$script_dir/openIA-__VERSION__-update.zip" ]]; then
   archive_path="$script_dir/openIA-__VERSION__-update.zip"
@@ -65,6 +105,9 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 PY
 unzip -oq "$staging/update.zip" -d "$staging/source"
 package_root="$staging/source/openIA-feature-accounts-foundation"
+original_web_container=$("${compose[@]}" ps -q web)
+original_web_id=$(docker inspect --format '{{.Image}}' "$original_web_container")
+original_web_tag=$(docker inspect --format '{{.Config.Image}}' "$original_web_container")
 printf 'Собираем __VERSION__ до остановки работающего приложения.\n'
 docker build -f "$package_root/deploy/synology/Dockerfile" -t armada-web:__VERSION__ "$package_root"
 # Scheduled Disk jobs must not be claimed while web is stopped: holding only
@@ -73,18 +116,61 @@ backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
 mkdir -p -- "$backup_root"
 exec 7>"$backup_root/.disk-worker.lock"
 flock -n 7 || { printf 'Обработчик резервирования занят. Повторите после его завершения.\n' >&2; exit 1; }
+# Private recovery state is durable even after an interrupted installer.
+recovery=$(mktemp -d "$(dirname -- "$app_root")/.armada-recovery-__VERSION__.XXXXXX")
+printf '%s\n' "$installed" > "$recovery/previous-version"
+printf 'До миграций: проверить running/images.json/writers/backup.log. Не удалять тома. При неудачном автовозврате вручную остановить писателей и вернуть прежнее дерево/image ID.\n' > "$recovery/RECOVERY.md"
+# Save exact image IDs for the running services (not mutable tag names).
+"${compose[@]}" --profile max ps --services --status running web mailworker maxworker proxy > "$recovery/running"
+python3 - "$recovery/running" "$recovery/images.json" "${compose[@]}" <<'PY'
+import json,subprocess,sys
+services={}
+for name in open(sys.argv[1]).read().splitlines():
+    if name not in ('web','mailworker','maxworker','proxy'):raise ValueError('Unexpected service')
+    cid=subprocess.check_output(sys.argv[3:]+['--profile','max','ps','-q',name],text=True).strip()
+    image=subprocess.check_output(['docker','inspect','--format','{{.Image}}',cid],text=True).strip()
+    if not image.startswith('sha256:'):raise ValueError('Missing image ID')
+    services[name]={'image':image}
+with open(sys.argv[2],'x') as f:json.dump({'services':services},f)
+PY
 printf 'Создаём копию без промежуточного возобновления записи.\n'
-# Use the verified NEW backup implementation, including on older installations.
-bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_root/deploy/beget/compose.yml" --state-file "$staging/writers"
+bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_root/deploy/beget/compose.yml" --state-file "$recovery/writers" > "$recovery/backup.log" 2>&1
 exec 8>"$backup_root/.backup.lock"
-flock -n 8 || { printf 'Резервирование занято. Запись оставлена остановленной.\n' >&2; exit 1; }
+flock -n 8 || { printf 'Резервирование занято.\n' >&2; exit 1; }
+# This checkpoint includes private .env; never upload recovery directories.
+cp -a "$app_root" "$recovery/tree"
+python3 - "$recovery" "$app_root" <<'PY'
+import pathlib,sys
+r=pathlib.Path(sys.argv[1]);app=sys.argv[2]
+lines=(r/'backup.log').read_text().splitlines()
+archives=[line.removeprefix('Backup saved: ') for line in lines if line.startswith('Backup saved: ')]
+if len(archives)!=1 or not pathlib.Path(archives[0]).is_file():raise ValueError('Backup missing')
+(r/'archive').write_text(archives[0]+'\n')
+(r/'RECOVERY.md').write_text("""# Восстановление после неуспешного обновления
+
+1. Не запускать прежний web поверх изменённой схемы. Остановить web/mailworker/maxworker, таймер и службу armada-disk-backup. Проверить, что посторонних писателей нет.
+2. Сохранить текущее состояние отдельно для расследования. Каталог recovery содержит .env/закрытые настройки: не публиковать его.
+3. В файле archive указан точный предустановочный архив. Если он зашифрован, расшифровать на доверенной машине закрытым ключом восстановления; ключ не копировать на VPS.
+4. Проверить SHA256SUMS внутри архива и выполнить пробное восстановление в отдельную временную БД/тома, включая файлы и ключи. Инструкция deploy/beget/README.md прежнего дерева и docs/YANDEX_DISK_BACKUPS.md описывает восстановление полного архива. Не выполнять down -v.
+5. После проверки восстановить предустановочные БД, config и documents вместе; вернуть дерево tree и прежние image ID из images.json. Только затем запустить web и проверить версию, migrate --check, документы и данные. Включать почту и MAX после отдельной проверки; MAX только если был включён прежде.
+
+Точное расположение приложения: """+app+'\nТочный архив: '+archives[0]+'\n')
+PY
 max_was_running=0
 while IFS= read -r service; do
   if [[ "$service" == maxworker ]]; then max_was_running=1; fi
-done < "$staging/writers"
+done < "$recovery/writers"
+switched=1
 unzip -oq "$staging/update.zip" -d "$(dirname -- "$app_root")"
+# Check configuration before crossing the irreversible migration barrier.
+"${compose[@]}" config --quiet
+phase=migrations
+printf 'migrations\n' > "$recovery/phase"
+"${compose[@]}" run --rm --no-deps -T --entrypoint python web server/manage.py migrate --noinput
+"${compose[@]}" run --rm --no-deps -T --entrypoint python web server/manage.py check
+"${compose[@]}" run --rm --no-deps -T --entrypoint python web server/manage.py migrate --check
+phase=verify
 "${compose[@]}" up -d --no-build web mailworker
-# Caddyfile is bind-mounted; recreate the proxy to load its new inode.
 "${compose[@]}" up -d --no-build --no-deps --force-recreate proxy
 healthy=0
 for attempt in {1..90}; do
@@ -111,5 +197,7 @@ if (( max_was_running )); then
   max_id=$("${compose[@]}" --profile max ps -q maxworker)
   [[ -n "$max_id" && $(docker inspect --format '{{.State.Running}}' "$max_id") == true ]] || { printf 'MAX-worker не возобновился. Проверьте журнал.\n' >&2; exit 1; }
 fi
+completed=1
+printf 'complete\n' > "$recovery/phase"
 printf '\nОбновление __VERSION__ установлено. Данные и настройки сохранены.\n'
 if (( max_was_running )); then printf 'Ранее работавший MAX-worker возобновлён.\n'; else printf 'MAX-worker не включался автоматически. Настройка и пилот — отдельный шаг.\n'; fi
