@@ -25,6 +25,10 @@ elif a[0]=='compose':
  elif 'config' in a:
   if '--quiet' in a:
    probe('before_migrations')
+   with (app/'.armada-update.lock').open('w') as lock:
+    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:s['same_lock_inode']=True
+    else:s['same_lock_inode']=False
    if case=='prefail':save();sys.exit(18)
  elif 'stop' in a:
   s['running']=[x for x in s['running'] if x not in a[a.index('stop')+1:]]
@@ -61,7 +65,7 @@ class InstallerTests(unittest.TestCase):
    (root/'state.json').write_text(json.dumps({'running':original,'calls':[],'probes':[],'migration_attempted':False}))
    archive=root/'openIA-6.31.0-update.zip';prefix='openIA-feature-accounts-foundation/'
    files={'index.html':'NEW','server/config/settings.py':'','server/accounts/context.py':"def version(): return {'release_version':'6.31.0'}",'deploy/synology/Dockerfile':'FROM scratch'}
-   for n in ('backup.sh','compose.yml','Caddyfile'):files['deploy/beget/'+n]=(REPO/'deploy/beget'/n).read_text()
+   for n in ('backup.sh','compose.yml','Caddyfile','switch_tree.py'):files['deploy/beget/'+n]=(REPO/'deploy/beget'/n).read_text()
    with zipfile.ZipFile(archive,'w') as z:
     for n,data in files.items():z.writestr(prefix+n,data)
    template=(REPO/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',VERSION).replace('__ARCHIVE_SHA256__',hashlib.sha256(archive.read_bytes()).hexdigest())
@@ -85,13 +89,15 @@ with zipfile.ZipFile(sys.argv[2]) as z:
    if case in ('success','maxon'):
     self.assertEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
     self.assertEqual((app/'index.html').read_text(),'NEW')
-    self.assertEqual(set(s['running']),set(original));self.assertTrue(s['migration_attempted'])
+    self.assertFalse((app/'obsolete.py').exists())
+    self.assertEqual(set(s['running']),set(original));self.assertTrue(s['migration_attempted']);self.assertTrue(s['same_lock_inode'])
    else:
     self.assertNotEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
     if case in ('buildfail','prefail','backupfail'):
      self.assertEqual((app/'index.html').read_text(),'OLD');self.assertEqual(set(s['running']),set(original))
      self.assertFalse(s['migration_attempted'])
-     if case=='prefail':self.assertTrue(s['rolled_back'])
+     if case=='prefail':
+      self.assertTrue(s['rolled_back']);self.assertTrue((app/'obsolete.py').exists())
     else:
      self.assertTrue(s['migration_attempted']);self.assertFalse(set(s['running'])&{'web','mailworker','maxworker'},result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
      recovery=list(root.glob('.armada-recovery-*'));self.assertEqual(len(recovery),1)

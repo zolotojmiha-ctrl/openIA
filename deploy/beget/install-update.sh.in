@@ -16,7 +16,7 @@ docker info >/dev/null
 exec 9>"$app_root/.armada-update.lock"
 flock -n 9 || { printf 'Другое обновление уже выполняется.\n' >&2; exit 1; }
 cd -- "$app_root"
-compose=(docker compose -f deploy/beget/compose.yml)
+compose=(docker compose -f "$app_root/deploy/beget/compose.yml")
 # Read the actual running image, without importing settings or displaying secrets.
 version_code='import ast,pathlib; tree=ast.parse(pathlib.Path("/app/server/accounts/context.py").read_text()); versions=[v.value for n in ast.walk(tree) if isinstance(n,ast.Dict) for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value=="release_version" and isinstance(v,ast.Constant)]; assert len(versions)==1; print(versions[0])'
 installed=$("${compose[@]}" exec -T web python -c "$version_code")
@@ -51,7 +51,8 @@ finish() {
     elif [[ -f "$recovery/writers" ]]; then
       if (( switched )); then
         "${compose[@]}" --profile max stop web mailworker maxworker
-        cp -a "$recovery/tree/." "$app_root/"
+        python3 "$package_root/deploy/beget/switch_tree.py" rollback --app "$app_root" --recovery "$recovery"
+        cd -- "$app_root"
       fi
       if [[ "$original_web_tag" == armada-web:__VERSION__ && -n "$original_web_id" ]]; then
         docker image tag "$original_web_id" "$original_web_tag"
@@ -97,7 +98,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         assert name.startswith(prefix) and '\\' not in name and '..' not in parts,'Unsafe archive path'
         assert not stat.S_ISLNK(item.external_attr>>16),'Archive symlink'
         assert not any(p in ('.git','.runtime','__pycache__','.env') for p in parts),'Private runtime file'
-    required=['index.html','server/config/settings.py','server/accounts/context.py','deploy/synology/Dockerfile','deploy/beget/compose.yml','deploy/beget/backup.sh']
+    required=['index.html','server/config/settings.py','server/accounts/context.py','deploy/synology/Dockerfile','deploy/beget/compose.yml','deploy/beget/backup.sh','deploy/beget/switch_tree.py']
     assert all(prefix+n in names for n in required),'Missing package file'
     tree=ast.parse(z.read(prefix+'server/accounts/context.py').decode())
     versions=[v.value for n in ast.walk(tree) if isinstance(n,ast.Dict) for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value=='release_version' and isinstance(v,ast.Constant)]
@@ -138,7 +139,7 @@ bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_
 exec 8>"$backup_root/.backup.lock"
 flock -n 8 || { printf 'Резервирование занято.\n' >&2; exit 1; }
 # This checkpoint includes private .env; never upload recovery directories.
-cp -a "$app_root" "$recovery/tree"
+python3 "$package_root/deploy/beget/switch_tree.py" prepare --source "$package_root" --app "$app_root" --recovery "$recovery"
 python3 - "$recovery" "$app_root" <<'PY'
 import pathlib,sys
 r=pathlib.Path(sys.argv[1]);app=sys.argv[2]
@@ -161,7 +162,8 @@ while IFS= read -r service; do
   if [[ "$service" == maxworker ]]; then max_was_running=1; fi
 done < "$recovery/writers"
 switched=1
-unzip -oq "$staging/update.zip" -d "$(dirname -- "$app_root")"
+python3 "$package_root/deploy/beget/switch_tree.py" switch --app "$app_root" --recovery "$recovery"
+cd -- "$app_root"
 # Check configuration before crossing the irreversible migration barrier.
 "${compose[@]}" config --quiet
 phase=migrations
