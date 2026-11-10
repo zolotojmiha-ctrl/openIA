@@ -2,7 +2,20 @@
 # Run as root from the checked-out project. No secrets appear in arguments or logs.
 set -euo pipefail
 umask 077
-cd -- "$(dirname -- "$0")"
+hold_writers=0
+compose_file="$(dirname -- "$0")/compose.yml"
+state_file=
+while (( $# )); do
+  case "$1" in
+    --hold-writers) hold_writers=1; shift;;
+    --compose-file) compose_file=$2; shift 2;;
+    --state-file) state_file=$2; shift 2;;
+    *) printf 'Unknown backup option.\n' >&2; exit 2;;
+  esac
+done
+compose_file=$(realpath -- "$compose_file")
+cd -- "$(dirname -- "$compose_file")"
+if (( hold_writers )) && [[ -z "$state_file" ]]; then printf 'Held backup requires writer state file.\n' >&2; exit 2; fi
 backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
 mkdir -p -- "$backup_root"
 chmod 700 -- "$backup_root"
@@ -11,7 +24,7 @@ flock -n 9 || { printf 'Another backup is already running.\n' >&2; exit 1; }
 archive_stamp=$(date -u +%Y%m%dT%H%M%SZ)
 staging=$(mktemp -d "$backup_root/.pending.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
-compose=(docker compose -f compose.yml)
+compose=(docker compose -f "$compose_file")
 # Stop application writes, not PostgreSQL; pg_dump remains transactionally consistent.
 # Freeze every running writer, including the opt-in MAX worker. Resume only
 # services which actually ran before backup; never enable MAX as a side effect.
@@ -20,7 +33,10 @@ writers=()
 while IFS= read -r service; do
   case "$service" in web|mailworker|maxworker) writers+=("$service");; '') ;; *) printf 'Unexpected writer service.\n' >&2; exit 1;; esac
 done <<< "$running_writers"
-resume() { if (( ${#writers[@]} )); then "${compose[@]}" --profile max start "${writers[@]}" >/dev/null; fi; }
+if [[ -n "$state_file" ]]; then
+  (set -o noclobber; printf '%s\n' "${writers[@]}" > "$state_file")
+fi
+resume() { if (( hold_writers == 0 && ${#writers[@]} )); then "${compose[@]}" --profile max start "${writers[@]}" >/dev/null; fi; }
 trap 'resume; rm -rf -- "$staging"' EXIT
 if (( ${#writers[@]} )); then "${compose[@]}" --profile max stop "${writers[@]}"; fi
 "${compose[@]}" exec -T db pg_dump -U armada_admin -d armada --no-owner --no-acl -Fc > "$staging/database.dump"

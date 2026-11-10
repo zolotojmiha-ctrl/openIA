@@ -73,23 +73,15 @@ backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
 mkdir -p -- "$backup_root"
 exec 7>"$backup_root/.disk-worker.lock"
 flock -n 7 || { printf 'Обработчик резервирования занят. Повторите после его завершения.\n' >&2; exit 1; }
-printf 'Создаём резервную копию базы, файлов, настроек и ключей.\n'
-bash deploy/beget/backup.sh
-# Hold the same lock as host backups until migration and worker restart finish.
+printf 'Создаём копию без промежуточного возобновления записи.\n'
+# Use the verified NEW backup implementation, including on older installations.
+bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_root/deploy/beget/compose.yml" --state-file "$staging/writers"
 exec 8>"$backup_root/.backup.lock"
-flock -n 8 || { printf 'Параллельно началось резервирование. Обновление остановлено до замены файлов.\n' >&2; exit 1; }
-services=$("${compose[@]}" --profile max config --services)
-writers=(web mailworker)
-while IFS= read -r service; do
-  if [[ "$service" == maxworker ]]; then writers+=(maxworker); fi
-done <<< "$services"
-running=$("${compose[@]}" --profile max ps --services --status running "${writers[@]}")
+flock -n 8 || { printf 'Резервирование занято. Запись оставлена остановленной.\n' >&2; exit 1; }
 max_was_running=0
 while IFS= read -r service; do
   if [[ "$service" == maxworker ]]; then max_was_running=1; fi
-done <<< "$running"
-printf 'Останавливаем писателей на время замены файлов и миграций.\n'
-"${compose[@]}" --profile max stop "${writers[@]}"
+done < "$staging/writers"
 unzip -oq "$staging/update.zip" -d "$(dirname -- "$app_root")"
 "${compose[@]}" up -d --no-build web mailworker
 # Caddyfile is bind-mounted; recreate the proxy to load its new inode.
