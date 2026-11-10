@@ -6,11 +6,13 @@ tool_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
 hold_writers=0
 compose_file="$(dirname -- "$0")/compose.yml"
 state_file=
+lock_fd=
 while (( $# )); do
   case "$1" in
     --hold-writers) hold_writers=1; shift;;
     --compose-file) compose_file=$2; shift 2;;
     --state-file) state_file=$2; shift 2;;
+    --lock-fd) lock_fd=$2; shift 2;;
     *) printf 'Unknown backup option.\n' >&2; exit 2;;
   esac
 done
@@ -24,10 +26,20 @@ compose_file=$(realpath -- "$compose_file")
 cd -- "$(dirname -- "$compose_file")"
 if (( hold_writers )) && [[ -z "$state_file" ]]; then printf 'Held backup requires writer state file.\n' >&2; exit 2; fi
 backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
+[[ "$backup_root" == /* ]] || { printf 'Backup directory must be absolute.\n' >&2; exit 2; }
 mkdir -p -- "$backup_root"
 chmod 700 -- "$backup_root"
-exec 9>"$backup_root/.backup.lock"
-flock -n 9 || { printf 'Another backup is already running.\n' >&2; exit 1; }
+if [[ -n "$lock_fd" ]]; then
+  [[ "$lock_fd" =~ ^[0-9]+$ ]] || exit 2
+  python3 - "$lock_fd" "$backup_root/.backup.lock" <<'PY'
+import os,sys
+fd=os.fstat(int(sys.argv[1]));path=os.stat(sys.argv[2]);assert (fd.st_dev,fd.st_ino)==(path.st_dev,path.st_ino),'Wrong backup lock descriptor'
+PY
+  flock -n "$lock_fd" || exit 1
+else
+  exec 9>"$backup_root/.backup.lock"
+  flock -n 9 || { printf 'Another backup is already running.\n' >&2; exit 1; }
+fi
 archive_stamp=$(date -u +%Y%m%dT%H%M%SZ)
 staging=$(mktemp -d "$backup_root/.pending.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT

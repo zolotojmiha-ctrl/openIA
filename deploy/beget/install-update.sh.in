@@ -142,9 +142,13 @@ docker build -f "$package_root/deploy/synology/Dockerfile" -t armada-web:__VERSI
 # Scheduled Disk jobs must not be claimed while web is stopped: holding only
 # backup.lock would allow a job to be claimed and stranded during maintenance.
 backup_root=${ARMADA_BACKUP_DIR:-/var/backups/armada}
+[[ "$backup_root" == /* ]] || { printf 'Каталог копий должен быть абсолютным.\n' >&2; exit 2; }
 mkdir -p -- "$backup_root"
+chmod 700 -- "$backup_root"
 exec 7>"$backup_root/.disk-worker.lock"
 flock -n 7 || { printf 'Обработчик резервирования занят. Повторите после его завершения.\n' >&2; exit 1; }
+exec 8>"$backup_root/.backup.lock"
+flock -n 8 || { printf 'Резервирование занято; обновление не начато.\n' >&2; exit 1; }
 # Private recovery state is durable even after an interrupted installer.
 recovery=$(mktemp -d "$(dirname -- "$app_root")/.armada-recovery-__VERSION__.XXXXXX")
 printf '%s\n' "$installed" > "$recovery/previous-version"
@@ -163,9 +167,7 @@ for name in open(sys.argv[1]).read().splitlines():
 with open(sys.argv[2],'x') as f:json.dump({'services':services},f)
 PY
 printf 'Создаём копию без промежуточного возобновления записи.\n'
-bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_root/deploy/beget/compose.yml" --state-file "$recovery/writers" > "$recovery/backup.log" 2>&1
-exec 8>"$backup_root/.backup.lock"
-flock -n 8 || { printf 'Резервирование занято.\n' >&2; exit 1; }
+bash "$package_root/deploy/beget/backup.sh" --hold-writers --compose-file "$app_root/deploy/beget/compose.yml" --state-file "$recovery/writers" --lock-fd 8 > "$recovery/backup.log" 2>&1
 # This checkpoint includes private .env; never upload recovery directories.
 python3 "$package_root/deploy/beget/switch_tree.py" prepare --source "$package_root" --app "$app_root" --recovery "$recovery"
 python3 - "$recovery" "$app_root" <<'PY'
