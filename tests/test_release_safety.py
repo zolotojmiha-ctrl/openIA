@@ -19,10 +19,13 @@ elif a[0]=='inspect':
  else:print('true' if a[-1] in s['running'] else 'false')
 elif a[0]=='compose':
  if 'ps' in a:
-  if '--services' in a:print('\n'.join(x for x in s['running'] if x in a))
+  if '--services' in a:
+   if case=='legacy' and 'maxworker' in a:save();sys.exit(91)
+   print('\n'.join(x for x in s['running'] if x in a))
   elif '-q' in a and a[-1] in s['running']:print(a[-1])
  elif 'exec' in a and 'release_version' in ' '.join(a):print('6.24.0' if case=='unsupported' else '6.31.0' if (app/'index.html').read_text()=='NEW' else '6.30.0')
  elif 'config' in a:
+  if '--services' in a:print('web\nmailworker\nproxy' if case=='legacy' else 'web\nmailworker\nmaxworker\nproxy')
   if '--quiet' in a:
    probe('before_migrations')
    with (app/'.armada-update.lock').open('w') as lock:
@@ -113,7 +116,7 @@ with zipfile.ZipFile(sys.argv[2]) as z:
    result=subprocess.run(['bash',str(installer)],env=env,capture_output=True,text=True,timeout=40)
    if lock:lock.close()
    s=json.loads((root/'state.json').read_text())
-   if case in ('success','maxon'):
+   if case in ('success','maxon','legacy'):
     self.assertEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
     self.assertEqual((app/'index.html').read_text(),'NEW')
     self.assertFalse((app/'obsolete.py').exists())
@@ -147,6 +150,7 @@ with zipfile.ZipFile(sys.argv[2]) as z:
  def test_rejects_tampered_archive(self):self.run_case('tamperedarchive')
  def test_rejects_missing_independent_trust_key(self):self.run_case('missingtrust')
  def test_rejects_signed_but_not_validated_release(self):self.run_case('notvalidated')
+ def test_legacy_compose_without_max_service(self):self.run_case('legacy')
  def test_success_without_max(self):self.run_case('success')
  def test_success_with_previously_active_max(self):self.run_case('maxon',True)
  def test_build_failure_does_not_stop_old_version(self):self.run_case('buildfail')

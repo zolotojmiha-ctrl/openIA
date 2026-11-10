@@ -9,7 +9,7 @@ from django.test import SimpleTestCase
 
 
 class WriterBackupTests(SimpleTestCase):
-    def run_backup(self, writers, fail=False, hold=False):
+    def run_backup(self, writers, fail=False, hold=False, legacy=False):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
             for name in ('backup.sh', 'compose.yml', 'Caddyfile','backup_counts.sql','backup_manifest.py','backup_retention.py'):
@@ -19,7 +19,9 @@ class WriterBackupTests(SimpleTestCase):
 import os, sys
 a=sys.argv[1:]
 with open(os.environ['MAX_TEST_LOG'],'a') as f:f.write(' '.join(a)+'\\n')
-if 'ps' in a: print(os.environ['MAX_TEST_WRITERS'])
+if 'config' in a: print('web\\nmailworker'+('' if os.environ.get('MAX_TEST_LEGACY')=='1' else '\\nmaxworker'))
+elif 'ps' in a and 'maxworker' in a and os.environ.get('MAX_TEST_LEGACY')=='1':sys.exit(91)
+elif 'ps' in a: print(os.environ['MAX_TEST_WRITERS'])
 elif 'pg_dump' in a:
  if os.environ.get('MAX_TEST_FAIL')=='1':sys.exit(42)
  sys.stdout.buffer.write(b'SYNTHETIC DUMP')
@@ -34,7 +36,7 @@ elif 'tar' in a:
             docker.chmod(0o700)
             log = root / 'calls'
             env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH'], 'ARMADA_BACKUP_DIR': str(root / 'backups'),
-                                'MAX_TEST_LOG': str(log), 'MAX_TEST_WRITERS': '\n'.join(writers), 'MAX_TEST_FAIL': '1' if fail else '0'}
+                                'MAX_TEST_LOG': str(log), 'MAX_TEST_WRITERS': '\n'.join(writers), 'MAX_TEST_FAIL': '1' if fail else '0','MAX_TEST_LEGACY':'1' if legacy else '0'}
             args=['bash', str(root / 'backup.sh')]
             if hold:args+=['--hold-writers','--state-file',str(root/'writers')]
             result = subprocess.run(args, env=env, capture_output=True, text=True, timeout=20)
@@ -60,3 +62,6 @@ elif 'tar' in a:
 
     def test_held_backup_failure_leaves_writers_stopped_for_installer(self):
         self.run_backup(['web', 'mailworker'], fail=True, hold=True)
+
+    def test_legacy_compose_without_max_service_is_supported(self):
+        self.run_backup(['web', 'mailworker'], legacy=True)

@@ -47,7 +47,14 @@ compose=(docker compose -f "$compose_file")
 # Stop application writes, not PostgreSQL; pg_dump remains transactionally consistent.
 # Freeze every running writer, including the opt-in MAX worker. Resume only
 # services which actually ran before backup; never enable MAX as a side effect.
-running_writers=$("${compose[@]}" --profile max ps --services --status running web mailworker maxworker)
+# Older supported installations have no MAX service at all.
+declared=$("${compose[@]}" --profile max config --services)
+candidates=()
+while IFS= read -r service; do
+  case "$service" in web|mailworker|maxworker) candidates+=("$service");; esac
+done <<< "$declared"
+(( ${#candidates[@]} )) || { printf 'No declared application writers.\n' >&2; exit 1; }
+running_writers=$("${compose[@]}" --profile max ps --services --status running "${candidates[@]}")
 writers=()
 while IFS= read -r service; do
   case "$service" in web|mailworker|maxworker) writers+=("$service");; '') ;; *) printf 'Unexpected writer service.\n' >&2; exit 1;; esac

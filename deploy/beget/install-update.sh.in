@@ -8,6 +8,7 @@ if (( EUID != 0 )); then printf 'Запустите установщик от ro
 for command_name in curl sha256sum unzip docker flock df awk python3 openssl; do
   command -v "$command_name" >/dev/null || { printf 'Не найдена команда: %s\n' "$command_name" >&2; exit 1; }
 done
+python3 -c 'import sys; assert sys.version_info >= (3,9)' || { printf 'Требуется Python 3.9 или новее.\n' >&2; exit 1; }
 if [[ -L "$app_root" || ! -f "$app_root/deploy/beget/compose.yml" || ! -f "$app_root/deploy/beget/backup.sh" || $(basename -- "$app_root") != openIA-feature-accounts-foundation ]]; then
   printf 'Не найден штатный каталог существующей установки: %s\n' "$app_root" >&2; exit 1
 fi
@@ -179,7 +180,12 @@ recovery=$(mktemp -d "$(dirname -- "$app_root")/.armada-recovery-__VERSION__.XXX
 printf '%s\n' "$installed" > "$recovery/previous-version"
 printf 'До миграций: проверить running/images.json/writers/backup.log. Не удалять тома. При неудачном автовозврате вручную остановить писателей и вернуть прежнее дерево/image ID.\n' > "$recovery/RECOVERY.md"
 # Save exact image IDs for the running services (not mutable tag names).
-"${compose[@]}" --profile max ps --services --status running web mailworker maxworker proxy > "$recovery/running"
+declared=$("${compose[@]}" --profile max config --services)
+previous_services=()
+while IFS= read -r service; do
+  case "$service" in web|mailworker|maxworker|proxy) previous_services+=("$service");; esac
+done <<< "$declared"
+"${compose[@]}" --profile max ps --services --status running "${previous_services[@]}" > "$recovery/running"
 python3 - "$recovery/running" "$recovery/images.json" "${compose[@]}" <<'PY'
 import json,subprocess,sys
 services={}

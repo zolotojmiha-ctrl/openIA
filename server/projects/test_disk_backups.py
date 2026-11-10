@@ -253,6 +253,7 @@ from pathlib import Path
 args=sys.argv[1:]
 with open(os.environ['TEST_LOG'],'a') as log:log.write(json.dumps(args)+'\\n')
 if args[-1]=='claim':print('12345678-1234-1234-1234-123456789abc')
+elif 'config' in args:print('web\\nmailworker\\nmaxworker')
 elif 'ps' in args:print(chr(10).join(['web','mailworker','maxworker']))
 elif 'pg_dump' in args:
     if os.environ['FAIL_STAGE']=='capture':sys.exit(1)
