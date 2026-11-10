@@ -12,7 +12,7 @@ class WriterBackupTests(SimpleTestCase):
     def run_backup(self, writers, fail=False, hold=False):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
-            for name in ('backup.sh', 'compose.yml', 'Caddyfile'):
+            for name in ('backup.sh', 'compose.yml', 'Caddyfile','backup_counts.sql','backup_manifest.py','backup_retention.py'):
                 shutil.copy(settings.BASE_DIR / 'deploy/beget' / name, root / name)
             docker = root / 'docker'
             docker.write_text('''#!/usr/bin/env python3
@@ -23,8 +23,13 @@ if 'ps' in a: print(os.environ['MAX_TEST_WRITERS'])
 elif 'pg_dump' in a:
  if os.environ.get('MAX_TEST_FAIL')=='1':sys.exit(42)
  sys.stdout.buffer.write(b'SYNTHETIC DUMP')
+elif 'psql' in a: print('{}')
 elif 'pg_restore' in a: print('SYNTHETIC CONTENTS')
-elif 'tar' in a: sys.stdout.buffer.write(b'SYNTHETIC ARCHIVE')
+elif 'tar' in a:
+ import io,tarfile
+ b=io.BytesIO()
+ with tarfile.open(fileobj=b,mode='w'):pass
+ sys.stdout.buffer.write(b.getvalue())
 ''')
             docker.chmod(0o700)
             log = root / 'calls'

@@ -85,13 +85,18 @@ def main():
     import argparse
     parser=argparse.ArgumentParser(description='Расшифровать резервную копию АРМАДА локально.')
     parser.add_argument('--source',required=True)
-    parser.add_argument('--private-key',required=True)
+    keys=parser.add_mutually_exclusive_group(required=True)
+    keys.add_argument('--private-key')
+    keys.add_argument('--public-key')
     parser.add_argument('--output',required=True)
     args=parser.parse_args()
     try:
-        decrypt(args.source,args.output,Path(args.private_key).read_bytes())
+        if args.public_key:
+            public=Path(args.public_key).read_text();encrypt(args.source,args.output,public)
+            Path(args.output+'.key-id').write_text(hashlib.sha256(public.encode()).hexdigest())
+        else:decrypt(args.source,args.output,Path(args.private_key).read_bytes())
     except Exception:
         parser.exit(1,'Архив не восстановлен. Проверьте файл копии, закрытый ключ и свободный путь результата.\n')
-    print('Целостность расшифрованного архива подтверждена.')
+    print('Архив зашифрован.' if args.public_key else 'Целостность расшифрованного архива подтверждена.')
 
 if __name__=='__main__':main()

@@ -36,6 +36,7 @@ elif a[0]=='compose':
  elif 'pg_dump' in a:
   probe('during_backup');sys.stdout.buffer.write(b'SYNTHETIC DUMP')
   if case=='backupfail':save();sys.exit(19)
+ elif 'psql' in a:print('{}')
  elif 'pg_restore' in a:print('SYNTHETIC TOC')
  elif 'tar' in a:
   b=io.BytesIO()
@@ -65,7 +66,7 @@ class InstallerTests(unittest.TestCase):
    (root/'state.json').write_text(json.dumps({'running':original,'calls':[],'probes':[],'migration_attempted':False}))
    archive=root/'openIA-6.31.0-update.zip';prefix='openIA-feature-accounts-foundation/'
    files={'index.html':'NEW','server/config/settings.py':'','server/accounts/context.py':"def version(): return {'release_version':'6.31.0'}",'deploy/synology/Dockerfile':'FROM scratch'}
-   for n in ('backup.sh','compose.yml','Caddyfile','switch_tree.py'):files['deploy/beget/'+n]=(REPO/'deploy/beget'/n).read_text()
+   for n in ('backup.sh','compose.yml','Caddyfile','switch_tree.py','backup_counts.sql','backup_manifest.py','backup_retention.py'):files['deploy/beget/'+n]=(REPO/'deploy/beget'/n).read_text()
    with zipfile.ZipFile(archive,'w') as z:
     for n,data in files.items():z.writestr(prefix+n,data)
    template=(REPO/'deploy/beget/install-update.sh.in').read_text().replace('__VERSION__',VERSION).replace('__ARCHIVE_SHA256__',hashlib.sha256(archive.read_bytes()).hexdigest())

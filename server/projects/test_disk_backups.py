@@ -167,6 +167,28 @@ class DiskBackupTests(TestCase):
             encrypted=Path(root)/'downloaded';encrypted.write_bytes(remote[job.remote_path])
             restored=Path(root)/'restored';disk_crypto.decrypt(encrypted,restored,self.private)
             self.assertEqual(restored.read_bytes(),source.read_bytes())
+    def test_preencrypted_local_copy_is_uploaded_unchanged(self):
+        self.configure();job=disk_backups.enqueue(self.leader,uuid.uuid4());disk_backups.claim()
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);plain=root/'plain';plain.write_bytes(b'SYNTHETIC');source=root/'copy.encrypted';disk_crypto.encrypt(plain,source,job.public_key)
+            raw=source.read_bytes()
+            with patch('projects.disk_backups.Client') as client:
+                client.return_value.info.return_value=(2*10**12,0)
+                client.return_value.metadata.side_effect=FileNotFoundError
+                disk_backups.upload(job.pk,source,root,encrypted_key_id=job.key_fingerprint)
+                client.return_value.upload.assert_called_once()
+                self.assertEqual(client.return_value.upload.call_args.args[1],source)
+            self.assertEqual(source.read_bytes(),raw);job.refresh_from_db();self.assertEqual(job.state,'verified')
+
+    def test_preencrypted_copy_with_another_key_is_retained_and_not_sent(self):
+        self.configure();job=disk_backups.enqueue(self.leader,uuid.uuid4());disk_backups.claim()
+        with tempfile.TemporaryDirectory() as root:
+            source=Path(root)/'copy';source.write_bytes(b'SYNTHETIC')
+            with patch('projects.disk_backups.Client') as client:
+                with self.assertRaises(ValidationError):disk_backups.upload(job.pk,source,Path(root),encrypted_key_id='wrong-public-fingerprint')
+                client.assert_not_called()
+            self.assertTrue(source.exists());job.refresh_from_db();self.assertEqual(job.state,'failed')
+
     def test_upload_failure_never_claims_success_or_removes_original(self):
         self.configure();job=disk_backups.enqueue(self.leader,uuid.uuid4());disk_backups.claim()
         with tempfile.TemporaryDirectory() as root:
@@ -220,7 +242,7 @@ class HostWorkerTests(SimpleTestCase):
         root_source=Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);binpath=root/'bin';binpath.mkdir();backup=root/'backups'
-            for name in ('disk-backups.sh','backup.sh'):
+            for name in ('disk-backups.sh','backup.sh','backup_counts.sql','backup_manifest.py','backup_retention.py'):
                 shutil.copy2(root_source/'deploy/beget'/name,root/name)
             (root/'compose.yml').write_text('synthetic test compose')
             (root/'Caddyfile').write_text('synthetic test config')
@@ -235,8 +257,13 @@ elif 'ps' in args:print(chr(10).join(['web','mailworker','maxworker']))
 elif 'pg_dump' in args:
     if os.environ['FAIL_STAGE']=='capture':sys.exit(1)
     sys.stdout.buffer.write(b'synthetic dump')
+elif 'psql' in args:print('{}')
 elif 'upload' in args and os.environ['FAIL_STAGE']=='upload':sys.exit(1)
-elif 'tar' in args:sys.stdout.buffer.write(b'synthetic tar')
+elif 'tar' in args:
+    import io,tarfile
+    b=io.BytesIO()
+    with tarfile.open(fileobj=b,mode='w'):pass
+    sys.stdout.buffer.write(b.getvalue())
 ''');docker.chmod(0o755)
             env=os.environ|{'PATH':str(binpath)+os.pathsep+os.environ['PATH'],'TEST_LOG':str(root/'calls'),'FAIL_STAGE':stage,'ARMADA_BACKUP_DIR':str(backup)+'/'}
             result=subprocess.run(['bash',str(root/'disk-backups.sh')],env=env,capture_output=True,text=True,timeout=15)

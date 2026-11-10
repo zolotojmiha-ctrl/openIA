@@ -32,10 +32,18 @@ if ! bash backup.sh > "$work/local-backup.log" 2>&1; then
   exit 1
 fi
 archive=$(sed -n 's/^Backup saved: //p' "$work/local-backup.log" | tail -n 1)
-if [[ ! -f "$archive" || "$(dirname -- "$archive")" != "$backup_root" || ! "$(basename -- "$archive")" =~ ^armada-[0-9]{8}T[0-9]{6}Z\.tar\.gz$ ]]; then
+if [[ ! -f "$archive" || "$(dirname -- "$archive")" != "$backup_root" || ! "$(basename -- "$archive")" =~ ^armada-[0-9]{8}T[0-9]{6}Z(-[0-9a-f]{8})?\.tar\.gz(\.encrypted)?$ ]]; then
   printf 'Не найден завершённый архив; загрузка остановлена.\n' >&2
   exit 1
 fi
-"${compose[@]}" run --rm --no-deps -T --user 0:0   --volume "$archive:/backup/source.tar.gz:ro"   --volume "$work:/backup/work"   --entrypoint python web server/manage.py disk_backup upload   --job "$job" --source /backup/source.tar.gz --work /backup/work
+encrypted_args=()
+if [[ "$archive" == *.encrypted ]]; then
+  [[ -f "$archive.key-id" && ! -L "$archive.key-id" ]] || exit 1
+  encrypted_args=(--encrypted --key-id-file /backup/key-id)
+  key_mount=(--volume "$archive.key-id:/backup/key-id:ro")
+else
+  key_mount=()
+fi
+"${compose[@]}" run --rm --no-deps -T --user 0:0 "${key_mount[@]}"   --volume "$archive:/backup/source.tar.gz:ro"   --volume "$work:/backup/work"   --entrypoint python web server/manage.py disk_backup upload   --job "$job" --source /backup/source.tar.gz --work /backup/work "${encrypted_args[@]}"
 finished=1
 printf 'Резервная копия создана, зашифрована, загружена и проверена.\n'

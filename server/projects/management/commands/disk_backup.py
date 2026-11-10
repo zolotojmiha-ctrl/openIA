@@ -11,6 +11,8 @@ class Command(BaseCommand):
         parser.add_argument('--work')
         parser.add_argument('--private-key')
         parser.add_argument('--output')
+        parser.add_argument('--encrypted',action='store_true')
+        parser.add_argument('--key-id-file')
     def handle(self,*args,**o):
         try:
             if o['action']=='claim':
@@ -18,7 +20,7 @@ class Command(BaseCommand):
                 if pk:self.stdout.write(str(pk))
             elif o['action']=='fail':disk_backups.fail(o['job'])
             elif o['action']=='upload':
-                try:disk_backups.upload(o['job'],o['source'],o['work'])
+                try:disk_backups.upload(o['job'],o['source'],o['work'],encrypted_key_id=Path(o['key_id_file']).read_text().strip() if o['encrypted'] else None)
                 except Exception:
                     disk_backups.fail(o['job']);raise
                 self.stdout.write('Копия загружена, повторно скачана и проверена.')

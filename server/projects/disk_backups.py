@@ -119,7 +119,7 @@ def fail(pk):
     DiskBackupJob.objects.filter(pk=pk,state='running').update(state='failed',error='Резервирование не завершено. Локальные копии не удалены; проверьте обработчик и подключение Диска.')
 
 @sensitive_variables('token')
-def upload(pk,source,work):
+def upload(pk,source,work,encrypted_key_id=None):
     job=DiskBackupJob.objects.get(pk=pk,state='running')
     config=DiskBackupSettings.objects.get(pk=1)
     if job.config_version!=config.version:raise ValidationError('Настройки изменились после начала резервирования.')
@@ -129,8 +129,14 @@ def upload(pk,source,work):
     target=work/(str(job.pk)+'.encrypted')
     created=False
     try:
-        sha,size=disk_crypto.encrypt(source,target,job.public_key)
-        created=True
+        if encrypted_key_id is not None:
+            if encrypted_key_id!=job.key_fingerprint:raise ValidationError('Ключ локальной копии отличается от ключа задания.')
+            with source.open('rb') as f:
+                if f.read(len(disk_crypto.MAGIC))!=disk_crypto.MAGIC:raise ValidationError('Неверный зашифрованный архив.')
+            target=source;sha,size=disk_crypto.digest(source)
+        else:
+            sha,size=disk_crypto.encrypt(source,target,job.public_key)
+            created=True
         token=reveal(config.credential);client=Client(token)
         total,used=client.info()
         if total-used<size:raise DiskError('Недостаточно места на Диске.')
