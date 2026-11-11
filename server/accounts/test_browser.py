@@ -7,6 +7,9 @@ from .models import User
 
 class BrowserAcceptance(StaticLiveServerTestCase):
     def test_working_accounts_in_browser(self):
+        from projects.models import LegalEntity, COMPANY_TAX_ID
+        # Live-server tests flush data between cases, including migration seeds.
+        LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID, defaults={'name': 'ТЕСТ'})
         secret=temporary_password()
         for slot in (1,2):
             User.objects.create_user(f'+7000000000{slot}',secret,full_name=f'ТЕСТ Руководитель {slot}',leader_slot=slot)

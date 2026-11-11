@@ -85,7 +85,7 @@ class LeaderTests(TestCase):
         item.quantity = 3; item.save()
         audit(self.leader, 'repair_prepared', kind='material_request', record=str(item.pk))
         self.assertFalse(worker.delivery_allowed(row))
-        row = Outbox.objects.filter(key__startswith='leader:').order_by('-pk').first()
+        row = Outbox.objects.filter(key__startswith='leader:').exclude(pk=row.pk).get()
         self.assertTrue(worker.delivery_allowed(row))
         item.status = 'provided'; item.save()
         self.assertFalse(worker.delivery_allowed(row))
