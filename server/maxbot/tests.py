@@ -319,6 +319,42 @@ class MaxTests(TestCase):
         self.assertEqual(Attachment.objects.count(), 1)
         self.assertEqual(Attachment.objects.get().sha256, Photo.objects.get().sha256)
 
+    @override_settings(ARMADA_MAX_PHOTO_HOSTS=('cdn.invalid',))
+    def test_max_webp_photo_converts_to_jpeg_and_submits_standard_attachment(self):
+        draft = self.fill(self.draft())
+        encoded = io.BytesIO()
+        Image.new('RGBA', (32, 24), (0, 0, 0, 0)).save(encoded, format='WEBP', lossless=True)
+        response = MagicMock(); response.__enter__.return_value = response
+        response.read.return_value = encoded.getvalue()
+        opener = MagicMock(); opener.open.return_value = response
+        addresses = [(2, 1, 6, '', ('93.184.216.34', 443))]
+        with patch('maxbot.transport.socket.getaddrinfo', return_value=addresses), patch('maxbot.transport.build_opener', return_value=opener):
+            self.event(photos=[{'type': 'image', 'url': 'https://cdn.invalid/photo'}])
+        photo = Photo.objects.get()
+        self.assertEqual(photo.name, 'photo.jpg')
+        from documents.storage import verified_file
+        with verified_file(photo) as content, Image.open(content) as image:
+            self.assertEqual(image.format, 'JPEG')
+            self.assertEqual(image.size, (32, 24))
+            self.assertEqual(image.getpixel((0, 0)), (255, 255, 255))
+        request = opener.open.call_args.args[0]
+        self.assertNotIn('Authorization', request.headers)
+        self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
+        self.assertEqual(Attachment.objects.get().sha256, photo.sha256)
+
+    @override_settings(ARMADA_MAX_PHOTO_HOSTS=('cdn.invalid',))
+    def test_animated_webp_is_not_accepted_as_a_report_photo(self):
+        encoded = io.BytesIO()
+        Image.new('RGB', (8, 8), 'red').save(encoded, format='WEBP', save_all=True,
+            append_images=[Image.new('RGB', (8, 8), 'blue')], duration=100, loop=0)
+        response = MagicMock(); response.__enter__.return_value = response
+        response.read.return_value = encoded.getvalue()
+        opener = MagicMock(); opener.open.return_value = response
+        addresses = [(2, 1, 6, '', ('93.184.216.34', 443))]
+        with patch('maxbot.transport.socket.getaddrinfo', return_value=addresses), patch('maxbot.transport.build_opener', return_value=opener):
+            with self.assertRaises(ValidationError):
+                transport.download_photo('https://cdn.invalid/photo')
+
     def test_photo_source_restriction_prevents_request(self):
         for url in ('http://127.0.0.1/x', 'https://evil.invalid/x', 'https://user:pass@cdn.invalid/x'):
             with patch('maxbot.transport.build_opener') as opener, self.assertRaises(ValidationError):

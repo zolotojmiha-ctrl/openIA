@@ -14,7 +14,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHand
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 API = 'https://platform-api2.max.ru'
 API_CA_FILE = Path('/run/armada/max-api-ca.pem')
@@ -104,7 +104,10 @@ def download_photo(url):
         with warnings.catch_warnings():
             warnings.simplefilter('error', Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(content)) as image:
-                if image.format not in ('PNG', 'JPEG'):
+                if image.format not in ('PNG', 'JPEG', 'WEBP'):
+                    raise ValueError
+                webp = image.format == 'WEBP'
+                if webp and getattr(image, 'n_frames', 1) != 1:
                     raise ValueError
                 if image.width * image.height > 16_000_000 or max(image.size) > 8000:
                     raise ValueError
@@ -112,6 +115,25 @@ def download_photo(url):
                 image.verify()
             with Image.open(io.BytesIO(content)) as image:
                 image.load()
+                if webp:
+                    # MAX may transcode an ordinary photograph to WEBP. Keep the
+                    # existing private attachment contract by storing a JPEG.
+                    ImageOps.exif_transpose(image, in_place=True)
+                    if 'A' in image.getbands():
+                        converted = Image.new('RGB', image.size, 'white')
+                        with image.getchannel('A') as alpha:
+                            converted.paste(image, mask=alpha)
+                    else:
+                        converted = image.convert('RGB')
+                    try:
+                        with io.BytesIO() as output:
+                            converted.save(output, format='JPEG', quality=92)
+                            if output.tell() > 10 * 1024 * 1024:
+                                raise ValueError
+                            content = output.getvalue()
+                    finally:
+                        converted.close()
+                    suffix = 'jpg'
     except (OSError, ValueError, SyntaxError, UnidentifiedImageError, Image.DecompressionBombWarning, Image.DecompressionBombError):
-        raise ValidationError('Фото не удалось проверить. Отправьте исправный PNG/JPEG до 10 МБ или загрузите через ЛК.') from None
+        raise ValidationError('Фото не удалось загрузить или проверить. Повторите отправку либо добавьте фото через ЛК.') from None
     return SimpleUploadedFile('photo.' + suffix, content, content_type='image/' + ('png' if suffix == 'png' else 'jpeg'))
