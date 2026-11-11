@@ -50,6 +50,29 @@ class EncryptionTests(SimpleTestCase):
             self.assertFalse(dst.exists())
 
 class APIContractTests(SimpleTestCase):
+    def test_confirmed_storage_redirect_host_is_exact_and_https_only(self):
+        self.assertEqual(signed_url('https://mds.storage.yandex.net/test'),'https://mds.storage.yandex.net/test')
+        for value in ('http://mds.storage.yandex.net/test','https://other.storage.yandex.net/test','https://mds.storage.yandex.net.evil.example/test','https://evil.mds.storage.yandex.net/test','https://user@mds.storage.yandex.net/test','https://mds.storage.yandex.net:444/test'):
+            with self.subTest(url=value),self.assertRaises(DiskError):signed_url(value)
+    def test_redirected_storage_download_verifies_hash_without_oauth(self):
+        from urllib.request import Request
+        raw=b'synthetic encrypted archive';requests=[]
+        class Response(io.BytesIO):status=200
+        class Opener:
+            def open(self,request,timeout):
+                requests.append(request)
+                if request.full_url.startswith('https://cloud-api.yandex.net/'):
+                    return Response(b'{"href":"https://downloader.disk.yandex.ru/test","method":"GET"}')
+                if request.full_url.startswith('https://downloader.disk.yandex.ru/'):
+                    redirect=Redirects().redirect_request(request,None,302,'',{},'https://mds.storage.yandex.net/test')
+                    return self.open(redirect,timeout)
+                return Response(raw)
+        client=Client(TOKEN,Opener())
+        client.verify('app:/armada/backups/test',hashlib.sha256(raw).hexdigest(),len(raw))
+        self.assertEqual(len(requests),3)
+        self.assertTrue(requests[0].has_header('Authorization'))
+        self.assertTrue(all(not r.has_header('Authorization') for r in requests[1:]))
+        with self.assertRaises(DiskError):client.verify('app:/armada/backups/test','0'*64,len(raw))
     def test_signed_hosts_are_restricted_and_never_use_http(self):
         for value in ['http://uploader.disk.yandex.net/x','https://evil.example/x','https://uploader.disk.yandex.net.evil.example/x','https://user@uploader.disk.yandex.net/x','https://127.0.0.1/x']:
             with self.assertRaises(DiskError):signed_url(value)

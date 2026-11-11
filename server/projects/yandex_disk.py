@@ -14,7 +14,7 @@ def signed_url(url):
     try:
         parts=urlsplit(url);host=parts.hostname or ''
         if parts.scheme!='https' or parts.username or parts.password or parts.port not in (None,443):raise ValueError
-        if not (host.endswith('.disk.yandex.net') or host.endswith('.disk.yandex.ru')):raise ValueError
+        if not (host.endswith('.disk.yandex.net') or host.endswith('.disk.yandex.ru') or host=='mds.storage.yandex.net'):raise ValueError
     except (ValueError,TypeError):raise DiskError('Недопустимый адрес передачи файла.') from None
     return url
 
