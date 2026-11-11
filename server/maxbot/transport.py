@@ -3,18 +3,21 @@ import io
 import ipaddress
 import json
 import socket
+import ssl
 import warnings
+from pathlib import Path
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHandler
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image, UnidentifiedImageError
 
 API = 'https://platform-api2.max.ru'
+API_CA_FILE = Path('/run/armada/max-api-ca.pem')
 
 
 class DeliveryError(Exception):
@@ -28,13 +31,21 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def api_ssl_context():
+    """Additional operator-provided CA applies only to the fixed MAX API."""
+    context = ssl.create_default_context()
+    if API_CA_FILE.exists():
+        context.load_verify_locations(cafile=str(API_CA_FILE))
+    return context
+
+
 def api(method, path, body=None):
     if not settings.ARMADA_MAX_TOKEN:
         raise DeliveryError('failed')
     request = Request(API + path, data=json.dumps(body).encode() if body is not None else None,
                       headers={'Authorization': settings.ARMADA_MAX_TOKEN, 'Content-Type': 'application/json'}, method=method)
     try:
-        with build_opener(NoRedirect()).open(request, timeout=15) as response:
+        with build_opener(NoRedirect(), HTTPSHandler(context=api_ssl_context())).open(request, timeout=15) as response:
             result = response.read(1024 * 1024 + 1)
             if len(result) > 1024 * 1024:
                 raise DeliveryError()
