@@ -11,5 +11,6 @@ RUN --mount=type=bind,source=.,target=/source,ro \
     && chmod 0755 /usr/local/bin/docker \
     && mkdir -p deploy/beget server/projects \
     && cp /source/deploy/beget/verify_backup.py /source/deploy/beget/backup_manifest.py /source/deploy/beget/backup_counts.sql deploy/beget/ \
-    && cp /source/server/projects/disk_crypto.py server/projects/
-ENTRYPOINT ["python", "deploy/beget/verify_backup.py"]
+    && cp /source/server/projects/disk_crypto.py server/projects/ \
+    && cp /source/deploy/recovery/check.py deploy/beget/check_recovery.py
+ENTRYPOINT ["python", "deploy/beget/check_recovery.py"]
