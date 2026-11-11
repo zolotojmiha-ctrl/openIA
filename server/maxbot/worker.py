@@ -86,6 +86,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('leader'):
+        from .leadership import delivery_allowed
+        return delivery_allowed(binding.user, row.scope)
     jobs = reportable_jobs(binding.user)
     if row.job_id and not jobs.filter(pk=row.job_id).exists():
         return False

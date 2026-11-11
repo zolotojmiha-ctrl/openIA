@@ -85,6 +85,7 @@ def password_view(request):
             if not user.check_password(form.cleaned_data['old_password']):
                 form.add_error(None,'Пароль уже изменён. Войдите заново.')
                 return render(request,'accounts/password.html',{'form':form})
+            first_password = user.must_change_password
             user.set_password(form.cleaned_data['new_password1'])
             user.must_change_password=False
             user.temporary_expires_at=None
@@ -93,6 +94,10 @@ def password_view(request):
             audit(user,'password_changed',user)
         update_session_auth_hash(request,user)
         messages.success(request,'Пароль изменён. Другие сеансы завершены.')
+        from maxbot.links import supported
+        if first_password and settings.ARMADA_MAX_ENABLED and supported(user):
+            request.session['max_onboarding'] = str(user.pk)
+            return redirect('max_onboarding')
         return redirect('dashboard')
     return render(request,'accounts/password.html',{'form':form})
 

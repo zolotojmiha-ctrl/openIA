@@ -1,0 +1,17 @@
+{% extends 'accounts/base.html' %}
+{% block content %}
+<h1>Подключите MAX для работы</h1>
+<section class="panel narrow">
+  <p>Постоянный пароль сохранён.</p>
+  {% if user.is_leader %}
+    <p>Получайте уведомления об отчётах, технике и потребности в материалах. В боте будет доступно меню руководителя.</p>
+  {% else %}
+    <p>Отправляйте результаты и фотографии по своим заданиям и получайте уведомления о возврате на доработку.</p>
+  {% endif %}
+  <form method="post">{% csrf_token %}
+    <button class="button" name="action" value="connect">Подключить MAX</button>
+    <button class="button secondary" name="action" value="later">Позже</button>
+  </form>
+  <p>Подключить или отключить MAX позже можно в своём профиле.</p>
+</section>
+{% endblock %}

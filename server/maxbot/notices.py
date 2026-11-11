@@ -8,6 +8,27 @@ from repairs.models import Report
 from repairs.access import reportable_jobs
 from .links import current
 from .models import Binding, Outbox
+from accounts.models import AuditEvent
+
+
+@receiver(post_save, sender=AuditEvent, dispatch_uid='max_leader_notice')
+def leader_notice(sender, instance, created, **kwargs):
+    if (not settings.ARMADA_MAX_ENABLED or not created or
+            instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared')):
+        return
+    from .leadership import subject
+    for binding in Binding.objects.select_related('user').filter(active=True, user__leader_slot__in=[1, 2]):
+        if not current(binding):
+            continue
+        notice = subject(binding.user, instance)
+        if not notice:
+            continue
+        text, target = notice
+        Outbox.objects.get_or_create(key=f'leader:{instance.pk}:{binding.pk}', defaults={
+            'binding': binding, 'max_user': binding.max_user, 'chat': binding.chat,
+            'scope': {'leader': True, 'leader_event': instance.pk},
+            'body': {'text': text[:3500], 'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[target]]}}]},
+            'available_at': timezone.now(), 'expires': timezone.now() + timedelta(days=1)})
 
 
 @receiver(post_save, sender=Report, dispatch_uid='max_revision_notice')

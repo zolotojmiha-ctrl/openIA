@@ -13,17 +13,21 @@ def digest(code):
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+def supported(user):
+    return user.is_leader or user.role == 'foreman'
+
+
 def employee(user):
     fresh = User.objects.select_for_update().get(pk=user.pk)
-    if (not fresh.is_active or fresh.role != 'foreman' or fresh.must_change_password
+    if (not fresh.is_active or not supported(fresh) or fresh.must_change_password
             or fresh.session_version != user.session_version):
-        raise PermissionDenied('Доступ мастера изменился. Войдите в ЛК заново.')
+        raise PermissionDenied('Доступ изменился. Войдите в ЛК заново.')
     return fresh
 
 
 def current(binding):
     user = binding.user
-    return (binding.active and user.is_active and user.role == 'foreman'
+    return (binding.active and user.is_active and supported(user)
             and not user.must_change_password and user.session_version == binding.session_version)
 
 
@@ -71,10 +75,14 @@ def approve(user, key):
     LinkTicket.objects.filter(user=user, consumed=False).update(consumed=True)
     audit(user, 'employee_updated', kind='max_link_approved', binding=str(binding.pk))
     from .dialog import button
+    leader = user.is_leader
     Outbox.objects.create(key='binding:' + str(binding.pk), binding=binding,
         max_user=binding.max_user, chat=binding.chat,
-        body={'text': 'MAX подключён к вашему личному кабинету. Выберите назначенную вам работу.',
-              'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[button('Мои работы', '/работы')]]}}]},
+        body={'text': ('MAX подключён. Откройте меню руководителя.' if leader else
+                       'MAX подключён к вашему личному кабинету. Выберите назначенную вам работу.'),
+              'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[
+                  button('Меню руководителя' if leader else 'Мои работы', '/меню' if leader else '/работы')]]}}]},
+        scope={'leader': True} if leader else {},
         available_at=timezone.now(), expires=timezone.now() + timedelta(minutes=30))
     return binding
 

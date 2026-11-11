@@ -316,5 +316,6 @@ urlpatterns += [path('cabinet/settings/backups/',disk_backup_views.settings,name
 from maxbot import views as maxbot_views
 urlpatterns += [
  path('cabinet/profile/max/', maxbot_views.connection, name='max_connection'),
+ path('cabinet/profile/max/welcome/', maxbot_views.onboarding, name='max_onboarding'),
  path('integrations/max/webhook/', maxbot_views.webhook, name='max_webhook'),
 ]

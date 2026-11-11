@@ -160,6 +160,9 @@ def summarize(event, binding, draft):
 
 def handle(event, binding, stored_keys):
     user = binding.user
+    if user.is_leader:
+        from .leadership import handle
+        return handle(event, binding)
     text = event.payload.get('text', '').strip()
     photos = event.payload.get('photos', [])
     if text in ('/start', '/работы', 'Мои работы', '/мои_работы') or text.startswith('sections:') or event.payload['kind'] == 'bot_started':

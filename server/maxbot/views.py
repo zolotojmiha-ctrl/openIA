@@ -22,7 +22,7 @@ def enabled():
 
 @login_required
 def connection(request):
-    if request.user.role != 'foreman':
+    if not links.supported(request.user):
         raise PermissionDenied
     link = None
     if request.method == 'POST':
@@ -44,7 +44,8 @@ def connection(request):
                     links.approve(request.user, request.POST.get('ticket', ''))
                 except IntegrityError:
                     raise ValidationError('Этот аккаунт MAX уже привязан. Обновите страницу.')
-                messages.success(request, 'MAX подключён. Вернитесь в бот и нажмите «Мои работы».')
+                messages.success(request, 'MAX подключён. Вернитесь в бот и откройте ' +
+                                 ('«Меню руководителя».' if request.user.is_leader else '«Мои работы».'))
                 return redirect('max_connection')
             else:
                 raise ValidationError('Неизвестное действие.')
@@ -52,8 +53,22 @@ def connection(request):
             messages.error(request, ' '.join(exc.messages))
     pending = LinkTicket.objects.filter(user=request.user, consumed=False, expires__gt=timezone.now(),
                       session_version=request.user.session_version, max_user__isnull=False)
-    return render(request, 'maxbot/connection.html', {'binding': Binding.objects.filter(user=request.user,
-                  active=True).first(), 'pending': pending, 'max_link': link, 'max_enabled': enabled()})
+    binding = Binding.objects.select_related('user').filter(user=request.user, active=True).first()
+    return render(request, 'maxbot/connection.html', {'binding': binding if binding and links.current(binding) else None,
+                  'pending': pending, 'max_link': link, 'max_enabled': enabled()})
+
+
+@login_required
+def onboarding(request):
+    if (not enabled() or not links.supported(request.user) or request.user.must_change_password or
+            request.session.get('max_onboarding') != str(request.user.pk)):
+        return redirect('dashboard')
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action in ('connect', 'later'):
+            request.session.pop('max_onboarding', None)
+            return redirect('max_connection' if action == 'connect' else 'dashboard')
+    return render(request, 'maxbot/onboarding.html')
 
 
 def normalize(data):
