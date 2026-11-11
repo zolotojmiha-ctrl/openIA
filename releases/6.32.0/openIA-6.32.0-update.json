@@ -1,0 +1,38 @@
+{
+  "version": "6.32.0",
+  "source_commit": "d1e2cf0068a1332c8062a8ab55d3d402321f18db",
+  "archive": "openIA-6.32.0-update.zip",
+  "archive_sha256": "d1cc7a6a169bd9c7ea5d27eb6c063bf00716c8310f6d74577f9faf762f2c58e5",
+  "archive_files": 709,
+  "excluded_service_entries": 165,
+  "installer": "install-6.32.0.sh",
+  "installer_sha256": "156e9e19397449df6d8fd7ff2aa0b625017f0553772ceb8b3d57f401a948754a",
+  "status": "validated_from_6.31.0",
+  "ready_for_install": true,
+  "published": true,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": true,
+  "checksums": "SHA256SUMS-6.32.0",
+  "signature": "SHA256SUMS-6.32.0.sig",
+  "supported_upgrade_from": [
+    "6.31.0"
+  ],
+  "self_reinstall_checked": true,
+  "validation": {
+    "full_application_tests": 1143,
+    "full_run_test_selection_failure_resolved": true,
+    "application_runtime_unchanged_since_full_run": true,
+    "max_accounts_postgres_tests": 132,
+    "installer_cases": 26,
+    "real_upgrade_restore": true,
+    "external_calls_in_test": false
+  },
+  "readme_md_sha256": "31615667c5ba12d7ca48ab892dd52002ae558815d64441e2b885a26c2608f29f",
+  "validation_md_sha256": "b33c4e4c14fbb6e0d8701dd9ef28c73946f5b9e80c1d5c8a671ea1a25ebcdfca",
+  "validation_tools_zip_sha256": "a179c949a94c041920999401d140c546a2c4fab019b910821c03300c3a98e347",
+  "source_files_json_sha256": "27a5f208b21ff1ee2eb48da19f39c18bfe7bd74e5061a3badbe1baeb96eefa2c",
+  "signing_public_key_sha256": "e2f6b26419ccb10faa61baf1cfb5a0ea53f499da8803f23f0dd0df3f420aa3e4"
+}
