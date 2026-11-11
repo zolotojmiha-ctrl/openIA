@@ -60,7 +60,7 @@ save()
 class InstallerTests(unittest.TestCase):
  def run_case(self,case,active_max=False):
   with tempfile.TemporaryDirectory(prefix='armada-safety-') as td:
-   root=Path(td);app=root/'openIA-feature-accounts-foundation';d=app/'deploy/beget';d.mkdir(parents=True)
+   root=Path(td);app=root/('armada' if case=='directroot' else 'unexpected-root' if case=='badroot' else 'openIA-feature-accounts-foundation');d=app/'deploy/beget';d.mkdir(parents=True)
    for n in ('backup.sh','compose.yml','Caddyfile'):shutil.copy2(REPO/'deploy/beget'/n,d/n)
    (app/'index.html').write_text('OLD');(app/'obsolete.py').write_text('OLD CODE')
    (d/'.env').write_text('SYNTHETIC=preserve\n');(d/'.env').chmod(0o640)
@@ -116,14 +116,14 @@ with zipfile.ZipFile(sys.argv[2]) as z:
    result=subprocess.run(['bash',str(installer)],env=env,capture_output=True,text=True,timeout=40)
    if lock:lock.close()
    s=json.loads((root/'state.json').read_text())
-   if case in ('success','maxon','legacy'):
+   if case in ('success','maxon','legacy','directroot'):
     self.assertEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
     self.assertEqual((app/'index.html').read_text(),'NEW')
     self.assertFalse((app/'obsolete.py').exists())
     self.assertEqual(set(s['running']),set(original));self.assertTrue(s['migration_attempted']);self.assertTrue(s['same_lock_inode'])
    else:
     self.assertNotEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
-    if case in ('buildfail','prefail','backupfail','badmanifest','badsignature','tamperedarchive','missingtrust','notvalidated','traversal','symlink','duplicate','wrongversion','lowspace','updatelock','backuplock','diskworkerlock','unsupported'):
+    if case in ('buildfail','prefail','backupfail','badmanifest','badsignature','tamperedarchive','missingtrust','notvalidated','traversal','symlink','duplicate','wrongversion','lowspace','updatelock','backuplock','diskworkerlock','unsupported','badroot'):
      self.assertEqual((app/'index.html').read_text(),'OLD');self.assertEqual(set(s['running']),set(original))
      self.assertFalse(s['migration_attempted'])
      if case=='prefail':
@@ -152,6 +152,8 @@ with zipfile.ZipFile(sys.argv[2]) as z:
  def test_rejects_signed_but_not_validated_release(self):self.run_case('notvalidated')
  def test_legacy_compose_without_max_service(self):self.run_case('legacy')
  def test_success_without_max(self):self.run_case('success')
+ def test_direct_armada_installation_directory(self):self.run_case('directroot',True)
+ def test_rejects_unexpected_installation_directory(self):self.run_case('badroot')
  def test_success_with_previously_active_max(self):self.run_case('maxon',True)
  def test_build_failure_does_not_stop_old_version(self):self.run_case('buildfail')
  def test_backup_failure_restarts_original_services(self):self.run_case('backupfail',True)
