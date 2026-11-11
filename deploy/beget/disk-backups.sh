@@ -44,6 +44,8 @@ if [[ "$archive" == *.encrypted ]]; then
 else
   key_mount=()
 fi
-"${compose[@]}" run --rm --no-deps -T --user 0:0 "${key_mount[@]}"   --volume "$archive:/backup/source.tar.gz:ro"   --volume "$work:/backup/work"   --entrypoint python web server/manage.py disk_backup upload   --job "$job" --source /backup/source.tar.gz --work /backup/work "${encrypted_args[@]}"
+# The root uploader reads UID-10001 mode-0600 configuration while web drops ALL caps.
+# Grant DAC_OVERRIDE only to this short-lived backup process, never to web.
+"${compose[@]}" run --rm --no-deps -T --cap-add DAC_OVERRIDE --user 0:0 "${key_mount[@]}"   --volume "$archive:/backup/source.tar.gz:ro"   --volume "$work:/backup/work"   --entrypoint python web server/manage.py disk_backup upload   --job "$job" --source /backup/source.tar.gz --work /backup/work "${encrypted_args[@]}"
 finished=1
 printf 'Резервная копия создана, зашифрована, загружена и проверена.\n'
