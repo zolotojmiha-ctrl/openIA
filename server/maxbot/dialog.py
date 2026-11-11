@@ -107,19 +107,24 @@ def prompt(event, binding, draft):
         return
     name = draft.fields[draft.step]
     field = form.fields[name]
+    label = str(field.label)
+    if name.startswith('serial_'):
+        label = 'Введите заводской номер ремонтной конструкции\n' + label.rsplit(' — ', 1)[0]
+    elif name == 'manual_serials':
+        label = 'Введите заводской номер ремонтной конструкции'
     choices = list(field.choices) if hasattr(field, 'choices') else []
     buttons = [button(str(label), f'answer:{draft.pk}:{draft.step}:{value}') for value, label in choices if value != '']
     initial = draft.raw.get(name, form.initial.get(name, field.initial))
     if initial is not None and not choices and str(initial):
-        label = report_date(initial).strftime('%d.%m.%y') if isinstance(field, forms.DateField) else initial
-        buttons.append(button(f'Оставить: {label}', f'default:{draft.pk}:{draft.step}'))
+        initial_label = report_date(initial).strftime('%d.%m.%y') if isinstance(field, forms.DateField) else initial
+        buttons.append(button(f'Оставить: {initial_label}', f'default:{draft.pk}:{draft.step}'))
     if not field.required and name != 'note':
         buttons.append(button('Пропустить', f'skip:{draft.pk}:{draft.step}'))
-    queue(event, f'{job_title(draft.job)}\n\n{draft.step + 1}/{len(draft.fields)}. {field.label}'
+    queue(event, f'{job_title(draft.job)}\n\n{draft.step + 1}/{len(draft.fields)}. {label}'
           + ('\nВставьте координаты из Google карт или Яндекс карт.\nОтправьте координаты обычным сообщением.'
              if name == 'coordinates' else '\n' + str(field.help_text) if field.help_text else '')
           + ('\nВведите дату в формате ДД.ММ.ГГ.' if isinstance(field, forms.DateField) else '')
-          + ('\nВведите заводской номер установленной муфты с маркировки или паспорта. Отправьте его обычным сообщением.'
+          + ('\nНомер указан на маркировке или в паспорте. Отправьте его обычным сообщением.'
              if name.startswith('serial_') or name == 'manual_serials' else '')
           + ('\nУточните выбранную причину невыполнения работы.' if name == 'note' else '')
           + '\nДля отмены: /отмена', buttons, binding=binding, job=draft.job)

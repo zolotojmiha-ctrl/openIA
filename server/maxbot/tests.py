@@ -383,6 +383,17 @@ class MaxTests(TestCase):
         self.assertEqual(str(report.length_m), '1.500')
         self.assertEqual(report.context['installation']['pieces'][0]['serial'], 'ТЕСТ-П2-1500')
 
+    def test_manual_composite_p1_preserves_each_number_and_length(self):
+        self.job.method = 'p1'; self.job.length_m = '2.500'; self.job.wall_mm = 8
+        self.job.save()
+        draft = self.fill(self.draft(), {'length_m': '2.500', 'composition': '1.0+1.5',
+                                        'manual_serials': 'ТЕСТ-П1-001\nТЕСТ-П1-002'})
+        self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
+        report = Report.objects.get()
+        self.assertEqual(report.context['installation']['pieces'], [
+            {'serial': 'ТЕСТ-П1-001', 'length_mm': 1000},
+            {'serial': 'ТЕСТ-П1-002', 'length_mm': 1500}])
+
     def test_delivery_rechecks_access_after_assignment_revoked(self):
         draft = self.reviewed()
         row = Outbox.objects.filter(job=self.job).order_by('-created_at').first()
@@ -463,7 +474,7 @@ class MaxTests(TestCase):
         self.assertIn(serial_field, draft.fields)
         self.assertNotIn('length_m', draft.fields)
         self.fill(draft, {serial_field: 'ТЕСТ-ЗАВ-991'})
-        self.assertTrue(any('Введите заводской номер установленной муфты с маркировки или паспорта.'
+        self.assertTrue(any('Введите заводской номер ремонтной конструкции'
                             in row.body.get('text', '') for row in Outbox.objects.all()))
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
         self.assertEqual(Report.objects.count(), 1)
@@ -473,6 +484,32 @@ class MaxTests(TestCase):
         count = StockMovement.objects.count()
         self.event('confirm:' + str(draft.pk))
         self.assertEqual(StockMovement.objects.count(), count)
+
+    def test_reserved_composite_p1_asks_for_each_piece_number(self):
+        from projects import stock_planning as planning
+        from projects.models import StockItem
+        self.job.method = 'p1'; self.job.length_m = '2.500'; self.job.wall_mm = 8
+        self.job.composition = '1.0+1.5'
+        self.job.save()
+        warehouse = fixture.StockTests.wh(self)
+        values = {}
+        expected = {}
+        for length in (1000, 1500):
+            planning.receive(self.leader, fixture.StockTests.data(self, kind='coupling', unit='pcs', method='p1',
+                length_mm=length, wall_mm=8), warehouse, 1, self.today, 'ТЕСТ поступление', uuid.uuid4())
+            item = StockItem.objects.get(length_mm=length)
+            item = planning.reserve(self.leader, item.pk, item.version, self.job.pk)
+            number = f'ТЕСТ-П1-{length}'
+            values['serial_' + item.coupling_id.hex] = number
+            expected[str(item.coupling_id)] = number
+        self.job.refresh_from_db()
+        draft = self.draft()
+        self.assertEqual(set(name for name in draft.fields if name.startswith('serial_')), set(values))
+        self.fill(draft, values)
+        self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
+        report = Report.objects.get()
+        self.assertEqual(report.context['installation']['serials'], expected)
+        self.assertEqual(str(report.length_m), '2.500')
 
     def test_p1_actual_cleaning_length_is_preserved(self):
         self.section.diameter_mm = 720; self.section.save()
