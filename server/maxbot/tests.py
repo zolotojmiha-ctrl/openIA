@@ -167,6 +167,89 @@ class MaxTests(TestCase):
         self.job.refresh_from_db()
         self.assertEqual(self.job.problem, 'access'); self.assertEqual(self.job.state, 'progress')
 
+    def test_max_date_prompt_default_and_summary_use_short_date(self):
+        draft = self.draft()
+        event = self.event('/неизвестно')
+        # An ordinary message on the date step produces a validation error.
+        dialog.prompt(event, self.binding, draft)
+        body = Outbox.objects.filter(key=f'in:{event.pk}:reply').get().body
+        self.assertIn('ДД.ММ.ГГ', body['text'])
+        self.assertIn(timezone.localdate().strftime('%d.%m.%y'),
+                      body['attachments'][0]['payload']['buttons'][0][0]['text'])
+        self.fill(draft, {'performed_date': timezone.localdate().strftime('%d.%m.%y')})
+        review_event = self.event('review:' + str(draft.pk))
+        draft.refresh_from_db()
+        self.assertEqual(draft.raw['performed_date'], timezone.localdate().isoformat())
+        self.assertEqual(draft.state, 'confirm')
+        self.assertIn('Дата: ' + timezone.localdate().strftime('%d.%m.%y'),
+                      Outbox.objects.get(key=f'in:{review_event.pk}:reply').body['text'])
+        self.event('confirm:' + str(draft.pk))
+        self.assertEqual(Report.objects.get().performed_date, timezone.localdate())
+
+    def test_invalid_dates_do_not_advance_and_century_is_explicit(self):
+        draft = self.draft()
+        for value in ('31.02.26', '11.11.2026', '01.01.99'):
+            self.event(value)
+            draft.refresh_from_db()
+            self.assertEqual(draft.step, 0)
+        self.assertEqual(dialog.report_date('29.02.24').isoformat(), '2024-02-29')
+        self.assertEqual(dialog.report_date('01.01.69').year, 2069)
+
+    def test_result_skips_note_and_coordinates_explain_message_input(self):
+        draft = self.draft()
+        self.assertNotIn('note', draft.fields)
+        self.event(timezone.localdate().strftime('%d.%m.%y'))
+        draft.refresh_from_db()
+        self.assertEqual(draft.fields[draft.step], 'coordinates')
+        body = Outbox.objects.latest('pk').body
+        self.assertIn('Вставьте координаты из Google карт или Яндекс карт.', body['text'])
+        self.assertIn('обычным сообщением', body['text'])
+        self.assertNotIn('56.123456', body['text'])
+        self.assertNotIn('attachments', body)
+        self.event('55.123456, 73.123456')
+        draft.refresh_from_db()
+        self.assertEqual(draft.raw['coordinates'], '55.123456, 73.123456')
+        self.assertTrue(links.current(self.binding))
+
+    def test_problem_note_only_for_reasons_requiring_details(self):
+        for reason in ('access', 'other', 'material_other', 'existing_coupling', 'oversize_p1'):
+            draft = self.draft(action='unrepaired')
+            self.event(timezone.localdate().strftime('%d.%m.%y'))
+            self.event(reason)
+            draft.refresh_from_db()
+            if reason == 'access':
+                self.assertNotIn('note', draft.fields)
+                continue
+            self.assertEqual(draft.fields[draft.step], 'note')
+            step = draft.step
+            self.event(' ')
+            draft.refresh_from_db()
+            self.assertEqual(draft.step, step)
+            self.event('ТЕСТ уточнение причины')
+            draft.refresh_from_db()
+            self.assertEqual(draft.raw['note'], 'ТЕСТ уточнение причины')
+            self.assertEqual(draft.fields[draft.step], 'coordinates')
+
+    def test_problem_details_can_be_reviewed_and_removed_when_reason_changes(self):
+        draft = self.draft(action='unrepaired')
+        self.event(timezone.localdate().strftime('%d.%m.%y'))
+        self.event('other')
+        self.event('ТЕСТ причина')
+        self.event('55.123456, 73.123456')
+        self.event('review:' + str(draft.pk))
+        draft.refresh_from_db()
+        self.assertEqual(draft.state, 'confirm')
+        self.event('edit:' + str(draft.pk))
+        self.event(timezone.localdate().strftime('%d.%m.%y'))
+        self.event('access')
+        draft.refresh_from_db()
+        self.assertNotIn('note', draft.fields)
+        self.assertNotIn('note', draft.raw)
+        self.event('55.123456, 73.123456')
+        self.event('review:' + str(draft.pk))
+        self.event('confirm:' + str(draft.pk))
+        self.assertEqual(Report.objects.get().problem, 'access')
+
     def test_confirm_requires_summary_and_wrong_chat_cannot_submit(self):
         draft = self.draft()
         self.event('confirm:' + str(draft.pk))
@@ -380,6 +463,8 @@ class MaxTests(TestCase):
         self.assertIn(serial_field, draft.fields)
         self.assertNotIn('length_m', draft.fields)
         self.fill(draft, {serial_field: 'ТЕСТ-ЗАВ-991'})
+        self.assertTrue(any('Введите заводской номер установленной муфты с маркировки или паспорта.'
+                            in row.body.get('text', '') for row in Outbox.objects.all()))
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
         self.assertEqual(Report.objects.count(), 1)
         item.refresh_from_db()

@@ -1,6 +1,7 @@
 """Structured master conversation. Every report is validated by ReportForm again."""
+import re
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from django import forms
 from django.db import transaction
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -42,7 +43,24 @@ def form_for(draft, user, files=None):
 
 
 def fields_for(form):
-    return [name for name, field in form.fields.items() if not field.widget.is_hidden and name != 'files']
+    needs_note = (form.simple and form.action == 'problem' and
+                  form.data.get('problem') in ('material_other', 'other', 'existing_coupling', 'oversize_p1'))
+    return [name for name, field in form.fields.items()
+            if not field.widget.is_hidden and name != 'files' and (name != 'note' or needs_note)]
+
+
+def report_date(value):
+    """Normalize MAX input; retain ISO for existing draft/default values."""
+    value = str(value).strip()
+    try:
+        if re.fullmatch(r'\d{2}\.\d{2}\.\d{2}', value):
+            day, month, year = map(int, value.split('.'))
+            return date(2000 + year, month, day)
+        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+            return date.fromisoformat(value)
+    except ValueError:
+        pass
+    raise ValidationError('Введите существующую дату в формате ДД.ММ.ГГ, например 11.11.26.')
 
 
 def start(binding, job, action):
@@ -93,12 +111,17 @@ def prompt(event, binding, draft):
     buttons = [button(str(label), f'answer:{draft.pk}:{draft.step}:{value}') for value, label in choices if value != '']
     initial = draft.raw.get(name, form.initial.get(name, field.initial))
     if initial is not None and not choices and str(initial):
-        buttons.append(button(f'Оставить: {initial}', f'default:{draft.pk}:{draft.step}'))
-    if not field.required:
+        label = report_date(initial).strftime('%d.%m.%y') if isinstance(field, forms.DateField) else initial
+        buttons.append(button(f'Оставить: {label}', f'default:{draft.pk}:{draft.step}'))
+    if not field.required and name != 'note':
         buttons.append(button('Пропустить', f'skip:{draft.pk}:{draft.step}'))
     queue(event, f'{job_title(draft.job)}\n\n{draft.step + 1}/{len(draft.fields)}. {field.label}'
-          + ('\n' + str(field.help_text) if field.help_text else '')
-          + ('\nВведите дату в формате ГГГГ-ММ-ДД.' if isinstance(field, forms.DateField) else '')
+          + ('\nВставьте координаты из Google карт или Яндекс карт.\nОтправьте координаты обычным сообщением.'
+             if name == 'coordinates' else '\n' + str(field.help_text) if field.help_text else '')
+          + ('\nВведите дату в формате ДД.ММ.ГГ.' if isinstance(field, forms.DateField) else '')
+          + ('\nВведите заводской номер установленной муфты с маркировки или паспорта. Отправьте его обычным сообщением.'
+             if name.startswith('serial_') or name == 'manual_serials' else '')
+          + ('\nУточните выбранную причину невыполнения работы.' if name == 'note' else '')
           + '\nДля отмены: /отмена', buttons, binding=binding, job=draft.job)
 
 
@@ -108,6 +131,8 @@ def summarize(event, binding, draft):
     for name in draft.fields:
         field = form.fields[name]
         value = draft.raw.get(name, '')
+        if value and isinstance(field, forms.DateField):
+            value = report_date(value).strftime('%d.%m.%y')
         if hasattr(field, 'choices'):
             value = dict(field.choices).get(value, value)
         lines.append(f'{field.label}: {value or "—"}')
@@ -246,10 +271,21 @@ def handle(event, binding, stored_keys):
             if int(parts[2]) != draft.step:
                 raise ValidationError('Это кнопка от предыдущего вопроса. Ответьте на текущий вопрос.')
             value = ':'.join(parts[3:]) if action == 'answer' else '' if action == 'skip' else str(draft.raw.get(field_name, form.initial.get(field_name, field.initial)))
+        if isinstance(field, forms.DateField):
+            parsed = report_date(value)
+            if parsed > timezone.localdate():
+                raise ValidationError('Фактическая дата не может быть в будущем.')
+            value = parsed.isoformat()
+        if field_name == 'note' and not value.strip():
+            raise ValidationError('Уточните выбранную причину невыполнения работы.')
         field.clean(value)
         draft.raw[field_name] = value
+        if field_name == 'problem':
+            draft.fields = fields_for(form_for(draft, user))
+            if 'note' not in draft.fields:
+                draft.raw.pop('note', None)
         draft.step += 1
-        draft.save(update_fields=['raw', 'step'])
+        draft.save(update_fields=['raw', 'step', 'fields'])
         prompt(event, binding, draft)
     else:
         queue(event, 'Используйте кнопки под текущим вопросом. Отмена: /отмена. Список работ: /работы', binding=binding, job=draft.job)
