@@ -40,7 +40,8 @@ class StockOversizeTests(TestCase):
         return StockItem.objects.exclude(pk__in=previous).get()
 
     def rows(self):
-        return self.client.get(reverse('stock_coverage')).context['rows']
+        from .repair_materials import all_demand
+        return [{**line,'free':line['need']-line['reserved']-line['missing']} for record in all_demand(self.leader) for line in record['couplings']]
 
     def result(self, job, pieces, outcome='complete', action='result'):
         job.refresh_from_db()

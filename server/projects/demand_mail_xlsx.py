@@ -10,7 +10,7 @@ def workbook(data):
     views=E.SubElement(sheet,f'{{{NS}}}sheetViews');view=E.SubElement(views,f'{{{NS}}}sheetView',workbookViewId='0',showGridLines='0')
     E.SubElement(view,f'{{{NS}}}pane',ySplit='5',topLeftCell='A6',activePane='bottomLeft',state='frozen')
     cols=E.SubElement(sheet,f'{{{NS}}}cols')
-    for n,width in enumerate([6,18,25,24,18,18,18,18,18,32],1):E.SubElement(cols,f'{{{NS}}}col',min=str(n),max=str(n),width=str(width),customWidth='1')
+    for n,width in enumerate([6,18,25,24,18,18,18,18,18],1):E.SubElement(cols,f'{{{NS}}}col',min=str(n),max=str(n),width=str(width),customWidth='1')
     rows=E.SubElement(sheet,f'{{{NS}}}sheetData');merges=[]
     def row(values,style=0,height=28,merge=False):
         n=len(rows)+1;r=E.SubElement(rows,f'{{{NS}}}row',r=str(n),ht=str(height),customHeight='1')
@@ -19,30 +19,30 @@ def workbook(data):
             if isinstance(value,int):E.SubElement(cell,f'{{{NS}}}v').text=str(value)
             else:
                 cell.set('t','inlineStr');E.SubElement(E.SubElement(cell,f'{{{NS}}}is'),f'{{{NS}}}t').text=str(value)
-        if merge:merges.append(f'A{n}:J{n}')
+        if merge:merges.append(f'A{n}:I{n}')
     row(['Потребность в ремонтных конструкциях'],1,38,True)
     row(['для ООО «Армада-Сибирь»'],0,23,True)
-    row(['По состоянию на '+data['date']+' · на оставшиеся работы'],5,23,True)
+    row(['По состоянию на '+data['date']+' · недостающие муфты'],5,23,True)
     row([],0,10)
-    row(['№','Тип муфты','Диаметр','Длина, мм','Стенка, мм','Количество, шт.'],2,32)
+    row(['№','Тип муфты','Диаметр','Длина, мм','Стенка, мм','Нужно, шт.'],2,32)
     scope=None
     for n,r in enumerate(data['rows'],1):
         key=(r['object_id'],r['section_id'])
         if key!=scope:
             row([r['object']+' · '+r['section']],3,30,True);scope=key
         row([n,r['method'],r['dn'],int(r['length']),r['wall'],int(r['quantity'])])
-    if not data['rows']:row(['Потребности на оставшиеся работы нет.'],0,28,True)
+    if not data['rows']:row(['Недостающих муфт нет.'],0,28,True)
     if data.get('details'):
         row([],0,10)
         row(['Подробная потребность по километрам'],1,38,True)
-        row(['Общая конструкция нескольких дефектов учтена один раз. Только оставшиеся работы.'],5,32,True)
-        row(['№','км','№ дефектов','№ секций трубы','Тип муфты','Диаметр','Длина, мм','Стенка, мм','Количество, шт.','Состояние работы'],2,38)
+        row(['Только недостающие муфты. Общая конструкция учитывается один раз.'],5,32,True)
+        row(['№','км','№ дефектов','№ секций трубы','Тип муфты','Диаметр','Длина, мм','Стенка, мм','Нужно, шт.'],2,38)
         scope=None
         for n,r in enumerate(data['details'],1):
             key=(r['object_id'],r['section_id'])
             if key!=scope:
                 row([r['object']+' · '+r['section']+' · '+r['pipeline']],3,32,True);scope=key
-            row([n,r['kilometres'],r['defect_numbers'],r['pipe_sections'],r['method'],r['dn'],int(r['length']),r['wall'],int(r['quantity']),r['state']],height=max(32,18*(r['kilometres'].count(';')+1)))
+            row([n,r['kilometres'],r['defect_numbers'],r['pipe_sections'],r['method'],r['dn'],int(r['length']),r['wall'],int(r['quantity'])],height=max(32,18*(r['kilometres'].count(';')+1)))
     if merges:
         merge=E.SubElement(sheet,f'{{{NS}}}mergeCells',count=str(len(merges)))
         for ref in merges:E.SubElement(merge,f'{{{NS}}}mergeCell',ref=ref)

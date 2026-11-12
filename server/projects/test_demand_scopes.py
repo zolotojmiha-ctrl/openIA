@@ -28,14 +28,14 @@ class DemandScopeTests(TestCase):
         for route,key in [('stock_coverage','rows'),('repair_materials','grouped')]:
             response=self.client.get(reverse(route))
             rows=[row for row in response.context[key] if route=='stock_coverage' or row['unit']=='шт.']
-            self.assertEqual(len(rows),2)
-            self.assertEqual({row['section'] for row in rows},{self.section.name,other.name})
-            self.assertEqual(sum(row['need'] for row in rows),2)
+            self.assertEqual(len(rows),1)
+            self.assertTrue({row['section'] for row in rows}.issubset({self.section.name,other.name}))
             self.assertEqual(sum(row['missing'] for row in rows),1)
-            self.assertContains(response,'Участок: '+other.name)
-        for route,sheet,col,query in [('stock_coverage','Муфты',10,'?export=xlsx'),('repair_materials_export','Потребность',7,'')]:
+            self.assertEqual(sum(row['missing'] for row in rows),1)
+            self.assertContains(response,'Участок: '+rows[0]['section'])
+        for route,sheet,col,query in [('stock_coverage','Муфты',7,'?export=xlsx'),('repair_materials_export','Потребность',5,'')]:
             content=self.client.get(reverse(route)+query).content
             cells=read_book(SimpleUploadedFile('report.xlsx',content),sheet_name=sheet)['cells']
             self.assertEqual(cells[(1,col)],'Участок')
-            self.assertTrue({self.section.name,other.name}.issubset({v for (r,c),v in cells.items() if c==col and r>1}))
+            self.assertEqual(len([v for (r,c),v in cells.items() if c==col and r>1]),1)
         self.assertEqual(StockMovement.objects.count(),movements)

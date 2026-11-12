@@ -29,24 +29,18 @@ class DemandMailTests(TestCase):
         self.config.project_objects.add(self.obj)
         self.client.force_login(self.leader)
 
-    def test_customer_snapshot_has_demand_even_when_stock_fully_covers_it(self):
+    def test_customer_snapshot_excludes_fully_covered_work(self):
         wh=self.wh()
         item=self.item(kind='coupling',unit='pcs',method='p2',diameter_mm=720,length_mm=1000,wall_mm=8)
         self.move(item,dst=wh,q=10)
         data=demand_mail.snapshot(self.config,self.leader)
-        self.assertEqual(data['rows'][0]['quantity'],1)
-        self.assertEqual(data['rows'][0]['dn'],'DN 700')
-        self.assertFalse({'reserved','free','missing','stock','warehouse'} & set(data['rows'][0]))
+        self.assertEqual(data['rows'],[]);self.assertEqual(data['details'],[])
         payload=workbook(data)
         with zipfile.ZipFile(io.BytesIO(payload)) as z:
             content=''.join(z.read(name).decode() for name in z.namelist() if name.endswith('.xml'))
-            for forbidden in ['Обеспечено','Не хватает','На складе','Закреплено','Свободно']:self.assertNotIn(forbidden,content)
+            from xml.etree import ElementTree as ET
+            self.assertIn('Недостающих муфт нет.',''.join(ET.fromstring(z.read('xl/worksheets/sheet1.xml')).itertext()))
             self.assertEqual(len([name for name in z.namelist() if 'worksheets/sheet' in name]),1)
-            self.assertIn('DN 700',content)
-        from repairs.importer import read_book
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        cells=read_book(SimpleUploadedFile('demand.xlsx',payload),sheet_name='Потребность')['cells']
-        self.assertEqual(cells[(7,6)],'1')
         self.assertEqual(StockMovement.objects.count(),1)
 
     def test_manual_send_works_when_schedule_off_and_is_idempotent(self):
@@ -203,19 +197,21 @@ class DemandMailTests(TestCase):
             groups=response.context['rows' if route=='stock_coverage' else 'grouped']
             group=next(r for r in groups if r['need']==2)
             self.assertEqual(sum(p['quantity'] for p in group['placements']),2)
-            self.assertContains(response,'Показать по километрам')
+            self.assertContains(response,'Показать по км')
             self.assertContains(response,'TEST-A; TEST-B')
 
-    def test_details_include_covered_work_and_km_change_invalidates_preview(self):
+    def test_details_exclude_covered_work_and_km_change_invalidates_preview(self):
         wh=self.wh();item=self.item(kind='coupling',unit='pcs',method='p2',diameter_mm=720,length_mm=1000,wall_mm=8)
         self.move(item,dst=wh,q=10)
         data=demand_mail.snapshot(self.config,self.leader)
-        self.assertEqual(data['details'][0]['quantity'],1)
+        self.assertEqual(data['details'],[])
         for route in ('stock_coverage','repair_materials'):
             response=self.client.get(reverse(route))
-            group=next(r for r in response.context['rows' if route=='stock_coverage' else 'grouped'] if r['need']==1)
-            self.assertEqual(group['missing'],0)
-            self.assertEqual(len(group['placements']),1)
+            groups=response.context['rows' if route=='stock_coverage' else 'grouped']
+            self.assertFalse([r for r in groups if r.get('unit','шт.')=='шт.'])
+        self.move(item,'loss',10,src=wh)
+        data=demand_mail.snapshot(self.config,self.leader)
+        self.assertEqual(data['details'][0]['quantity'],1)
         d=self.job.defects.get();d.kilometre='2.345';d.save()
         with self.assertRaises(ValidationError):demand_mail.enqueue(self.leader,self.config.pk,uuid.uuid4(),data['digest'])
         self.assertFalse(Letter.objects.exists())
@@ -249,3 +245,31 @@ class DemandMailTests(TestCase):
         self.assertEqual([(r['length'],r['quantity']) for r in data['details']],[(1500,1)])
         self.assertEqual(data['details'][0]['state'],self.job.get_state_display())
         self.assertNotIn('TEST-INSTALLED',str(data))
+
+
+    def test_only_uncovered_job_is_in_customer_demand_and_both_site_reports(self):
+        from repairs.models import Coupling,CouplingUse,Report
+        reserved=self.job;installed=self.make_job();uncovered=self.make_job()
+        item=self.item(kind='coupling',unit='pcs',method='p2',diameter_mm=720,length_mm=1000,wall_mm=8,reserved_job=reserved)
+        self.move(item,dst=self.wh(),q=1)
+        item.reserved_job=reserved;item.save(update_fields=['reserved_job'])
+        installed.state='partial';installed.save()
+        piece=Coupling.objects.create(project_object=self.obj,method='p2',length_mm=1000,wall_mm=8,serial='TEST-MOUNTED')
+        report=Report.objects.create(job=installed,author=self.leader,kind='partial',performed_date=self.today)
+        CouplingUse.objects.create(job=installed,coupling=piece,report=report)
+        data=demand_mail.snapshot(self.config,self.leader)
+        self.assertEqual(sum(r['quantity'] for r in data['rows']),1)
+        self.assertEqual([r['job_id'] for r in data['details']],[str(uncovered.pk)])
+        for route,key in [('stock_coverage','rows'),('repair_materials','grouped')]:
+            response=self.client.get(reverse(route))
+            rows=[r for r in response.context[key] if r.get('unit','шт.')=='шт.']
+            self.assertEqual([p['job_id'] for r in rows for p in r['placements']],[str(uncovered.pk)])
+            self.assertEqual(sum(r['missing'] for r in rows),1)
+
+
+    def test_old_queued_total_demand_is_not_sent_after_shortage_rule_change(self):
+        run=demand_mail.enqueue(self.leader,self.config.pk,uuid.uuid4())
+        run.snapshot.pop('basis');run.save(update_fields=['snapshot'])
+        with patch('postoffice.transport.deliver') as deliver:
+            self.assertTrue(process_one());deliver.assert_not_called()
+        self.assertEqual(Letter.objects.filter(state='failed').count(),1)

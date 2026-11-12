@@ -1,5 +1,6 @@
 import json,os,secrets,subprocess
 from django.conf import settings
+from django.urls import reverse
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from . import test_stock as fixture
 from .models import LegalEntity,COMPANY_TAX_ID,DemandMailing
@@ -16,7 +17,7 @@ class DemandMailBrowser(StaticLiveServerTestCase):
         box=Mailbox.objects.create(address='noreply@example.org',state='active',created_by=self.leader)
         config=DemandMailing.objects.create(name='ТЕСТ заказчик',owner=self.leader,mailbox=box,recipients='customer@example.org')
         config.project_objects.add(self.obj)
-        env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_TEST_PASSWORD':password,'ARMADA_DEMAND_CONFIG':str(config.pk)}
+        env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_TEST_PASSWORD':password,'ARMADA_DEMAND_CONFIG':str(config.pk),'ARMADA_MATERIALS_PATH':reverse('repair_materials')}
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/demand-mail-browser.cjs')],env=env,capture_output=True,text=True,timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual(Letter.objects.count(),1)

@@ -52,9 +52,10 @@ def demand_report(user):
         job=row['job'];label='; '.join('км '+d.km+' № '+d.number for d in job.active_defects)
         if row['issues']:issues.append({'job':job,'label':label,'reason':friendly_issue(job,row['issues']),'missing_profile':any('площадь покрытия' in s for s in row['issues']),'missing_p1_norm':any('В таблице ПТО нет' in s for s in row['issues'])})
         for n in row['couplings']+row['materials']:
+            if not n['missing']:continue
             key=(str(job.section.project_object_id),str(job.section_id),n['name'],n['unit']);r=grouped.setdefault(key,{'scope_id':(str(job.section.project_object_id),str(job.section_id)),'object':job.section.project_object.name,'section':job.section.name,'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[],'placements':[]})
             r['need']+=Decimal(n['need']);r['missing']+=Decimal(n['missing'])
-            r['placements'].append({**location(job),'job':job,'quantity':n['need']})
+            r['placements'].append({**location(job),'job':job,'quantity':n['missing']})
             if n['missing']:r['jobs'].append({'job':job,'label':label,'quantity':n['missing']})
     for group in grouped.values():group['placements'].sort(key=order)
     return rows,sorted(grouped.values(),key=lambda n:(n['object'],n['section'],n['scope_id'],n['name'])),issues
@@ -123,12 +124,13 @@ def export(request):
     for record in records:
         job=record['job'];label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
         for n in record['couplings']+record['materials']:
-            details.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Потребность',n['name'],n['unit'],Decimal(n['need']),Decimal(n['missing']),''])
+            if not n['missing']:continue
+            details.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Потребность',n['name'],n['unit'],Decimal(n['missing']),Decimal(n['missing']),''])
     for m in consumption_movements(allowed):
         job=m.job or m.reverses.job;label='; '.join('км '+x.km+' № '+x.number for x in job.active_defects)
         actual.append([job.contract.number if job.contract else '',job.section.project_object.name,job.section.pipeline,label,str(job.pk),'Списание' if m.kind=='consume' else 'Отмена',m.item.name,m.item.get_unit_display(),-m.quantity if m.kind=='reversal' else m.quantity,'',m.note])
     sheets=[
-        ('Потребность',['Материал / конструкция','Единица','Нужно','Обеспечено','Не хватает','Объект','Участок'],[[n['name'],n['unit'],n['need'],n['need']-n['missing'],n['missing'],n['object'],n['section']] for n in grouped]),
+        ('Потребность',['Материал / конструкция','Единица','Нужно','Объект','Участок'],[[n['name'],n['unit'],n['missing'],n['object'],n['section']] for n in grouped]),
         ('По работам',headers,details),
         ('Нужно уточнить',['Объект','Работы','Причина'],[[r['job'].section.project_object.name,r['label'],r['reason']] for r in issues]),
         ('Расход',headers,actual),

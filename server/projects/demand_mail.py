@@ -46,18 +46,21 @@ def snapshot(config,user,now=None):
         if record['coupling_issues']:
             raise ValidationError('Потребность неполная: уточните тип, диаметр, длину или стенку оставшихся конструкций.')
         for row in record['couplings']:
+            if not row['missing']:continue
             if row['diameter'] not in OD_TO_DN:raise ValidationError('Уточните номинальный диаметр оставшихся конструкций перед отправкой заказчику.')
             key=(str(job.section.project_object_id),str(job.section_id),row['method'],row['diameter'],row['length'],str(row['wall']))
             line=grouped.setdefault(key,{'object':job.section.project_object.name,'section':job.section.name,
                 'object_id':key[0],'section_id':key[1],'method':job.get_method_display(),
                 'dn':label(row['diameter']),'length':row['length'],'wall':str(row['wall']),'quantity':0})
-            line['quantity']+=int(row['need'])
-            details.append({**line,**location(job),'quantity':int(row['need'])})
+            line['quantity']+=int(row['missing'])
+            details.append({**line,**location(job),'quantity':int(row['missing'])})
     rows=sorted(grouped.values(),key=lambda r:(r['object'],r['section'],r['object_id'],r['section_id'],r['method'],r['dn'],r['length'],r['wall']))
+    for row in rows:
+        row['placements']=sorted([d for d in details if all(d[k]==row[k] for k in ('object_id','section_id','method','dn','length','wall'))],key=order)
     recipients=list(dict.fromkeys(addresses(config.recipients)))
     if not recipients:raise ValidationError('Укажите получателей.')
     details.sort(key=lambda r:(r['object'],r['section'],r['object_id'],r['section_id'],order(r),r['method'],r['length'],r['wall']))
-    data={'rows':rows,'details':details,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
+    data={'basis':'shortage-v1','rows':rows,'details':details,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
     digest=hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return dict(data,digest=digest,date=(now or timezone.now()).astimezone(ZoneInfo(config.timezone)).strftime('%d.%m.%Y'))
 
@@ -69,7 +72,7 @@ def body(data):
         if key!=scope:
             text.extend(['',row['object']+' · '+row['section']]);scope=key
         text.append(f"{row['method']} · {row['dn']} · длина {row['length']} мм · стенка {row['wall']} мм — {row['quantity']} шт.")
-    if not data['rows']:text.append('Потребности на оставшиеся работы нет.')
+    if not data['rows']:text.append('Недостающих муфт нет.')
     text+=['','Детальная ведомость приложена к письму.','','Письмо сформировано автоматически. Пожалуйста, не отвечайте на него. По вопросам изготовления и поставки свяжитесь с ответственным представителем ООО «Армада-Сибирь».','www.armada-sibir.ru','info@armada-sibir.ru','+7 (922) 114 20 00']
     return '\n'.join(text)
 
@@ -105,6 +108,7 @@ def enqueue(user,pk,token,expected_digest=None,automatic=False,week=None):
 def authorize_letter(letter):
     delivery=DemandMailDelivery.objects.filter(letter=letter).select_related('run__mailing','run__author').first()
     if not delivery:return ''
+    if delivery.run.snapshot.get('basis')!='shortage-v1':return 'Потребность сформирована по прежним правилам. Сформируйте её заново.'
     config=delivery.run.mailing
     if config.version!=delivery.run.version or delivery.run.automatic and not config.enabled:return 'Рассылка выключена или её настройки изменились.'
     try:scopes(config,delivery.run.author)

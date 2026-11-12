@@ -204,16 +204,17 @@ def coverage(request):
         for issue in record['coupling_issues']:
             unknown.append({'label':planning.job_label(job),'job':job,'section':job.section if not job.section.diameter_mm else None,'reason':issue})
         for line in record['couplings']:
+            if not line['missing']:continue
             key=(job.section.project_object.name,job.section.name,str(job.section.project_object_id),str(job.section_id),line['method'],line['diameter'],line['length'],line['wall'])
             row=grouped.setdefault(key,{'scope_id':(str(job.section.project_object_id),str(job.section_id)),'object':job.section.project_object.name,'section':job.section.name,'method':dict(METHODS)[line['method']],'diameter':line['diameter'],'length':line['length'],'wall':line['wall'],'need':0,'reserved':0,'free':0,'missing':0,'placements':[]})
             row['need']+=line['need'];row['reserved']+=line['reserved'];row['missing']+=line['missing'];row['free']+=line['need']-line['reserved']-line['missing']
-            row['placements'].append({**location(job),'job':job,'quantity':line['need']})
+            row['placements'].append({**location(job),'job':job,'quantity':line['missing']})
     rows=[grouped[k] for k in sorted(grouped)]
     for row in rows:row['placements'].sort(key=order)
     if request.GET.get('export')=='xlsx':
         from django.http import HttpResponse
         from .report_excel import workbook
-        sheets=[('Муфты',['Тип','Диаметр, мм','Длина, мм','Стенка, мм','Требуется, шт.','Закреплено, шт.','Подобрано из свободных, шт.','Не хватает, шт.','Объект','Участок'],[[dn_label(r[k]) if k=='diameter' else r[k] for k in ('method','diameter','length','wall','need','reserved','free','missing','object','section')] for r in rows]),
+        sheets=[('Муфты',['Тип','Диаметр, мм','Длина, мм','Стенка, мм','Нужно, шт.','Объект','Участок'],[[dn_label(r[k]) if k=='diameter' else r[k] for k in ('method','diameter','length','wall','missing','object','section')] for r in rows]),
                 ('По километрам',['Объект','Участок','Нефтепровод','км','№ дефектов','№ секций трубы','Тип','Диаметр','Длина, мм','Стенка, мм','Количество, шт.'],[[r['object'],r['section'],p['pipeline'],p['kilometres'],p['defect_numbers'],p['pipe_sections'],r['method'],dn_label(r['diameter']),r['length'],r['wall'],p['quantity']] for r in rows for p in r['placements']]),
                 ('Нужно уточнить',['Работы','Причина'],[[r['label'],r['reason']] for r in unknown])]
         response=HttpResponse(workbook(sheets),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="coupling-coverage.xlsx"';response['Cache-Control']='private, no-store';return response

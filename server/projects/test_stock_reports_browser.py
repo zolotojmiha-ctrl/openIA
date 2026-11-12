@@ -46,8 +46,6 @@ class StockReportsBrowser(StaticLiveServerTestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             needs = read_book(SimpleUploadedFile('needs.xlsx', (Path(folder) / 'repair-materials.xlsx').read_bytes()), sheet_name='Потребность')['cells']
             coverage = read_book(SimpleUploadedFile('couplings.xlsx', (Path(folder) / 'coupling-coverage.xlsx').read_bytes()), sheet_name='Муфты')['cells']
-            self.assertTrue(needs[(2, 1)])
-            self.assertEqual(coverage[(2, 5)], '1')
-            self.assertEqual(coverage[(2, 7)], '1')
-            self.assertEqual(coverage[(2, 8)], '0')
+            self.assertNotIn((2,1),needs)  # Material and coupling demand is fully covered.
+            self.assertNotIn((2,1),coverage)  # Fully covered work has no shortage row.
         self.assertEqual(StockMovement.objects.count(), movements)
