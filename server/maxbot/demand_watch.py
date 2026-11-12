@@ -8,6 +8,7 @@ from django.utils import timezone
 from accounts.permissions import permitted
 from projects.repair_materials import all_demand
 from repairs.access import visible_jobs
+from repairs.models import METHODS
 from .models import Binding,DemandWatch,Outbox
 from .links import current
 from .leadership import supported,contract_name,access_signature,link
@@ -41,7 +42,7 @@ def queue_changes():
             if initial and not rows:continue
             body='Текущая нехватка муфт' if initial else 'Потребность в муфтах изменилась'
             if not rows:body+='\nНедостающих позиций нет.'
-            for row in rows[:6]:body+=f'\n\nКонтракт: {row["contract"]}\n{row["object"]} · {row["section"]}\n{row["method"].upper()} · {row["length"]} мм · стенка {row["wall"]} мм: {row["quantity"]} шт.'
+            for row in rows[:6]:body+=f'\n\nКонтракт: {row["contract"]}\n{row["object"]} · {row["section"]}\n{dict(METHODS).get(row["method"],row["method"])} · {row["length"]} мм · стенка {row["wall"]} мм: {row["quantity"]} шт.'
             Outbox.objects.get_or_create(key=f'shortage:{fresh.pk}:{watch.version}',defaults={'binding':fresh,'max_user':fresh.max_user,'chat':fresh.chat,
                 'body':{'text':body[:3500],'attachments':[{'type':'inline_keyboard','payload':{'buttons':[[link('Открыть подробную потребность','stock_coverage')]]}}]},
                 'scope':{'leader':True,'demand_digest':digest,'access_signature':access_signature(fresh.user)},
