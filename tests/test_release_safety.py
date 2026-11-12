@@ -60,7 +60,7 @@ save()
 class InstallerTests(unittest.TestCase):
  def run_case(self,case,active_max=False):
   with tempfile.TemporaryDirectory(prefix='armada-safety-') as td:
-   root=Path(td);app=root/('armada' if case=='directroot' else 'unexpected-root' if case=='badroot' else 'openIA-feature-accounts-foundation');d=app/'deploy/beget';d.mkdir(parents=True)
+   root=Path(td);app=root/('armada' if case in ('directroot','directrelative') else 'unexpected-root' if case=='badroot' else 'openIA-feature-accounts-foundation');d=app/'deploy/beget';d.mkdir(parents=True)
    for n in ('backup.sh','compose.yml','Caddyfile'):shutil.copy2(REPO/'deploy/beget'/n,d/n)
    (app/'index.html').write_text('OLD');(app/'obsolete.py').write_text('OLD CODE')
    (d/'.env').write_text('SYNTHETIC=preserve\n');(d/'.env').chmod(0o640)
@@ -113,10 +113,11 @@ with zipfile.ZipFile(sys.argv[2]) as z:
     backups=root/'backups';backups.mkdir(exist_ok=True)
     lock_path=app/'.armada-update.lock' if case=='updatelock' else backups/('.backup.lock' if case=='backuplock' else '.disk-worker.lock')
     lock=lock_path.open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-   result=subprocess.run(['bash',str(installer)],env=env,capture_output=True,text=True,timeout=40)
+   relative=case in ('relative','directrelative')
+   result=subprocess.run(['bash',installer.name if relative else str(installer)],cwd=root if relative else None,env=env,capture_output=True,text=True,timeout=40)
    if lock:lock.close()
    s=json.loads((root/'state.json').read_text())
-   if case in ('success','maxon','legacy','directroot'):
+   if case in ('success','maxon','legacy','directroot','relative','directrelative'):
     self.assertEqual(result.returncode,0,result.stdout+result.stderr+''.join(p.read_text() for p in root.glob('.armada-recovery-*/backup.log')))
     self.assertEqual((app/'index.html').read_text(),'NEW')
     self.assertFalse((app/'obsolete.py').exists())
@@ -153,6 +154,8 @@ with zipfile.ZipFile(sys.argv[2]) as z:
  def test_legacy_compose_without_max_service(self):self.run_case('legacy')
  def test_success_without_max(self):self.run_case('success')
  def test_direct_armada_installation_directory(self):self.run_case('directroot',True)
+ def test_relative_installer_invocation(self):self.run_case('relative')
+ def test_relative_invocation_for_direct_armada_directory(self):self.run_case('directrelative',True)
  def test_rejects_unexpected_installation_directory(self):self.run_case('badroot')
  def test_success_with_previously_active_max(self):self.run_case('maxon',True)
  def test_build_failure_does_not_stop_old_version(self):self.run_case('buildfail')

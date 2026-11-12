@@ -4,6 +4,7 @@ set -euo pipefail
 umask 077
 app_root=${ARMADA_APP_ROOT:-/opt/armada/openIA-feature-accounts-foundation}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+script_path="$script_dir/$(basename -- "${BASH_SOURCE[0]}")"
 if (( EUID != 0 )); then printf 'Запустите установщик от root.\n' >&2; exit 1; fi
 for command_name in curl sha256sum unzip docker flock df awk python3 openssl; do
   command -v "$command_name" >/dev/null || { printf 'Не найдена команда: %s\n' "$command_name" >&2; exit 1; }
@@ -125,7 +126,7 @@ for artifact in SHA256SUMS-__VERSION__ SHA256SUMS-__VERSION__.sig openIA-__VERSI
   fi
 done
 openssl dgst -sha256 -verify "$trust_key" -signature "$staging/SHA256SUMS-__VERSION__.sig" "$staging/SHA256SUMS-__VERSION__" >/dev/null 2>&1 || { printf 'Подпись выпуска не подтверждена. Установка запрещена.\n' >&2; exit 1; }
-python3 - "$staging" "${BASH_SOURCE[0]}" <<'PY'
+python3 - "$staging" "$script_path" <<'PY'
 import hashlib,json,pathlib,re,sys
 root=pathlib.Path(sys.argv[1]);rows={}
 for line in (root/'SHA256SUMS-__VERSION__').read_text().splitlines():
