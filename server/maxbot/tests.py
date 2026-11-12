@@ -200,6 +200,8 @@ class MaxTests(TestCase):
         self.assertNotIn('note', draft.fields)
         self.event(timezone.localdate().strftime('%d.%m.%y'))
         draft.refresh_from_db()
+        self.assertEqual(draft.fields[draft.step], 'actual_coating_length_m')
+        self.event('1,8');draft.refresh_from_db()
         self.assertEqual(draft.fields[draft.step], 'coordinates')
         body = Outbox.objects.latest('pk').body
         self.assertIn('Вставьте координаты из Google карт или Яндекс карт.', body['text'])
@@ -615,6 +617,17 @@ class MaxTests(TestCase):
         self.event('2,4');draft.refresh_from_db()
         self.assertEqual(draft.raw['actual_coating_length_m'],'2,4')
         self.assertNotEqual(draft.fields[draft.step],'actual_coating_length_m')
+
+    def test_grinding_measurement_is_required_and_saved(self):
+        draft=self.draft()
+        self.assertIn('actual_coating_length_m',draft.fields)
+        draft.step=draft.fields.index('actual_coating_length_m');draft.save(update_fields=['step'])
+        self.event('skip:'+str(draft.pk)+':'+str(draft.step));draft.refresh_from_db()
+        self.assertEqual(draft.fields[draft.step],'actual_coating_length_m')
+        draft.step=0;draft.save(update_fields=['step'])
+        self.fill(draft,{'actual_coating_length_m':'1,8'})
+        self.event('review:'+str(draft.pk));self.event('confirm:'+str(draft.pk))
+        self.assertEqual(Report.objects.get().context['actual_coating_length_m'],'1.8')
 
     def test_old_draft_gets_measurement_question_without_losing_answers_or_photos(self):
         self.job.method='p2';self.job.length_m='1.000';self.job.wall_mm=8;self.job.save()

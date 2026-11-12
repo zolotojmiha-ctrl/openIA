@@ -33,8 +33,8 @@ def report_work(user,job_id,action,data):
                 from django.forms import DecimalField
                 from decimal import Decimal
                 actual=DecimalField(max_digits=9,decimal_places=3,min_value=Decimal('.001'),localize=True).clean(data['actual_coating_length_m'])
-                if job.method not in ('p1','p2') or action not in ('result','correction') or data.get('outcome')!='complete':
-                    raise ValidationError('Замер нового покрытия указывается при завершении П1/П2.')
+                if action not in ('result','correction') or data.get('outcome')!='complete':
+                    raise ValidationError('Замер нового покрытия указывается при завершении ремонта.')
                 data=dict(data,actual_coating_length_m=actual)
             digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},**({'actual_coating_length_m':format(data['actual_coating_length_m'].normalize(),'f')} if data.get('actual_coating_length_m') is not None else {}),**({'actual_cleaning_length_m':str(data['actual_cleaning_length_m'])} if data.get('actual_cleaning_length_m') is not None else {}),**({'installation':data['installation']} if 'installation' in data else {}),'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
             previous=Report.objects.filter(token=data['token']).first()

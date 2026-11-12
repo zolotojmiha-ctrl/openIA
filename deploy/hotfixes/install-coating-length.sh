@@ -13,7 +13,7 @@ for name,entry in manifest['files'].items():
     path=root/name
     if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):raise SystemExit('Небезопасный путь: '+name)
     current=hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
-    if current not in (entry['before'],entry['after']):raise SystemExit('Исходный файл отличается. Ничего не заменено: '+name)
+    if current not in [entry['before'],entry['after'],*entry.get('also_before',[])]:raise SystemExit('Исходный файл отличается. Ничего не заменено: '+name)
     if hashlib.sha256((package/'files'/name).read_bytes()).hexdigest()!=entry['after']:raise SystemExit('Повреждён файл исправления: '+name)
     if name.endswith('.py'):compile((package/'files'/name).read_bytes(),name,'exec')
 # Keep the already installed money-form fix.
@@ -51,4 +51,4 @@ docker compose --env-file deploy/beget/.env -f deploy/beget/compose.yml up -d --
 if [ "$max_was_running" = 1 ]; then
   docker compose --env-file deploy/beget/.env -f deploy/beget/compose.yml --profile max up -d --no-deps --force-recreate --wait --wait-timeout 180 maxworker
 fi
-printf '%s\n' 'Замер длины нового покрытия добавлен в ЛК и MAX при завершении П1/П2. История сохранена.'
+printf '%s\n' 'Замер длины нового покрытия добавлен в ЛК и MAX при завершении любого ремонта, включая шлифовку. История сохранена.'

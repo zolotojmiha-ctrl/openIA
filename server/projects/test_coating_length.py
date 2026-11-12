@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 from repairs.forms import ReportForm
 from repairs.services import report_work
-from repairs.models import Report
+from repairs.models import Report, METHODS
 from . import test_p1_coating_and_undo as fixtures,test_release624 as release
 from .models import RepairConsumption,StockMovement
 from .p1_coating import coating as p1_coating
@@ -27,8 +27,8 @@ class CoatingLengthTests(TestCase):
                 'coordinates':'55.123456, 73.123456','length_m':'1','manual_serials':'TEST-COATING',
                 'actual_coating_length_m':'2,4',**changes}
 
-    def test_foreman_p1_p2_require_fact_but_problem_and_grind_do_not(self):
-        for method in ('p1','p2'):
+    def test_all_completed_methods_require_fact_but_problem_does_not(self):
+        for method,_ in METHODS:
             job=self.job('1','');job.method=method;job.save()
             form=ReportForm(self.payload(job,actual_coating_length_m=''),job=job,action='repaired',user=self.worker)
             self.assertFalse(form.is_valid());self.assertIn('actual_coating_length_m',form.errors)
@@ -36,8 +36,6 @@ class CoatingLengthTests(TestCase):
             self.assertTrue(form.is_valid(),form.errors)
             self.assertEqual(form.cleaned_data['actual_coating_length_m'],Decimal('2.4'))
             self.assertNotIn('actual_coating_length_m',ReportForm(job=job,action='unrepaired',user=self.worker).fields)
-        job.method='grind';job.save()
-        self.assertNotIn('actual_coating_length_m',ReportForm(job=job,action='repaired',user=self.worker).fields)
 
     def test_partial_fact_is_optional_complete_fact_is_required(self):
         job=self.job('1','')
@@ -125,3 +123,13 @@ class CoatingLengthTests(TestCase):
         response=self.client.post(reverse('repair_report',args=[job.pk,'repaired']),payload)
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(Report.objects.get().pk,original.pk)
+
+    def test_all_other_methods_store_fact_without_inventing_stock_norms(self):
+        for method,_ in METHODS:
+            if method in ('p1','p2'):continue
+            job=self.job('1','');job.method=method;job.save()
+            form=ReportForm(self.payload(job),job=job,action='repaired',user=self.worker)
+            self.assertTrue(form.is_valid(),(method,form.errors))
+            report=report_work(self.worker,job.pk,'result',form.cleaned_data)
+            self.assertEqual(Decimal(report.context['actual_coating_length_m']),Decimal('2.4'))
+            self.assertFalse(RepairConsumption.objects.filter(job=job).exists())
