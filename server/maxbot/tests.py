@@ -201,9 +201,9 @@ class MaxTests(TestCase):
         self.event(timezone.localdate().strftime('%d.%m.%y'))
         draft.refresh_from_db()
         self.assertEqual(draft.fields[draft.step], 'actual_coating_length_m')
-        self.event('1,8');draft.refresh_from_db()
+        coordinate_event=self.event('1,8');draft.refresh_from_db()
         self.assertEqual(draft.fields[draft.step], 'coordinates')
-        body = Outbox.objects.latest('pk').body
+        body = Outbox.objects.get(key=f'in:{coordinate_event.pk}:reply').body
         self.assertIn('Вставьте координаты из Google карт или Яндекс карт.', body['text'])
         self.assertIn('обычным сообщением', body['text'])
         self.assertNotIn('56.123456', body['text'])

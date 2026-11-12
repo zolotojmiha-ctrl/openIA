@@ -164,6 +164,10 @@ def handle(event, binding, stored_keys):
         from .leadership import handle
         return handle(event, binding)
     text = event.payload.get('text', '').strip()
+    if text in ('/menu','/меню'):
+        queue(event,'Меню мастера. Выберите действие.',
+              [button('Мои работы','/работы'),button('Сообщить о неисправности техники','/техника')],binding=binding)
+        return
     if text=='/техника':
         from projects.equipment import visible_equipment
         from .leadership import link
