@@ -26,7 +26,7 @@ class InstallationInputTests(TestCase):
     def payload(self,**changes):
         return {'token':str(uuid.uuid4()),'expected_version':self.job.version,
                 'performed_date':str(self.today),'coordinates':'55°20\'22.2"N 77°49\'47.4"E',
-                'length_m':'1.5','composition':'','manual_serials':'МОНТАЖ-1',**changes}
+                'actual_coating_length_m':'2.4','length_m':'1.5','composition':'','manual_serials':'МОНТАЖ-1',**changes}
 
     def reserve(self):
         warehouse=self.wh()
@@ -159,6 +159,7 @@ class InstallationInputBrowser(StaticLiveServerTestCase):
         item.refresh_from_db();job.refresh_from_db()
         self.assertEqual(item.serial,'ЗАВ-СКЛАД-001');self.assertEqual(job.state,'confirmed')
         self.assertEqual(other.reports.get().length_m,Decimal('1.5'))
+        self.assertEqual(other.reports.get().context['actual_coating_length_m'],'2.4')
 
 class SubmissionFeedbackBrowser(StaticLiveServerTestCase):
     def run_submission(self,mode):

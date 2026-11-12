@@ -65,7 +65,7 @@ class MaxTests(TestCase):
             field = form.fields[name]
             value = values.get(name, {'performed_date': str(timezone.localdate()), 'coordinates': '55.123456, 73.123456',
                                       'note': 'ТЕСТ результат', 'problem': 'water', 'length_m': '1.5',
-                                      'manual_serials': 'ТЕСТ-001'}.get(name, ''))
+                                      'actual_coating_length_m':'2.400', 'manual_serials': 'ТЕСТ-001'}.get(name, ''))
             self.event(str(value))
             draft.refresh_from_db()
         self.assertEqual(draft.state, 'photos')
@@ -547,15 +547,16 @@ class MaxTests(TestCase):
         self.assertEqual(report.context['installation']['serials'], expected)
         self.assertEqual(str(report.length_m), '2.500')
 
-    def test_p1_actual_cleaning_length_is_preserved(self):
+    def test_p1_actual_coating_length_is_preserved(self):
         self.section.diameter_mm = 720; self.section.save()
         self.job.method = 'p1'; self.job.length_m = '1.000'; self.job.wall_mm = 8; self.job.save()
         draft = self.draft()
-        self.assertIn('actual_cleaning_length_m', draft.fields)
-        self.fill(draft, {'actual_cleaning_length_m': '2.400', 'length_m': '1.000'})
+        self.assertIn('actual_coating_length_m', draft.fields)
+        self.assertNotIn('actual_cleaning_length_m', draft.fields)
+        self.fill(draft, {'actual_coating_length_m': '2.400', 'length_m': '1.000'})
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
         self.assertEqual(Report.objects.count(), 1)
-        self.assertEqual(Report.objects.get().context['actual_cleaning_length_m'], '2.400')
+        self.assertEqual(Report.objects.get().context['actual_coating_length_m'], '2.400')
 
     def test_stale_revision_notice_is_cancelled_after_new_result(self):
         draft = self.reviewed(); self.event('confirm:' + str(draft.pk))
@@ -603,3 +604,25 @@ class MaxTests(TestCase):
         self.event('ТЕСТ задержанное сообщение', timestamp=1999)
         draft.refresh_from_db(); self.assertEqual(draft.step, 1)
         self.assertNotIn('note', draft.raw)
+
+
+    def test_p2_measurement_is_required_and_accepts_decimal_comma(self):
+        self.job.method='p2';self.job.length_m='1.000';self.job.wall_mm=8;self.job.save()
+        draft=self.draft();draft.step=draft.fields.index('actual_coating_length_m');draft.save(update_fields=['step'])
+        self.event('skip:'+str(draft.pk)+':'+str(draft.step));draft.refresh_from_db()
+        self.assertEqual(draft.fields[draft.step],'actual_coating_length_m')
+        self.assertFalse(draft.raw.get('actual_coating_length_m'))
+        self.event('2,4');draft.refresh_from_db()
+        self.assertEqual(draft.raw['actual_coating_length_m'],'2,4')
+        self.assertNotEqual(draft.fields[draft.step],'actual_coating_length_m')
+
+    def test_old_draft_gets_measurement_question_without_losing_answers_or_photos(self):
+        self.job.method='p2';self.job.length_m='1.000';self.job.wall_mm=8;self.job.save()
+        draft=self.draft();draft.fields.remove('actual_coating_length_m')
+        draft.raw['coordinates']='55.123456, 73.123456';draft.state='confirm';draft.step=len(draft.fields);draft.save()
+        Photo.objects.create(draft=draft,storage_key='a'*40,sha256='b'*64,size=100,name='TEST.jpg')
+        self.event('confirm:'+str(draft.pk));draft.refresh_from_db()
+        self.assertEqual(draft.state,'editing')
+        self.assertEqual(draft.fields[draft.step],'actual_coating_length_m')
+        self.assertEqual(draft.raw['coordinates'],'55.123456, 73.123456')
+        self.assertEqual(draft.photos.count(),1);self.assertFalse(Report.objects.exists())

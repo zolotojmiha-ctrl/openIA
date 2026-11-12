@@ -31,7 +31,7 @@ const fs=require('node:fs');
  assert.equal(await worker.getByRole('link',{name:'Устранён',exact:true}).count(),2);
  await worker.screenshot({path:out+'/07-separate-repairs.png',fullPage:true});
  const repair=worker.locator('[data-repair-code="Р-02"]');await repair.getByRole('link',{name:'Устранён',exact:true}).click();await worker.waitForSelector('[data-draft-ready="1"]');
- await worker.locator('[name=coordinates]').fill('56.900001, 73.900001');await worker.locator('[name=manual_serials]').fill('ИМПОРТ-П2-001');await worker.screenshot({path:out+'/08-single-coordinate-field.png',fullPage:true});
+ await worker.locator('[name=coordinates]').fill('56.900001, 73.900001');if(await worker.locator('[name=actual_coating_length_m]').count())await worker.locator('[name=actual_coating_length_m]').fill('2.4');await worker.locator('[name=manual_serials]').fill('ИМПОРТ-П2-001');await worker.screenshot({path:out+'/08-single-coordinate-field.png',fullPage:true});
  await worker.locator('[data-send-report]').click();await worker.waitForURL(u=>u.pathname==='/cabinet/repairs/');
  await worker.goto(base+'/cabinet/repairs/?q=550');assert.ok((await worker.locator('[data-repair-code="Р-03"]').textContent()).includes('Не устранён'));
  await technician.goto(base+'/cabinet/repairs/new/');await technician.locator('[name=contract]').selectOption(process.env.ARMADA_CONTRACT_ID);await technician.locator('[name=section]').selectOption(process.env.ARMADA_SECTION_ID);await technician.locator('summary').filter({hasText:'Назначение, состав'}).click();

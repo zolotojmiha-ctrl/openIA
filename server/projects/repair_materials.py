@@ -40,11 +40,16 @@ def coating(job,pieces=None):
     profile=CoatingProfile.objects.select_related('tape','wrapper','primer').filter(active=True,method=job.method,diameter_mm=job.section.diameter_mm,length_mm=length).first()
     if not profile:raise ValidationError(f'Не настроена площадь покрытия: {job.get_method_display()} {dn_label(job.section.diameter_mm)}, длина {length} мм. Укажите профиль изоляции один раз.')
     area=Decimal(profile.full_length_mm+profile.extra_length_mm)/1000*profile.area_per_m
+    measured=getattr(job,'actual_coating_length_m',None)
+    from .coating_measurements import extra_pipe_area
+    norm_length=Decimal(profile.full_length_mm+profile.extra_length_mm)/1000
+    extra_area=extra_pipe_area(job.section.diameter_mm,measured,norm_length)
+
     lines=[]
     for name,rate in RATES.items():
         item=getattr(profile,name)
         if item.unit!='kg' or item.archived or item.deleted_at:raise ValidationError('В профиле покрытия выберите действующие позиции Ксизола, обёртки и праймера в кг. Старые м² автоматически не переводятся.')
-        lines.append({'kind':name,'item':str(item.pk),'name':item.name,'quantity':str((area*rate).quantize(Decimal('.001'),rounding=ROUND_CEILING)),'unit':'кг','area':str(area),'rate':str(rate),'profile':profile.pk,'profile_version':profile.version,'basis':profile.basis,'full_length_mm':profile.full_length_mm})
+        lines.append({'kind':name,'item':str(item.pk),'name':item.name,'quantity':str((area*rate).quantize(Decimal('.001'),rounding=ROUND_CEILING)+(extra_area*rate).quantize(Decimal('.001'),rounding=ROUND_CEILING)),'unit':'кг','area':str(area+extra_area),'norm_quantity':str((area*rate).quantize(Decimal('.001'),rounding=ROUND_CEILING)),'actual_coating_length_m':str(measured) if measured is not None else '', 'norm_coating_length_m':str(norm_length),'extra_area_m2':str(extra_area),'rate':str(rate),'profile':profile.pk,'profile_version':profile.version,'basis':profile.basis,'full_length_mm':profile.full_length_mm})
     return lines
 
 
@@ -75,7 +80,8 @@ def matches(line,item):
 
 
 def _fingerprint(job,pieces):
-    return hashlib.sha256(json.dumps([job.method,job.section.diameter_mm,sorted((str(c.pk),c.length_mm,str(c.wall_mm)) for c in pieces)]+([format(Decimal(job.actual_cleaning_length_m).normalize(),'f')] if getattr(job,'actual_cleaning_length_m',None) is not None else []),sort_keys=True).encode()).hexdigest()
+    measured=getattr(job,'actual_coating_length_m',None)
+    return hashlib.sha256(json.dumps([job.method,job.section.diameter_mm,sorted((str(c.pk),c.length_mm,str(c.wall_mm)) for c in pieces)]+([format(Decimal(job.actual_cleaning_length_m).normalize(),'f')] if getattr(job,'actual_cleaning_length_m',None) is not None else [])+([{'coating':format(Decimal(measured).normalize(),'f')}] if measured is not None else []),sort_keys=True).encode()).hexdigest()
 
 
 def _post(actor,job,report,lines):
@@ -108,11 +114,12 @@ def reconcile(actor,job,report,pieces):
     """Caller owns stock lock and repair transaction. Missing norms do not erase work."""
     if job.method not in ('p1','p2') or report.outcome!='complete':return
     job.actual_cleaning_length_m=report.context.get('actual_cleaning_length_m')
+    job.actual_coating_length_m=report.context.get('actual_coating_length_m')
     fingerprint=_fingerprint(job,pieces)
     previous=RepairConsumption.objects.select_for_update().filter(job=job).first()
     if previous and previous.state=='posted':
         if previous.fingerprint==fingerprint:return previous
-        previous.state='review';previous.review_reason='installation';previous.message='Изменена установленная конструкция. Ранее списанные материалы сохранены; требуется проверка расхода руководителем.';previous.save(update_fields=['state','review_reason','message','updated_at']);return previous
+        previous.state='review';previous.review_reason='installation';previous.message='Изменена установленная конструкция или фактический замер покрытия. Ранее списанные материалы сохранены; требуется проверка расхода руководителем.';previous.save(update_fields=['state','review_reason','message','updated_at']);return previous
     if previous and previous.state=='review' and previous.review_reason!='manual':return previous
     if job.method=='p1' and previous is None and job.reports.filter(outcome='complete').exclude(pk=report.pk).exists():
         return RepairConsumption.objects.create(job=job,report=report,fingerprint=fingerprint,state='review',review_reason='legacy',lines=[],message='П1 уже была выполнена до подключения табличного расхода. Автоматическое списание задним числом не проводится; проверьте прежний фактический расход.')

@@ -134,7 +134,8 @@ class ReportForm(forms.Form):
     outcome=forms.ChoiceField(label='Результат',choices=[('partial','Выполнено частично'),('complete','Работа выполнена')],initial='complete',widget=forms.RadioSelect)
     method=forms.ChoiceField(label='Фактический метод ремонта',choices=METHODS,required=False)
     length_m=forms.DecimalField(label='Фактическая длина, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False)
-    actual_cleaning_length_m=forms.DecimalField(label='Фактическая длина снятия старой изоляции, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False,help_text='Для П1 720/760. Оставьте пустым для нормы ПТО. Превышение увеличит расход грунта, Ксизола и обёртки.')
+    actual_coating_length_m=forms.DecimalField(label='Фактическая длина изоляционного покрытия, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False,localize=True,widget=forms.TextInput(attrs={'inputmode':'decimal','autocomplete':'off'}),help_text='Измерьте готовое покрытие от края до края вдоль трубы. Введите метры, например 2,4. При полном завершении П1/П2 замер обязателен.')
+    actual_cleaning_length_m=forms.DecimalField(label='Фактическая длина снятия старой изоляции, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False,help_text='Для П1 720/760. Необязательный отдельный замер. При заполненной длине готового покрытия расход учитывается по ней; без неё сохраняется прежний расчёт по очистке.')
     composition=forms.CharField(label='Фактический состав, м',max_length=200,required=False)
     couplings=forms.ModelMultipleChoiceField(label='Все муфты, установленные на этой работе',queryset=Coupling.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     problem=forms.ChoiceField(label='Почему дефект не устранён',choices=PROBLEMS,required=False)
@@ -184,6 +185,18 @@ class ReportForm(forms.Form):
         elif action=='correction':
             latest=job.reports.filter(outcome__in=['complete','partial']).order_by('-created_at').first()
             if latest:self.initial['actual_cleaning_length_m']=latest.context.get('actual_cleaning_length_m')
+        if action not in ('result','correction') or job.method not in ('p1','p2'):
+            self.fields.pop('actual_coating_length_m',None)
+        else:
+            legacy_retry=bool(self.previous_report and self.previous_report.context.get('actual_coating_length_m') is None)
+            self.coating_required_on_complete=action=='result' and not legacy_retry
+            self.coating_partial=not self.simple and (self.data.get('outcome') if self.is_bound else self.initial.get('outcome','complete'))=='partial'
+            self.fields['actual_coating_length_m'].disabled=self.coating_partial
+            self.fields['actual_coating_length_m'].required=not self.coating_partial and not legacy_retry and (self.simple or (self.is_bound and self.data.get('outcome')=='complete' and action=='result'))
+            if action=='correction':
+                latest=job.reports.filter(outcome__in=['complete','partial']).order_by('-created_at').first()
+                if latest:self.initial['actual_coating_length_m']=latest.context.get('actual_coating_length_m')
+            if self.coating_partial:self.initial['actual_coating_length_m']=None
         self.stock_serial_fields=[]
         if action=='result' and job.method in ('p1','p2','p3','p4','p5u'):
             from projects.stock import prepared_couplings
@@ -233,6 +246,8 @@ class ReportForm(forms.Form):
     def clean(self):
         c=super().clean()
         actual_length=c.get('length_m');actual_composition=c.get('composition','')
+        if self.action=='result' and self.job.method in ('p1','p2') and (self.simple or c.get('outcome')=='complete') and c.get('actual_coating_length_m') is None and 'actual_coating_length_m' not in self.errors and not (self.previous_report and self.previous_report.context.get('actual_coating_length_m') is None):
+            self.add_error('actual_coating_length_m','Введите фактическую длину изоляционного покрытия.')
         if self.simple and c.get('coordinates'):
             c['latitude'],c['longitude']=c['coordinates']
         if self.simple and self.action=='result':

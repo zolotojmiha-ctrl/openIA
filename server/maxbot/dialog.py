@@ -46,7 +46,7 @@ def fields_for(form):
     needs_note = (form.simple and form.action == 'problem' and
                   form.data.get('problem') in ('material_other', 'other', 'existing_coupling', 'oversize_p1'))
     return [name for name, field in form.fields.items()
-            if not field.widget.is_hidden and name != 'files' and (name != 'note' or needs_note)]
+            if not field.widget.is_hidden and name != 'files' and not (name=='actual_cleaning_length_m' and 'actual_coating_length_m' in form.fields) and (name != 'note' or needs_note)]
 
 
 def report_date(value):
@@ -230,7 +230,13 @@ def handle(event, binding, stored_keys):
         raise ValidationError('Черновик истёк или отменён. Выберите работу заново: /работы')
     if draft.job.version != int(draft.raw['expected_version']):
         raise ValidationError('Работу уже изменили. Черновик сохранён, но отправить его нельзя. Проверьте карточку в ЛК.')
-    if fields_for(form_for(draft, user)) != draft.fields:
+    expected=fields_for(form_for(draft,user))
+    if expected != draft.fields:
+        if set(expected)-set(draft.fields)=={'actual_coating_length_m'} and set(draft.fields)-set(expected)<={'actual_cleaning_length_m'}:
+            draft.fields=expected;draft.step=expected.index('actual_coating_length_m');draft.state='editing'
+            draft.save(update_fields=['fields','step','state'])
+            queue(event,'Для завершения отчёта добавлен замер покрытия. Введённые данные и фотографии сохранены.',binding=binding,job=draft.job)
+            prompt(event,binding,draft);return
         raise ValidationError('Состав полей изменился. Откройте актуальную карточку в ЛК.')
     if action == 'edit':
         draft.step = 0

@@ -104,7 +104,7 @@ class RepairsTests(TestCase):
         self.addCleanup(self.settings.disable);self.addCleanup(self.root.cleanup)
         self.client.force_login(self.worker)
     def payload(self,**changes):
-        data={'token':str(uuid.uuid4()),'expected_version':1,'performed_date':timezone.localdate().isoformat(),'outcome':'complete','method':'p1','length_m':'3','composition':'1,5+1,5','couplings':[str(self.c1.pk),str(self.c2.pk)]}
+        data={'actual_coating_length_m':'2.4','token':str(uuid.uuid4()),'expected_version':1,'performed_date':timezone.localdate().isoformat(),'outcome':'complete','method':'p1','length_m':'3','composition':'1,5+1,5','couplings':[str(self.c1.pk),str(self.c2.pk)]}
         data.update(changes);return data
     def send(self,action='result',data=None,job=None,**changes):
         return self.client.post(reverse('repair_report',args=[(job or self.job).pk,action]),data if data is not None else self.payload(**changes))
@@ -296,7 +296,7 @@ class RepairsTests(TestCase):
     def simple_payload(self, **changes):
         token=str(uuid.uuid4())
         parts=self.job.composition.split('+') if self.job.composition else [self.job.length_m]
-        data={'token':token,'expected_version':self.job.version,'performed_date':timezone.localdate().isoformat(),'length_m':str(self.job.length_m or ''),'composition':self.job.composition,'manual_serials':'\n'.join('ФАКТ-'+token[:8]+'-'+str(n) for n in range(len(parts)))}
+        data={'token':token,'actual_coating_length_m':'2.4','expected_version':self.job.version,'performed_date':timezone.localdate().isoformat(),'length_m':str(self.job.length_m or ''),'composition':self.job.composition,'manual_serials':'\n'.join('ФАКТ-'+token[:8]+'-'+str(n) for n in range(len(parts)))}
         data.update(changes)
         if 'latitude' in data and 'longitude' in data:
             data['coordinates']=str(data.pop('latitude'))+', '+str(data.pop('longitude'))

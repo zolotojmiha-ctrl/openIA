@@ -89,7 +89,7 @@ def job_panel(user,job):
         try:geometry=row(job.section.diameter_mm,dimensions(job,pieces))
         except ValidationError:pass
     entry=RepairConsumption.objects.filter(job=job).first()
-    actual_coating=next((line for line in entry.lines if line.get('actual_cleaning_length_m')),None) if entry else None
+    actual_coating=next((line for line in entry.lines if line.get('actual_cleaning_length_m') or line.get('actual_coating_length_m')),None) if entry else None
     return {'actual_coating':actual_coating,'totals':[r for r in total.values() if r['quantity']],'entry':entry,'can_manage':permitted(user,'stock.manage'),'coating_geometry':geometry}
 
 @login_required

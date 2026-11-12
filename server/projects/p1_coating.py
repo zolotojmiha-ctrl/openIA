@@ -23,10 +23,15 @@ def coating(job, pieces=None):
     actual = getattr(job, 'actual_cleaning_length_m', None)
     extra = max(Decimal(0), Decimal(actual) - Decimal(values['cleaning_length_m'])) if actual is not None else Decimal(0)
     extra_area = extra * Decimal('0.720') * Decimal('3.14')
+    measured=getattr(job,'actual_coating_length_m',None)
+    if measured is not None:
+        from .coating_measurements import extra_pipe_area
+        extra_area=extra_pipe_area(job.section.diameter_mm,measured,values['cleaning_length_m'])
+
     rates = {'primer': Decimal('.21'), 'ksizol': Decimal('5.19'), 'wrapper': Decimal('.81')}
-    return [{'kind': kind, 'name': name, 'quantity': str(Decimal(values[kind + '_kg']) + (extra_area * rates[kind]).quantize(Decimal('.001'), rounding=ROUND_CEILING)) if extra else values[kind + '_kg'], 'unit': 'кг',
+    return [{'kind': kind, 'name': name, 'quantity': str(Decimal(values[kind + '_kg']) + (extra_area * rates[kind]).quantize(Decimal('.001'), rounding=ROUND_CEILING)) if extra_area else values[kind + '_kg'], 'unit': 'кг',
              'source': TABLE['source'], 'norm_revision': TABLE['revision'],
              'length_mm': values['length_mm'], 'pipe_diameter_mm': 720, 'coupling_diameter_mm': 760,
-             'area': str(Decimal(values['area_m2']) + extra_area), 'norm_quantity': values[kind + '_kg'], 'actual_cleaning_length_m': str(actual) if actual is not None else '', 'extra_area_m2': str(extra_area), 'cleaning_length_m': values['cleaning_length_m'],
+             'area': str(Decimal(values['area_m2']) + extra_area), 'norm_quantity': values[kind + '_kg'], 'actual_coating_length_m':str(measured) if measured is not None else '', 'norm_coating_length_m':values['cleaning_length_m'], 'actual_cleaning_length_m': str(actual) if actual is not None else '', 'extra_area_m2': str(extra_area), 'cleaning_length_m': values['cleaning_length_m'],
              'cleaning_area_m2': values['cleaning_area_m2']}
             for kind, name in [('primer', 'Грунт / праймер'), ('ksizol', 'Ксизол'), ('wrapper', 'Обёртка Полилен')]]
