@@ -57,6 +57,7 @@ class DemandMailTests(TestCase):
         for letter in Letter.objects.all():
             self.assertEqual(len(letter.attachments.get().data)>0,True)
             self.assertIn('не отвечайте',letter.body.lower())
+            self.assertTrue(letter.body.endswith('Письмо сформировано автоматически. Пожалуйста, не отвечайте на него. По вопросам изготовления и поставки свяжитесь с ответственным представителем ООО «Армада-Сибирь».\nwww.armada-sibir.ru\ninfo@armada-sibir.ru\n+7 (922) 114 20 00'))
             self.assertEqual(letter.subject,demand_mail.SUBJECT)
             self.assertNotIn(',',letter.to)
 
