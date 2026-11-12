@@ -227,6 +227,32 @@ class Release624Tests(TestCase):
             else:
                 with self.assertRaises(ValidationError):stock_planning.reserve(self.leader,i.pk,i.version,j.pk)
         self.assertEqual(j.reserved_stock.count(),1)
+    def assert_rental_rate_web_submission(self, embedded):
+        rental=self.rental();rental.rates.all().delete()
+        self.client.force_login(self.leader)
+        url=reverse('equipment_detail',args=[rental.placement.equipment_id]) if embedded else reverse('rental_detail',args=[rental.pk])
+        response=self.client.post(url,{'action':'rate','rental_id':str(rental.pk),
+            'starts_on':str(rental.placement.start_date),'basis':'day','work_price':'21',
+            'idle_price':'8,4','_money_unit':'thousand'})
+        self.assertEqual(response.status_code,302)
+        rate=rental.rates.get()
+        self.assertEqual((rate.work_price,rate.idle_price),(Decimal('21000.00'),Decimal('8400.00')))
+
+    def test_rental_rate_web_submission(self):self.assert_rental_rate_web_submission(False)
+    def test_equipment_embedded_rental_rate_web_submission(self):self.assert_rental_rate_web_submission(True)
+
+    def assert_rental_payment_web_submission(self, embedded):
+        rental=self.rental();self.client.force_login(self.leader)
+        url=reverse('equipment_detail',args=[rental.placement.equipment_id]) if embedded else reverse('rental_detail',args=[rental.pk])
+        data={'action':'payment','rental_id':str(rental.pk),'date':str(self.today),
+              'amount':'15,5','note':'ТЕСТ аванс','token':str(uuid.uuid4()),'_money_unit':'thousand'}
+        for _ in range(2):self.assertEqual(self.client.post(url,data).status_code,302)
+        self.assertEqual(rental.payments.count(),1)
+        self.assertEqual(rental.payments.get().amount,Decimal('15500.00'))
+
+    def test_rental_payment_web_submission(self):self.assert_rental_payment_web_submission(False)
+    def test_equipment_embedded_rental_payment_web_submission(self):self.assert_rental_payment_web_submission(True)
+
     def test_unpriced_rental_does_not_claim_a_financial_profit(self):
         from finance.models import FinancialScope
         from finance.services import summary

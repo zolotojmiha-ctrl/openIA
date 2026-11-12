@@ -1,0 +1,36 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict');
+let browser,phase='login';
+(async()=>{
+ browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ const page=await browser.newPage({viewport:{width:390,height:1000}}),base=process.env.ARMADA_TEST_URL;
+ const errors=[];page.on('pageerror',e=>errors.push(e.name));
+ page.on('response',r=>{if(r.status()>=500)errors.push('HTTP '+r.status());});
+ await page.goto(base+'/cabinet/login/');
+ await page.locator('[name=phone]').fill(process.env.ARMADA_TEST_PHONE);
+ await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);
+ await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');
+ await page.goto(base+process.env.ARMADA_EQUIPMENT_PATH);
+ phase='tariff';await page.locator('summary').filter({hasText:/^Тарифы$/}).click();
+ const rate=page.locator('form').filter({has:page.locator('[name=action][value=rate]')});
+ assert.equal(await rate.locator('[name=_money_unit]').inputValue(),'thousand');
+ await rate.locator('[name=starts_on]').fill(process.env.ARMADA_RATE_START);
+ await rate.locator('[name=basis]').selectOption('day');
+ await rate.locator('[name=work_price]').fill('21');await rate.locator('[name=idle_price]').fill('8.4');
+ await rate.getByRole('button',{name:'Добавить тариф с даты',exact:true}).click();
+ await page.waitForLoadState('networkidle');
+ assert.equal(await page.locator('.errorlist').count(),0);
+ await page.locator('summary').filter({hasText:/^Тарифы$/}).click();
+ assert.equal(await page.getByText('Тариф ещё не задан.',{exact:true}).count(),0);
+ phase='advance';await page.locator('summary').filter({hasText:'Аванс / оплата'}).click();
+ const payment=page.locator('form').filter({has:page.locator('[name=action][value=payment]')});
+ assert.equal(await payment.locator('[name=_money_unit]').inputValue(),'thousand');
+ await payment.locator('[name=date]').fill(process.env.ARMADA_PAYMENT_DATE);
+ await payment.locator('[name=amount]').fill('15.5');await payment.locator('[name=note]').fill('ТЕСТ аванс браузер');
+ await payment.getByRole('button',{name:'Сохранить перечисление',exact:true}).click();
+ await page.waitForLoadState('networkidle');assert.equal(await page.locator('.errorlist').count(),0);
+ await page.locator('summary').filter({hasText:/^История платежей$/}).click();
+ assert.equal(await page.getByText('ТЕСТ аванс браузер',{exact:false}).count(),1);
+ for(const width of [320,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+ assert.deepEqual(errors,[]);await browser.close();
+ console.log('PASS equipment card tariff and advance submissions in thousands, no HTTP 500, phone and desktop');
+})().catch(async error=>{console.error('Rental money browser phase:',phase,'type:',error.name);if(browser)await browser.close();process.exitCode=1;});

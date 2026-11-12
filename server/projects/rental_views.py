@@ -99,8 +99,8 @@ def detail(request,pk,embedded=False):
                 if action=='day':
                     saved=rentals.save_day(request.user,pk,**bound.cleaned_data)
                     messages.success(request,f'Отметка за {saved.date:%d.%m.%Y} сохранена: {saved.get_kind_display()}.')
-                elif action=='rate':rentals.add_rate(request.user,pk,**bound.cleaned_data)
-                elif action=='payment':rentals.payment(request.user,pk,**bound.cleaned_data)
+                elif action=='rate':rentals.add_rate(request.user,pk,**{k:bound.cleaned_data[k] for k in ('starts_on','basis','work_price','idle_price')})
+                elif action=='payment':rentals.payment(request.user,pk,**{k:bound.cleaned_data[k] for k in ('date','amount','note','token')})
                 elif action=='info':rentals.update_info(request.user,pk,**bound.cleaned_data)
                 elif action=='finance_link':rentals.link_finance(request.user,pk,**bound.cleaned_data)
                 else:rentals.close_period(request.user,pk,**bound.cleaned_data)
