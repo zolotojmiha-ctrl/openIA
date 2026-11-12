@@ -46,14 +46,17 @@ class ProfileForm(forms.ModelForm):
 def demand_report(user):
     ids=set(visible_jobs(user).values_list('pk',flat=True))
     rows=[d for d in materials.all_demand() if d['job'].pk in ids]
+    from .demand_details import location,order
     grouped={};issues=[]
     for row in rows:
         job=row['job'];label='; '.join('км '+d.km+' № '+d.number for d in job.active_defects)
         if row['issues']:issues.append({'job':job,'label':label,'reason':friendly_issue(job,row['issues']),'missing_profile':any('площадь покрытия' in s for s in row['issues']),'missing_p1_norm':any('В таблице ПТО нет' in s for s in row['issues'])})
         for n in row['couplings']+row['materials']:
-            key=(str(job.section.project_object_id),str(job.section_id),n['name'],n['unit']);r=grouped.setdefault(key,{'scope_id':(str(job.section.project_object_id),str(job.section_id)),'object':job.section.project_object.name,'section':job.section.name,'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[]})
+            key=(str(job.section.project_object_id),str(job.section_id),n['name'],n['unit']);r=grouped.setdefault(key,{'scope_id':(str(job.section.project_object_id),str(job.section_id)),'object':job.section.project_object.name,'section':job.section.name,'name':n['name'],'unit':n['unit'],'need':Decimal(0),'missing':Decimal(0),'jobs':[],'placements':[]})
             r['need']+=Decimal(n['need']);r['missing']+=Decimal(n['missing'])
+            r['placements'].append({**location(job),'job':job,'quantity':n['need']})
             if n['missing']:r['jobs'].append({'job':job,'label':label,'quantity':n['missing']})
+    for group in grouped.values():group['placements'].sort(key=order)
     return rows,sorted(grouped.values(),key=lambda n:(n['object'],n['section'],n['scope_id'],n['name'])),issues
 
 @login_required

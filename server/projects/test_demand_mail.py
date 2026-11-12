@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied,ValidationError
 from . import test_stock as fixture,demand_mail
@@ -178,3 +179,73 @@ class DemandMailTests(TestCase):
         self.assertEqual(parsed['From'].addresses[0].addr_spec,self.box.address)
         normal=Letter.objects.create(mailbox=self.box,author=self.leader,to='normal@example.org',subject='ТЕСТ',body='ТЕСТ')
         self.assertEqual(str(message_for(normal)['From']),self.box.address)
+
+
+    def test_details_map_common_p1_to_all_defects_without_multiplying_quantity(self):
+        from repairs.models import Defect,JobDefect
+        self.job.method='p1';self.job.length_m=4;self.job.composition='2+2';self.job.save()
+        first=self.job.defects.get();first.kilometre='100.100';first.number='TEST-A';first.pipe_section='PIPE-A';first.save()
+        other=Defect.objects.create(contract=self.contract,section=self.section,kilometre='101.250',number='TEST-B',pipe_section='PIPE-B')
+        JobDefect.objects.create(job=self.job,defect=other)
+        data=demand_mail.snapshot(self.config,self.leader)
+        self.assertEqual(len(data['details']),1)
+        line=data['details'][0]
+        self.assertEqual((line['kilometres'],line['defect_numbers'],line['length'],line['quantity']),('100.100; 101.250','TEST-A; TEST-B',2000,2))
+        self.assertEqual(data['rows'][0]['quantity'],2)
+        from repairs.importer import read_book
+        cells=read_book(SimpleUploadedFile('demand.xlsx',workbook(data)),sheet_name='Потребность')['cells']
+        detail_row=next(r for (r,c),v in cells.items() if c==2 and v==line['kilometres'])
+        self.assertEqual(cells[(detail_row,3)],'TEST-A; TEST-B')
+        self.assertEqual(cells[(detail_row,9)],'2')
+        self.assertFalse({'missing','reserved','free','warehouse'} & set(line))
+        for route in ('stock_coverage','repair_materials'):
+            response=self.client.get(reverse(route))
+            groups=response.context['rows' if route=='stock_coverage' else 'grouped']
+            group=next(r for r in groups if r['need']==2)
+            self.assertEqual(sum(p['quantity'] for p in group['placements']),2)
+            self.assertContains(response,'Показать по километрам')
+            self.assertContains(response,'TEST-A; TEST-B')
+
+    def test_details_include_covered_work_and_km_change_invalidates_preview(self):
+        wh=self.wh();item=self.item(kind='coupling',unit='pcs',method='p2',diameter_mm=720,length_mm=1000,wall_mm=8)
+        self.move(item,dst=wh,q=10)
+        data=demand_mail.snapshot(self.config,self.leader)
+        self.assertEqual(data['details'][0]['quantity'],1)
+        for route in ('stock_coverage','repair_materials'):
+            response=self.client.get(reverse(route))
+            group=next(r for r in response.context['rows' if route=='stock_coverage' else 'grouped'] if r['need']==1)
+            self.assertEqual(group['missing'],0)
+            self.assertEqual(len(group['placements']),1)
+        d=self.job.defects.get();d.kilometre='2.345';d.save()
+        with self.assertRaises(ValidationError):demand_mail.enqueue(self.leader,self.config.pk,uuid.uuid4(),data['digest'])
+        self.assertFalse(Letter.objects.exists())
+
+    def test_sent_snapshot_attachment_remains_original_when_locations_change(self):
+        run=demand_mail.enqueue(self.leader,self.config.pk,uuid.uuid4())
+        before=bytes(run.deliveries.first().letter.attachments.get().data)
+        d=self.job.defects.get();d.kilometre='2.345';d.save()
+        run.refresh_from_db()
+        self.assertEqual(run.snapshot['details'][0]['kilometres'],'1.000')
+        self.assertEqual(bytes(run.deliveries.first().letter.attachments.get().data),before)
+
+    def test_details_exclude_completed_jobs_and_keep_scope(self):
+        from repairs.models import Section,Job
+        from .models import ProjectObject
+        other=ProjectObject.objects.create(legal_entity=self.company,name='ТЕСТ вне рассылки')
+        section=Section.objects.create(project_object=other,name='ТЕСТ',pipeline='ТЕСТ',rnu='ТЕСТ',diameter_mm=720)
+        Job.objects.create(section=section,method='p2',length_m=1,wall_mm=8,created_by=self.leader)
+        for state in ('reported','confirmed','unrepairable'):
+            self.job.state=state;self.job.save()
+            self.assertEqual(demand_mail.snapshot(self.config,self.leader)['details'],[])
+
+
+    def test_partial_p1_exports_only_remaining_construction(self):
+        from repairs.models import Coupling,CouplingUse,Report
+        self.job.method='p1';self.job.length_m='2.5';self.job.composition='1+1.5';self.job.state='partial';self.job.save()
+        report=Report.objects.create(job=self.job,author=self.leader,kind='partial',performed_date=self.today)
+        installed=Coupling.objects.create(project_object=self.obj,method='p1',length_mm=1000,wall_mm=8,serial='TEST-INSTALLED')
+        CouplingUse.objects.create(job=self.job,coupling=installed,report=report)
+        data=demand_mail.snapshot(self.config,self.leader)
+        self.assertEqual([(r['length'],r['quantity']) for r in data['details']],[(1500,1)])
+        self.assertEqual(data['details'][0]['state'],self.job.get_state_display())
+        self.assertNotIn('TEST-INSTALLED',str(data))

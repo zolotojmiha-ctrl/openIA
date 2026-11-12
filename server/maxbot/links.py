@@ -17,6 +17,13 @@ def supported(user):
     return user.is_leader or user.role == 'foreman'
 
 
+def needs_onboarding(user):
+    from django.conf import settings
+    return (settings.ARMADA_MAX_ENABLED and user.is_active and supported(user)
+            and not user.must_change_password
+            and not Binding.objects.filter(user=user,active=True,session_version=user.session_version).exists())
+
+
 def employee(user):
     fresh = User.objects.select_for_update().get(pk=user.pk)
     if (not fresh.is_active or not supported(fresh) or fresh.must_change_password

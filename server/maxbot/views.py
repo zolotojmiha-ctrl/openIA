@@ -60,7 +60,7 @@ def connection(request):
 
 @login_required
 def onboarding(request):
-    if (not enabled() or not links.supported(request.user) or request.user.must_change_password or
+    if (not links.needs_onboarding(request.user) or
             request.session.get('max_onboarding') != str(request.user.pk)):
         return redirect('dashboard')
     if request.method == 'POST':

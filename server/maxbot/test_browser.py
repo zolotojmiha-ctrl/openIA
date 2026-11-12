@@ -39,3 +39,12 @@ class MaxBrowser(StaticLiveServerTestCase):
                                  env=env, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(Binding.objects.filter(active=True).exists())
+
+    def test_existing_unbound_user_can_defer_each_login_or_connect(self):
+        LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID, defaults={'name': 'ТЕСТ'})
+        fixture.StockTests.setUpTestData.__func__(type(self))
+        password=secrets.token_urlsafe(20)
+        self.worker.set_password(password);self.worker.save()
+        env=os.environ | {'ARMADA_TEST_URL':self.live_server_url,'ARMADA_TEST_PASSWORD':password,'ARMADA_TEST_PHONE':self.worker.phone}
+        result=subprocess.run(['node',str(settings.BASE_DIR/'tests/max-login-prompt-browser.cjs')],env=env,capture_output=True,text=True,timeout=90)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)

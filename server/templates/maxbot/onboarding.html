@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Подключите MAX для работы</h1>
 <section class="panel narrow">
-  <p>Постоянный пароль сохранён.</p>
+  <p>MAX ещё не подключён к вашему личному кабинету.</p>
   {% if user.is_leader %}
     <p>Получайте уведомления об отчётах, технике и потребности в материалах. В боте будет доступно меню руководителя.</p>
   {% else %}
@@ -12,6 +12,6 @@
     <button class="button" name="action" value="connect">Подключить MAX</button>
     <button class="button secondary" name="action" value="later">Позже</button>
   </form>
-  <p>Подключить или отключить MAX позже можно в своём профиле.</p>
+  <p>Подключить или отключить MAX позже можно в своём профиле. Если выбрать «Позже», мы напомним при следующем входе.</p>
 </section>
 {% endblock %}

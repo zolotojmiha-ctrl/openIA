@@ -7,11 +7,14 @@ page.on('pageerror',e=>errors.push(String(e)));
 await page.goto(base+'/cabinet/login/');
 await page.locator('[name=phone]').fill('+70000000001');await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);
 await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');
+await page.locator('.nav-toggle').click();assert.equal(await page.getByRole('link',{name:'↗ Сайт компании',exact:true}).getAttribute('href'),'https://armada-sibir.ru/');await page.locator('.nav-toggle').click();
 await page.goto(base+'/cabinet/stock/coverage/');
+const locations=page.locator('.demand-locations').first();assert.equal(await locations.locator('a').first().isVisible(),false);await locations.locator('summary').click();assert.equal(await locations.locator('a').first().isVisible(),true);assert.ok((await locations.textContent()).includes('1.000'));
 await page.getByRole('link',{name:'Рассылка заказчику',exact:true}).click();await page.waitForURL(/coverage\/mail\/$/);
 assert.ok((await page.locator('main').textContent()).includes('Автоматическая отправка выключена'));
 await page.getByRole('link',{name:'Предпросмотр и отправка',exact:true}).click();await page.waitForURL(/preview\/$/);
 const text=await page.locator('main').textContent();assert.ok(text.includes('DN 700'));assert.ok(!text.includes('Не хватает'));assert.ok(!text.includes('На складе'));
+const detailed=page.locator('.demand-customer-details');assert.equal(await detailed.locator('strong').first().isVisible(),false);await detailed.locator('summary').click();assert.ok((await detailed.textContent()).includes('1.000'));assert.equal(await detailed.locator('strong').first().isVisible(),true);
 for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:1100});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow '+width);}
 const download=page.waitForEvent('download');await page.getByRole('link',{name:'Скачать прикладываемый Excel',exact:true}).click();await download;
 await page.getByRole('button',{name:'Отправить потребность сейчас',exact:true}).click();await page.waitForURL(/history\/$/);

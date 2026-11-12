@@ -38,7 +38,8 @@ def scopes(config,user):
 def snapshot(config,user,now=None):
     from .repair_materials import all_demand
     allowed=set(scopes(config,user).values_list('pk',flat=True))
-    grouped={};issues=[]
+    from .demand_details import location,order
+    grouped={};details=[];issues=[]
     for record in all_demand(user):
         job=record['job']
         if job.pk not in allowed:continue
@@ -51,10 +52,12 @@ def snapshot(config,user,now=None):
                 'object_id':key[0],'section_id':key[1],'method':job.get_method_display(),
                 'dn':label(row['diameter']),'length':row['length'],'wall':str(row['wall']),'quantity':0})
             line['quantity']+=int(row['need'])
+            details.append({**line,**location(job),'quantity':int(row['need'])})
     rows=sorted(grouped.values(),key=lambda r:(r['object'],r['section'],r['object_id'],r['section_id'],r['method'],r['dn'],r['length'],r['wall']))
     recipients=list(dict.fromkeys(addresses(config.recipients)))
     if not recipients:raise ValidationError('Укажите получателей.')
-    data={'rows':rows,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
+    details.sort(key=lambda r:(r['object'],r['section'],r['object_id'],r['section_id'],order(r),r['method'],r['length'],r['wall']))
+    data={'rows':rows,'details':details,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
     digest=hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return dict(data,digest=digest,date=(now or timezone.now()).astimezone(ZoneInfo(config.timezone)).strftime('%d.%m.%Y'))
 

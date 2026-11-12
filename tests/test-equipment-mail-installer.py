@@ -3,14 +3,15 @@ from pathlib import Path
 repo=Path(__file__).resolve().parents[1];package=Path(sys.argv[1]).resolve();manifest=json.loads((package/'manifest.json').read_text())
 with tempfile.TemporaryDirectory() as tmp:
  root=Path(tmp)/'armada';root.mkdir();binpath=Path(tmp)/'bin';binpath.mkdir()
- for name in list(manifest['files'])+['server/projects/rental_views.py']:
-  path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(subprocess.check_output(['git','show','de71330:'+name],cwd=repo))
+ for name in set(manifest['files'])|set(manifest.get('requires',{}))|{'server/projects/rental_views.py'}:
+  if name in manifest['files'] and manifest['files'][name]['before'] is None:continue
+  path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(subprocess.check_output(['git','show',manifest['base']+':'+name],cwd=repo))
  deploy=root/'deploy/beget';deploy.mkdir(parents=True);(deploy/'compose.yml').write_text('services: {}');(deploy/'backup.sh').write_text('set -e\ntouch backup-ran\n')
  (root/'existing-data').write_text('TEST unchanged')
  (binpath/'docker').write_text('#!/bin/sh\nexit 0\n');(binpath/'docker').chmod(0o755)
  env=os.environ|{'PATH':str(binpath)+':'+os.environ['PATH'],'ARMADA_APP_ROOT':str(root),'ARMADA_SOURCE_BACKUP_ROOT':str(Path(tmp)/'backups')}
  command=['bash',str(package/'install.sh')]
- target=root/'server/projects/equipment.py';original=target.read_bytes();target.write_bytes(original+b'\n# changed\n')
+ target=root/next(name for name,entry in manifest['files'].items() if entry['before'] is not None);original=target.read_bytes();target.write_bytes(original+b'\n# changed\n')
  result=subprocess.run(command,env=env,capture_output=True);assert result.returncode!=0 and not (root/'backup-ran').exists()
  target.write_bytes(original)
  for _ in range(2):

@@ -64,7 +64,12 @@ def login_view(request):
                 login(request,user)
                 LoginAttempt.objects.filter(key=salted_hmac('armada.login.phone',phone).hexdigest()).delete()
                 audit(user,'login',user)
-                return redirect('password' if user.must_change_password else 'dashboard')
+                if user.must_change_password:return redirect('password')
+                from maxbot.links import needs_onboarding
+                if needs_onboarding(user):
+                    request.session['max_onboarding']=str(user.pk)
+                    return redirect('max_onboarding')
+                return redirect('dashboard')
             form.add_error(None,'Не удалось войти. Проверьте телефон и пароль.')
     return render(request,'accounts/login.html',{'form':form})
 
@@ -94,8 +99,8 @@ def password_view(request):
             audit(user,'password_changed',user)
         update_session_auth_hash(request,user)
         messages.success(request,'Пароль изменён. Другие сеансы завершены.')
-        from maxbot.links import supported
-        if first_password and settings.ARMADA_MAX_ENABLED and supported(user):
+        from maxbot.links import needs_onboarding
+        if first_password and needs_onboarding(user):
             request.session['max_onboarding'] = str(user.pk)
             return redirect('max_onboarding')
         return redirect('dashboard')
