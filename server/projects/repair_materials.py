@@ -53,6 +53,19 @@ def coating(job,pieces=None):
     return lines
 
 
+def measured_pipe_coating(job,pieces=None):
+    measured=getattr(job,'actual_coating_length_m',None)
+    if measured is None:return []
+    diameter=Decimal(job.section.diameter_mm or 0)
+    if diameter<=0:raise ValidationError('Для расхода покрытия укажите наружный диаметр трубы.')
+    area=Decimal(measured)*diameter/1000*Decimal('3.14')
+    return [{'kind':'ksizol' if kind=='tape' else kind,'name':{'tape':'Ксизол','wrapper':'Обёртка','primer':'Праймер'}[kind],
+        'quantity':str((area*rate).quantize(Decimal('.001'),rounding=ROUND_CEILING)),
+        'unit':'кг','area':str(area),'rate':str(rate),'actual_coating_length_m':str(measured),
+        'norm_quantity':'0','norm_coating_length_m':'0','extra_area_m2':'0',
+        'source':'Фактическая площадь трубы, согласовано 12.11.2026'} for kind,rate in RATES.items()]
+
+
 def p1_kits(job,pieces=None):
     from .p1_coating import dimensions
     values=kits(job.section.diameter_mm,dimensions(job,pieces))
@@ -61,7 +74,7 @@ def p1_kits(job,pieces=None):
 
 def norm_groups(job,pieces=None):
     from .p1_coating import coating as p1_coating
-    providers=[p1_kits,p1_coating] if job.method=='p1' else [coating] if job.method=='p2' else []
+    providers=[p1_kits,p1_coating] if job.method=='p1' else [coating] if job.method=='p2' else [measured_pipe_coating]
     for provider in providers:
         try:yield provider(job,pieces),[]
         except ValidationError as error:yield [],error.messages
@@ -112,7 +125,8 @@ def _post(actor,job,report,lines):
 
 def reconcile(actor,job,report,pieces):
     """Caller owns stock lock and repair transaction. Missing norms do not erase work."""
-    if job.method not in ('p1','p2') or report.outcome!='complete':return
+    if report.outcome!='complete':return
+    if job.method not in ('p1','p2') and report.context.get('actual_coating_length_m') is None:return
     job.actual_cleaning_length_m=report.context.get('actual_cleaning_length_m')
     job.actual_coating_length_m=report.context.get('actual_coating_length_m')
     fingerprint=_fingerprint(job,pieces)
@@ -121,13 +135,15 @@ def reconcile(actor,job,report,pieces):
         if previous.fingerprint==fingerprint:return previous
         previous.state='review';previous.review_reason='installation';previous.message='Изменена установленная конструкция или фактический замер покрытия. Ранее списанные материалы сохранены; требуется проверка расхода руководителем.';previous.save(update_fields=['state','review_reason','message','updated_at']);return previous
     if previous and previous.state=='review' and previous.review_reason!='manual':return previous
+    if job.method not in ('p1','p2') and previous is None and job.reports.filter(outcome='complete').exclude(pk=report.pk).exists():
+        return RepairConsumption.objects.create(job=job,report=report,fingerprint=fingerprint,state='review',review_reason='legacy',lines=[],message='Ремонт выполнен до подключения расхода по замеру. Проверьте прежний расход; автоматическое списание задним числом не проводится.')
     if job.method=='p1' and previous is None and job.reports.filter(outcome='complete').exclude(pk=report.pk).exists():
         return RepairConsumption.objects.create(job=job,report=report,fingerprint=fingerprint,state='review',review_reason='legacy',lines=[],message='П1 уже была выполнена до подключения табличного расхода. Автоматическое списание задним числом не проводится; проверьте прежний фактический расход.')
-    if job.method=='p1' and StockMovement.objects.filter(job=job,kind='consume',automatic=False,reversal__isnull=True,item__kind__in=['sealant','composite','primer','ksizol','wrapper']).exists():
-        return RepairConsumption.objects.update_or_create(job=job,defaults={'report':report,'fingerprint':fingerprint,'state':'review','review_reason':'manual','lines':previous.lines if previous else [],'message':'Для этой П1 уже есть ручное списание материалов. Оно сохранено; повторное автоматическое списание не выполнено. ПТО должен сверить расход.'})[0]
+    if StockMovement.objects.filter(job=job,kind='consume',automatic=False,reversal__isnull=True,item__kind__in=['sealant','composite','primer','ksizol','wrapper']).exists():
+        return RepairConsumption.objects.update_or_create(job=job,defaults={'report':report,'fingerprint':fingerprint,'state':'review','review_reason':'manual','lines':previous.lines if previous else [],'message':'Для этого ремонта уже есть ручное списание материалов. Оно сохранено; повторное автоматическое списание не выполнено. ПТО должен сверить расход.'})[0]
     lines=[]
     try:
-        if not pieces:raise ValidationError('Не указана установленная муфта. Ремонт сохранён; проверьте фактическую конструкцию перед списанием изоляции.')
+        if job.method in ('p1','p2') and not pieces:raise ValidationError('Не указана установленная муфта. Ремонт сохранён; проверьте фактическую конструкцию перед списанием изоляции.')
         lines=norm(job,pieces)
         with transaction.atomic():_post(actor,job,report,lines)
         state='posted';message='Материалы списаны автоматически по рабочей норме.'

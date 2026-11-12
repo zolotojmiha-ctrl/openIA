@@ -16,6 +16,8 @@ class DiskBackupSettings(models.Model):
     key_fingerprint=models.CharField(max_length=64,blank=True)
     key_confirmed=models.BooleanField(default=False)
     enabled=models.BooleanField(default=False)
+    photos_enabled=models.BooleanField(default=False)
+    photos_remove_local=models.BooleanField(default=False)
     backup_time=models.TimeField(default=time(3))
     not_before=models.DateTimeField(default=timezone.now)
     worker_seen_at=models.DateTimeField(null=True,blank=True)

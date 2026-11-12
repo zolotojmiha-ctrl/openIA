@@ -160,10 +160,17 @@ def summarize(event, binding, draft):
 
 def handle(event, binding, stored_keys):
     user = binding.user
-    if user.is_leader:
+    if user.is_leader or user.role=='pto':
         from .leadership import handle
         return handle(event, binding)
     text = event.payload.get('text', '').strip()
+    if text=='/техника':
+        from projects.equipment import visible_equipment
+        from .leadership import link
+        rows=list(visible_equipment(user).exclude(status='archived').order_by('pk')[:10])
+        queue(event,'Выберите технику. В её карточке нажмите «Сообщить о неисправности».',
+              [link(str(row),'equipment_detail',[row.pk]) for row in rows],binding=binding)
+        return
     photos = event.payload.get('photos', [])
     if text in ('/start', '/работы', 'Мои работы', '/мои_работы') or text.startswith('sections:') or event.payload['kind'] == 'bot_started':
         page = int(text.split(':')[1]) if text.startswith('sections:') else 0
@@ -171,6 +178,7 @@ def handle(event, binding, stored_keys):
             raise ValidationError('Неверная страница.')
         sections = list(available(user).order_by('section_id').values_list('section_id', 'section__name', 'section__project_object__name').distinct()[page * 8:page * 8 + 9])
         buttons = [button(f'{obj} · {name}', f'section:{pk}:0') for pk, name, obj in sections[:8]]
+        buttons.append(button('Сообщить о неисправности техники','/техника'))
         if len(sections) > 8:
             buttons.append(button('Следующие участки', f'sections:{page + 1}'))
         if page:

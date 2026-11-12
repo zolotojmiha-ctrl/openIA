@@ -11,6 +11,7 @@ class Binding(models.Model):
     chat = models.BigIntegerField()
     session_version = models.PositiveIntegerField()
     last_timestamp = models.BigIntegerField(default=0)
+    menu_scope = models.JSONField(default=dict)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -82,3 +83,9 @@ class Outbox(models.Model):
 class RateBucket(models.Model):
     key = models.CharField(primary_key=True, max_length=100)
     count = models.PositiveIntegerField(default=0)
+
+
+class DemandWatch(models.Model):
+    binding=models.OneToOneField(Binding,on_delete=models.CASCADE)
+    digest=models.CharField(max_length=64,blank=True)
+    version=models.PositiveIntegerField(default=0)

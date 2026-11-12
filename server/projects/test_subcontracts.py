@@ -186,7 +186,7 @@ class SubcontractTests(TestCase):
         s.link_repairs(self.leader,order.pk,{str(job.pk):job.version});job.refresh_from_db()
         form=ReportForm(data={'token':str(uuid.uuid4()),'expected_version':job.version,
             'performed_date':str(timezone.localdate()),'coordinates':'55.5, 77.5',
-            'length_m':'1.5','manual_serials':serial},job=job,action='repaired',user=self.rep)
+            'length_m':'1.5','actual_coating_length_m':'2.4','manual_serials':serial},job=job,action='repaired',user=self.rep)
         self.assertTrue(form.is_valid(),form.errors)
         return job,form
 

@@ -572,3 +572,5 @@ from .release624_models import (EquipmentRental, RentalRate, RentalPeriod, Renta
 from .demand_mail_models import DemandMailing, DemandMailRun, DemandMailDelivery
 
 from .disk_backup_models import DiskBackupSettings, DiskBackupJob
+
+from .management_models import EquipmentIssue, PhotoArchive

@@ -39,8 +39,8 @@ class LeaderTests(TestCase):
         self.assertIn('Меню руководителя', row.body['text'])
         titles = [b[0]['text'] for b in row.body['attachments'][0]['payload']['buttons']]
         self.assertIn('Отчёты на проверку', titles)
-        self.assertIn('Техника и ремонты', titles)
-        self.assertIn('Потребность в материалах', titles)
+        self.assertIn('Техника в ремонте', titles)
+        self.assertIn('Заявки на материалы', titles)
         self.event('begin:' + str(self.job.pk) + ':repaired', sender=301, chat=401)
         self.assertFalse(Draft.objects.filter(binding=binding).exists())
 

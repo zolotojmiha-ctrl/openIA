@@ -101,3 +101,23 @@ class Client:
                     sha.update(block)
         except (HTTPError,URLError,OSError):raise DiskError('Не удалось проверить скачивание копии.') from None
         if size!=expected_size or sha.hexdigest()!=expected_hash:raise DiskError('Контрольная сумма скачанной копии не совпала.')
+
+    def download_verified(self,path,expected_hash,expected_size):
+        import tempfile
+        if not 0<expected_size<=32*1024*1024:raise DiskError('Недопустимый размер фото.')
+        link=self.request('GET','/resources/download',{'path':app_path(path)})
+        href=signed_url(link.get('href'))
+        if link.get('method','GET')!='GET':raise DiskError('Некорректный способ скачивания.')
+        output=tempfile.SpooledTemporaryFile(max_size=1024*1024);sha=hashlib.sha256();size=0
+        try:
+            with self.opener.open(Request(href,method='GET'),timeout=30) as response:
+                while True:
+                    block=response.read(65536)
+                    if not block:break
+                    size+=len(block)
+                    if size>expected_size:raise DiskError('Размер фотографии не совпал.')
+                    sha.update(block);output.write(block)
+            if size!=expected_size or sha.hexdigest()!=expected_hash:raise DiskError('Контрольная сумма фотографии не совпала.')
+            output.seek(0);return output
+        except BaseException:
+            output.close();raise

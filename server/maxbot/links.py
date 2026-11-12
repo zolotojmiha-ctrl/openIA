@@ -14,7 +14,7 @@ def digest(code):
 
 
 def supported(user):
-    return user.is_leader or user.role == 'foreman'
+    return user.is_leader or user.role in ('foreman','pto')
 
 
 def needs_onboarding(user):
@@ -82,7 +82,7 @@ def approve(user, key):
     LinkTicket.objects.filter(user=user, consumed=False).update(consumed=True)
     audit(user, 'employee_updated', kind='max_link_approved', binding=str(binding.pk))
     from .dialog import button
-    leader = user.is_leader
+    leader = user.is_leader or user.role=='pto'
     Outbox.objects.create(key='binding:' + str(binding.pk), binding=binding,
         max_user=binding.max_user, chat=binding.chat,
         body={'text': ('MAX подключён. Откройте меню руководителя.' if leader else

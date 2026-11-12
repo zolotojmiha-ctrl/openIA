@@ -48,7 +48,11 @@ def store_file(data):
     return key
 
 def verified_file(version):
-    file=private_path(version.storage_key).open('rb')
+    try:file=private_path(version.storage_key).open('rb')
+    except FileNotFoundError:
+        from projects.photo_archive import remote_file
+        try:return remote_file(version)
+        except Exception:raise OSError('Фото временно недоступно в хранилище.') from None
     digest=hashlib.sha256()
     size=0
     for chunk in iter(lambda:file.read(65536),b''):

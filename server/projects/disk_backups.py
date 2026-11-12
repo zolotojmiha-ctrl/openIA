@@ -25,20 +25,22 @@ def configured(config):
 
 @transaction.atomic
 @sensitive_variables('token')
-def save(user,expected,token,enabled,backup_time):
+def save(user,expected,token,enabled,backup_time,photos_enabled=False,photos_remove_local=False):
     actor=admin(user);config,_=DiskBackupSettings.objects.select_for_update().get_or_create(pk=1)
     if config.version!=expected:raise ValidationError('Настройки изменены. Откройте страницу заново.')
     token=token.strip()
     if token:
         Client(token)  # validate header shape locally, no live request
         config.credential=seal(token);config.checked_version=0;config.checked_at=None
+    if photos_enabled and (not config.credential or config.checked_version!=config.version):raise ValidationError('Сначала проверьте подключение Диска.')
+    if photos_remove_local and not photos_enabled:raise ValidationError('Для освобождения места сначала включите копирование фото.')
     if enabled:
         configured(config)
         if not config.worker_seen_at or config.worker_seen_at<timezone.now()-timedelta(minutes=15):raise ValidationError('Сначала подключите обработчик резервирования на VPS и дождитесь его проверки.')
     checked=config.checked_version==config.version
     config.version+=1
     if checked:config.checked_version=config.version
-    config.enabled=enabled;config.backup_time=backup_time;config.not_before=timezone.now();config.updated_by=actor;config.error='';config.save()
+    config.enabled=enabled;config.photos_enabled=photos_enabled;config.photos_remove_local=photos_remove_local;config.backup_time=backup_time;config.not_before=timezone.now();config.updated_by=actor;config.error='';config.save()
     audit(actor,'disk_backup_settings',enabled=config.enabled,token_changed=bool(token))
     return config
 

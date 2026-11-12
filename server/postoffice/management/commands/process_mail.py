@@ -41,5 +41,13 @@ class Command(BaseCommand):
                             transport.select(client,'INBOX');ids=transport.checked(client.uid('SEARCH',None,'UNSEEN','UNDELETED'))[0].split()
                         Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(ids),unread_digest=hashlib.sha256(b' '.join(ids)).hexdigest(),synced_at=timezone.now())
                     except ValidationError:continue
+            if ticks%60==0:
+                from maxbot.demand_watch import queue_changes
+                try:queue_changes()
+                except Exception:self.stderr.write('Проверка изменений потребности не завершена; складские данные сохранены.')
+            if ticks%6==0:
+                from projects import photo_archive
+                try:photo_archive.step()
+                except Exception:self.stderr.write('Копирование фото не завершено; локальный оригинал сохранён.')
             if not options['loop']:break
             ticks+=1;time.sleep(10)

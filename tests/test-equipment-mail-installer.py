@@ -26,4 +26,11 @@ exit 0
  commands=(Path(tmp)/'docker.log').read_text()
  restarted_max=any('--profile max up' in line and line.endswith(' maxworker') for line in commands.splitlines())
  assert restarted_max==('--expect-max' in sys.argv),commands
+ if 'server/manage.py migrate' in commands:
+  entries=commands.splitlines()
+  build=next(i for i,line in enumerate(entries) if line.endswith(' build web'))
+  stop=next(i for i,line in enumerate(entries) if ' stop --timeout 60 ' in line)
+  migrate=next(i for i,line in enumerate(entries) if 'server/manage.py migrate' in line)
+  up=next(i for i,line in enumerate(entries) if ' up -d ' in line)
+  assert build<stop<migrate<up,commands
  print('PASS installer rejects altered source before backup; installs; repeats safely; preserves unrelated data; retains source backups')

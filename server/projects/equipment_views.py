@@ -115,6 +115,23 @@ def detail(request,pk):
     except ValueError:back=''
     else:
         if len(back)>4096 or '\\' in back or parsed.scheme or parsed.netloc or parsed.path!=reverse('equipment'):back=''
+    from . import equipment_issues
+    from django.core.exceptions import PermissionDenied
+    import uuid
+    issue_error=''
+    if request.method=='POST' and request.POST.get('action') in ('equipment_issue','resolve_issue'):
+        try:
+            if request.POST['action']=='equipment_issue':
+                equipment_issues.submit(request.user,item.pk,request.POST.get('placement'),request.POST.get('description',''),uuid.UUID(request.POST.get('token','')))
+            else:
+                issue=get_object_or_404(equipment_issues.visible(request.user),pk=request.POST.get('issue'),equipment=item)
+                equipment_issues.resolve(request.user,issue.pk,request.POST.get('resolution',''))
+        except (ValidationError,ValueError):issue_error='Проверьте назначение техники и описание заявки.'
+        else:
+            messages.success(request,'Заявка сохранена.');return redirect('equipment_detail',pk=item.pk)
+    issue_panel={'equipment_issues':equipment_issues.visible(request.user).filter(equipment=item).order_by('-created_at')[:30],
+        'issue_placements':service.current(service.placements(request.user)).filter(equipment=item,contract__in=visible_contracts(request.user)),
+        'issue_token':uuid.uuid4(),'issue_error':issue_error}
     cards={c.pk:contract_card(c,request.user) for c in visible_contracts(request.user)}
     from .crews import visible_assignments
     crews={a.pk:a.brigade.name for a in visible_assignments(request.user)}
@@ -143,7 +160,7 @@ def detail(request,pk):
         panel=rental_views.detail(request,active.pk,embedded=True)
         from django.http.response import HttpResponseBase
         if isinstance(panel,HttpResponseBase):return panel
-    return render(request,'projects/equipment_detail.html',{**panel,'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
+    return render(request,'projects/equipment_detail.html',{**panel,**issue_panel,'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

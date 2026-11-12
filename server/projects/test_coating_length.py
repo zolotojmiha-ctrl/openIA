@@ -124,7 +124,7 @@ class CoatingLengthTests(TestCase):
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(Report.objects.get().pk,original.pk)
 
-    def test_all_other_methods_store_fact_without_inventing_stock_norms(self):
+    def test_all_other_methods_store_fact_and_prepare_approved_consumption(self):
         for method,_ in METHODS:
             if method in ('p1','p2'):continue
             job=self.job('1','');job.method=method;job.save()
@@ -132,4 +132,33 @@ class CoatingLengthTests(TestCase):
             self.assertTrue(form.is_valid(),(method,form.errors))
             report=report_work(self.worker,job.pk,'result',form.cleaned_data)
             self.assertEqual(Decimal(report.context['actual_coating_length_m']),Decimal('2.4'))
-            self.assertFalse(RepairConsumption.objects.filter(job=job).exists())
+            row=RepairConsumption.objects.get(job=job)
+            self.assertEqual(row.state,'pending')
+            self.assertTrue(row.lines)
+            self.assertEqual(next(line['quantity'] for line in row.lines if line['kind']=='primer'),'1.140')
+
+    def test_grinding_posts_real_materials_once_and_changed_fact_requires_review(self):
+        job=self.job('1','');job.method='grind';job.save()
+        warehouse,items=self.supplies()
+        data={'token':uuid.uuid4(),'expected_version':job.version,'performed_date':self.today,'outcome':'complete',
+            'method':'grind','actual_coating_length_m':Decimal('2.4'),'couplings':[],'files':[]}
+        report=report_work(self.worker,job.pk,'result',data)
+        row=RepairConsumption.objects.get(job=job);self.assertEqual(row.state,'posted')
+        self.assertEqual(self.balance(warehouse,items['primer']),Decimal('98.860'))
+        count=StockMovement.objects.count()
+        self.assertEqual(report_work(self.worker,job.pk,'result',data).pk,report.pk)
+        self.assertEqual(StockMovement.objects.count(),count)
+        job.refresh_from_db()
+        report_work(self.leader,job.pk,'correction',dict(data,token=uuid.uuid4(),expected_version=job.version,actual_coating_length_m=Decimal('3.4')))
+        row.refresh_from_db();self.assertEqual(row.state,'review');self.assertEqual(StockMovement.objects.count(),count)
+
+
+    def test_legacy_grinding_correction_requires_review_instead_of_retroactive_charge(self):
+        job=self.job('1','');job.method='grind';job.save();warehouse,items=self.supplies()
+        data={'token':uuid.uuid4(),'expected_version':job.version,'performed_date':self.today,'outcome':'complete','method':'grind','couplings':[],'files':[]}
+        report_work(self.worker,job.pk,'result',data)
+        self.assertFalse(RepairConsumption.objects.filter(job=job).exists())
+        job.refresh_from_db();count=StockMovement.objects.count()
+        report_work(self.leader,job.pk,'correction',dict(data,token=uuid.uuid4(),expected_version=job.version,actual_coating_length_m=Decimal('2.4')))
+        row=RepairConsumption.objects.get(job=job);self.assertEqual((row.state,row.review_reason),('review','legacy'))
+        self.assertEqual(StockMovement.objects.count(),count)

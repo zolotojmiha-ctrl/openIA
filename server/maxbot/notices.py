@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.conf import settings
+from django.db.models import Q
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -14,10 +15,10 @@ from accounts.models import AuditEvent
 @receiver(post_save, sender=AuditEvent, dispatch_uid='max_leader_notice')
 def leader_notice(sender, instance, created, **kwargs):
     if (not settings.ARMADA_MAX_ENABLED or not created or
-            instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared')):
+            instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared','equipment_issue')):
         return
     from .leadership import subject
-    for binding in Binding.objects.select_related('user').filter(active=True, user__leader_slot__in=[1, 2]):
+    for binding in Binding.objects.select_related('user').filter(active=True).filter(Q(user__leader_slot__in=[1,2])|Q(user__role='pto')):
         if not current(binding):
             continue
         notice = subject(binding.user, instance)
