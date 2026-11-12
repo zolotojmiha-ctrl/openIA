@@ -1,5 +1,6 @@
 import re,uuid,smtplib
 from email.message import EmailMessage
+from email.headerregistry import Address
 from email.utils import getaddresses,formatdate
 from django.conf import settings
 from django.core.exceptions import ValidationError,PermissionDenied
@@ -93,7 +94,12 @@ def save_letter(user,box_id,letter_id,version,data,files,queue=False):
     return letter
 
 def message_for(letter):
-    msg=EmailMessage();msg['From']=letter.mailbox.address
+    msg=EmailMessage()
+    if hasattr(letter,'demand_delivery'):
+        # Avoid Python 3.12 splitting this Cyrillic display name inside a word.
+        msg.policy=msg.policy.clone(max_line_length=998)
+        msg['From']=Address(display_name='Армада-Сибирь — потребность в муфтах',addr_spec=letter.mailbox.address)
+    else:msg['From']=letter.mailbox.address
     for key in ('to','cc'):
         if getattr(letter,key):msg[key.title()]=getattr(letter,key)
     if letter.in_reply_to:msg['In-Reply-To']=letter.in_reply_to;msg['References']=letter.in_reply_to

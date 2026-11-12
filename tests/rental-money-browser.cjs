@@ -30,6 +30,13 @@ let browser,phase='login';
  await page.waitForLoadState('networkidle');assert.equal(await page.locator('.errorlist').count(),0);
  await page.locator('summary').filter({hasText:/^История платежей$/}).click();
  assert.equal(await page.getByText('ТЕСТ аванс браузер',{exact:false}).count(),1);
+ phase='earlier work start';
+ await page.getByRole('link',{name:'Исправить начало работы',exact:true}).click();
+ await page.locator('[name=start_date]').fill(process.env.ARMADA_EARLIER_START);
+ await page.locator('[name=reason]').fill('ТЕСТ фактическая дата');
+ await page.locator('form button[type=submit], form button').last().click();
+ await page.waitForLoadState('networkidle');assert.equal(await page.locator('.errorlist').count(),0);
+ assert.equal(await page.getByText('Начало работы исправлено.',{exact:false}).count(),1);
  for(const width of [320,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
  assert.deepEqual(errors,[]);await browser.close();
  console.log('PASS equipment card tariff and advance submissions in thousands, no HTTP 500, phone and desktop');

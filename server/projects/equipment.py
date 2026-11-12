@@ -75,7 +75,7 @@ def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False,cr
         crew_assignment=visible_assignments(actor).select_for_update(of=('self',)).filter(pk=crew_assignment.pk).first()
         if not crew_assignment:raise ValidationError('Назначение бригады больше недоступно. Обновите выбор.')
         if crew_assignment.project_object_id!=obj.pk or not contract or crew_assignment.contract_id!=contract.pk:raise ValidationError('Бригада назначена на другой объект или контракт.')
-        if start<crew_assignment.start_date or (crew_assignment.end_date and (not end or end>crew_assignment.end_date)):raise ValidationError('Период техники должен входить в период назначения бригады.')
+        # Work on the object and the crew's responsibility have independent dates.
     if obj.status=='archived' or obj.legal_entity_id!=item.legal_entity_id or not visible_objects(actor).filter(pk=obj.pk).exists():raise ValidationError('Объект недоступен или в архиве.')
     if contract and (contract.status=='archived' or not visible_contracts(actor).filter(pk=contract.pk,objects_linked=obj).exists()):raise ValidationError('Контракт недоступен или не связан с объектом.')
     if len(note)>1000:raise ValidationError('Пояснение — до 1000 символов.')
@@ -94,6 +94,25 @@ def assign(user,pk,version,obj,contract,start,end=None,note='',transfer=False,cr
     item.version+=1;item.save(update_fields=['version'])
     audit(actor,'equipment_assigned',kind='assigned',equipment=str(pk),assignment=str(result.pk),object=str(obj.pk),contract=str(contract.pk) if contract else None,start=str(start),end=str(end or ''),note=note,crew_assignment=str(crew_assignment.pk) if crew_assignment else None)
     return result
+
+@transaction.atomic
+def extend_start(user,pk,version,start,reason):
+    """Extend an existing placement backwards without rewriting its rental ledger."""
+    actor=manager(user);original=placements(actor).get(pk=pk)
+    item=visible_equipment(actor).select_for_update().get(pk=original.equipment_id)
+    row=placements(actor).select_for_update(of=('self',)).get(pk=pk)
+    if row.version!=version:raise ValidationError('Назначение изменено. Обновите страницу.')
+    if not start or start>=row.start_date:raise ValidationError('Укажите дату раньше текущего начала работы.')
+    if not reason.strip() or len(reason)>500:raise ValidationError('Укажите причину исправления — до 500 символов.')
+    if not visible_objects(actor).filter(pk=row.project_object_id).exists():raise ValidationError('Объект недоступен.')
+    overlap=item.placements.exclude(pk=row.pk).filter(Q(end_date__isnull=True)|Q(end_date__gte=start))
+    if row.end_date:overlap=overlap.filter(start_date__lte=row.end_date)
+    if overlap.exists():raise ValidationError('Новая дата пересекается с другим назначением техники.')
+    old=row.start_date
+    row.start_date=start;row.version+=1;row.save(update_fields=['start_date','version'])
+    item.version+=1;item.save(update_fields=['version'])
+    audit(actor,'equipment_assigned',kind='start_corrected',assignment=str(row.pk),equipment=str(item.pk),previous_start=str(old),start=str(start),reason=reason.strip())
+    return row
 
 @transaction.atomic
 def end_assignment(user,pk,version,end):

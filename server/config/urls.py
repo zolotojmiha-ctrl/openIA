@@ -126,6 +126,7 @@ urlpatterns=[
  path('cabinet/equipment/new/',equipment_views.edit,name='equipment_new'),
  path('cabinet/equipment/excel/<str:kind>/export/',equipment_excel.export,name='equipment_export'),
  path('cabinet/equipment/excel/<str:kind>/import/',equipment_excel.upload,name='equipment_import'),
+ path('cabinet/equipment/assignments/<uuid:pk>/start/',equipment_views.correct_start,name='equipment_assignment_start'),
  path('cabinet/equipment/assignments/<uuid:pk>/end/',equipment_views.end,name='equipment_assignment_end'),
  path('cabinet/equipment/<uuid:pk>/',equipment_views.detail,name='equipment_detail'),
  path('cabinet/equipment/<uuid:pk>/edit/',equipment_views.edit,name='equipment_edit'),

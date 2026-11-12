@@ -166,3 +166,14 @@ class DemandMailTests(TestCase):
         self.section.diameter_mm=721;self.section.save()
         with self.assertRaises(ValidationError):demand_mail.snapshot(self.config,self.leader)
         self.assertFalse(Letter.objects.exists())
+
+    def test_demand_sender_name_keeps_authenticated_mailbox_and_normal_letters_unchanged(self):
+        from email import policy
+        from email.parser import BytesParser
+        demand_mail.enqueue(self.leader,self.config.pk,uuid.uuid4())
+        letter=Letter.objects.first()
+        parsed=BytesParser(policy=policy.default).parsebytes(message_for(letter).as_bytes())
+        self.assertEqual(parsed['From'].addresses[0].display_name,'Армада-Сибирь — потребность в муфтах')
+        self.assertEqual(parsed['From'].addresses[0].addr_spec,self.box.address)
+        normal=Letter.objects.create(mailbox=self.box,author=self.leader,to='normal@example.org',subject='ТЕСТ',body='ТЕСТ')
+        self.assertEqual(str(message_for(normal)['From']),self.box.address)

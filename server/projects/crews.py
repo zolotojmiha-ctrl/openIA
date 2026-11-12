@@ -101,7 +101,6 @@ def close_assignment(user,pk,version,end):
     actor=manager(user);assignment=visible_assignments(actor).select_for_update(of=('self',)).get(pk=pk)
     if assignment.version!=version or assignment.end_date:raise ValidationError('Назначение уже изменено или завершено.')
     date_range(assignment.start_date,end)
-    if assignment.equipment_placements.filter(Q(end_date__isnull=True)|Q(end_date__gt=end)).exists():raise ValidationError('Сначала завершите или переведите технику этой бригады.')
     assignment.end_date=end;assignment.version+=1;assignment.save(update_fields=['end_date','version'])
     for p in assignment.person_assignments.all():
         if p.end_date is None or p.end_date>end:p.end_date=end;p.save(update_fields=['end_date'])
@@ -180,6 +179,5 @@ def assign_crew_places(user,crew_id,version,contract_id,object_ids,start,end,rep
         if actual!=replacements:raise ValidationError('Назначения изменились. Обновите страницу перед заменой.')
         for a in existing:
             if a.start_date>=start or a.end_date:raise ValidationError('Для замены выберите дату после начала открытого назначения.')
-            if a.equipment_placements.filter(Q(end_date__isnull=True)|Q(end_date__gte=start)).exists():raise ValidationError('Сначала завершите или переведите технику прежней бригады.')
             close_assignment(actor,a.pk,a.version,start-timedelta(days=1))
     return [assign_crew_place(actor,crew_id,version,contract_id,pk,start,end) for pk in ids]

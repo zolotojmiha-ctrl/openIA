@@ -32,3 +32,11 @@ class EquipmentConcurrencyTests(TransactionTestCase):
     def test_simultaneous_duplicate_inventory_returns_validation_conflict(self):
         self.race(lambda i:save_equipment(self.leaders[i],None,None,self.data))
         self.assertEqual(Equipment.objects.count(),1)
+
+    def test_two_start_corrections_keep_one_audited_result(self):
+        from datetime import timedelta
+        from .equipment import extend_start
+        item=save_equipment(self.leaders[0],None,None,self.data)
+        row=assign(self.leaders[0],item.pk,item.version,self.objects[0],None,timezone.localdate())
+        self.race(lambda i:extend_start(self.leaders[i],row.pk,row.version,timezone.localdate()-timedelta(days=i+1),'ТЕСТ дата'))
+        row.refresh_from_db();self.assertEqual(row.version,2)

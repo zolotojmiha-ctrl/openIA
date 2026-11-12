@@ -1,5 +1,6 @@
 import os,secrets,subprocess
 from decimal import Decimal
+from datetime import timedelta
 from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import reverse
@@ -19,10 +20,12 @@ class RentalMoneyBrowserTests(StaticLiveServerTestCase):
         self.leader.set_password(password);self.leader.save()
         env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_TEST_PASSWORD':password,
             'ARMADA_TEST_PHONE':self.leader.phone,'ARMADA_EQUIPMENT_PATH':reverse('equipment_detail',args=[rental.placement.equipment_id]),
-            'ARMADA_RATE_START':str(rental.placement.start_date),'ARMADA_PAYMENT_DATE':str(self.today)}
+            'ARMADA_EARLIER_START':str(rental.placement.start_date-timedelta(days=12)),'ARMADA_RATE_START':str(rental.placement.start_date),'ARMADA_PAYMENT_DATE':str(self.today)}
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/rental-money-browser.cjs')],
             env=env,capture_output=True,text=True,timeout=90)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        rental.placement.refresh_from_db()
+        self.assertEqual(str(rental.placement.start_date),env['ARMADA_EARLIER_START'])
         rate=rental.rates.get()
         self.assertEqual((rate.work_price,rate.idle_price),(Decimal('21000.00'),Decimal('8400.00')))
         self.assertEqual(rental.payments.get().amount,Decimal('15500.00'))

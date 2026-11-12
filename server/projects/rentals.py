@@ -73,7 +73,12 @@ def add_rate(user,pk,starts_on,basis,work_price,idle_price):
     rental=visible(actor).select_for_update(of=('self',)).get(pk=pk)
     if basis not in ('day','hour') or min(work_price,idle_price)<0:raise ValidationError('Проверьте тарифы.')
     if starts_on<rental.placement.start_date or rental.placement.end_date and starts_on>rental.placement.end_date:raise ValidationError('Тариф должен входить в период назначения.')
-    if rental.days.filter(date__gte=starts_on,rate__isnull=False).exists() or rental.periods.filter(ends_on__gte=starts_on,reopened_at__isnull=True).exists():raise ValidationError('За эти даты уже есть табель. Новый тариф задаётся с даты после внесённых отметок; история не пересчитывается.')
+    next_date=rental.rates.filter(starts_on__gt=starts_on).order_by('starts_on').values_list('starts_on',flat=True).first()
+    priced=rental.days.filter(date__gte=starts_on,rate__isnull=False)
+    closed=rental.periods.filter(ends_on__gte=starts_on,reopened_at__isnull=True)
+    if next_date:
+        priced=priced.filter(date__lt=next_date);closed=closed.filter(starts_on__lt=next_date)
+    if priced.exists() or closed.exists():raise ValidationError('За затрагиваемые даты уже есть начисления или закрытый период. История не пересчитывается.')
     if rental.rates.filter(starts_on=starts_on).exists():raise ValidationError('Тариф с этой даты уже есть.')
     row=RentalRate.objects.create(rental=rental,starts_on=starts_on,basis=basis,work_price=work_price,idle_price=idle_price,created_by=actor)
     next_date=rental.rates.filter(starts_on__gt=starts_on).order_by('starts_on').values_list('starts_on',flat=True).first()

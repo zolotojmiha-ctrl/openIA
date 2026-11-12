@@ -28,7 +28,7 @@ class PlacementForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     project_object=forms.ModelChoiceField(label='Объект',queryset=ProjectObject.objects.none())
     contract=forms.ModelChoiceField(label='Контракт (при необходимости)',queryset=Contract.objects.none(),required=False)
-    crew_assignment=forms.ModelChoiceField(label='Бригада на объекте (необязательно)',queryset=BrigadeAssignment.objects.none(),required=False)
+    crew_assignment=forms.ModelChoiceField(label='Бригада на объекте (необязательно)',help_text='Даты работы техники независимы от дат бригады. Мастер отмечает наработку только за период своей ответственности.',queryset=BrigadeAssignment.objects.none(),required=False)
     start_date=forms.DateField(label='Начало работы',widget=DATE)
     end_date=forms.DateField(label='Окончание работы',widget=DATE,required=False)
     note=forms.CharField(label='Пояснение',max_length=1000,required=False,widget=forms.Textarea(attrs={'rows':2}))
@@ -45,6 +45,11 @@ class PlacementForm(forms.Form):
 class EndForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     end_date=forms.DateField(label='Последний день работы',widget=DATE)
+
+class StartForm(forms.Form):
+    expected_version=forms.IntegerField(widget=forms.HiddenInput)
+    start_date=forms.DateField(label='Фактическое начало работы',widget=DATE)
+    reason=forms.CharField(label='Причина исправления',max_length=500)
 
 class FileForm(forms.ModelForm):
     expected_version=forms.IntegerField(widget=forms.HiddenInput,required=False)
@@ -173,6 +178,18 @@ def assign(request,pk):
         except ValidationError as e:form.add_error(None,e);status=409
         else:messages.success(request,'Назначение сохранено. Доступ к объекту и документам не изменён.');return redirect('equipment_detail',pk=pk)
     return render(request,'projects/equipment_form.html',{'form':form,'item':item,'title':'Назначить / перевести технику'},status=status)
+
+@permission_required('equipment.manage')
+def correct_start(request,pk):
+    row=get_object_or_404(service.placements(request.user),pk=pk)
+    form=StartForm(request.POST or None,initial={'expected_version':row.version,'start_date':row.start_date});status=200
+    if request.method=='POST' and form.is_valid():
+        try:service.extend_start(request.user,pk,form.cleaned_data['expected_version'],form.cleaned_data['start_date'],form.cleaned_data['reason'])
+        except ValidationError as e:form.add_error(None,e);status=409
+        else:
+            messages.success(request,'Начало работы исправлено. Тарифы, платежи и внесённая наработка сохранены. Для добавленных дней проверьте тариф и заполните табель.')
+            return redirect('equipment_detail',pk=row.equipment_id)
+    return render(request,'projects/equipment_form.html',{'form':form,'item':row.equipment,'title':'Указать более раннее начало работы'},status=status)
 
 @permission_required('equipment.manage')
 def end(request,pk):
