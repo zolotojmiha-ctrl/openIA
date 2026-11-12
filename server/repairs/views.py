@@ -229,20 +229,31 @@ def detail(request,pk):
     reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
     result=reports.filter(kind__in=['partial','complete','correction']).first()
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
+    progress_records=reports.filter(context__progress__isnull=False).order_by('-performed_date','-created_at','-pk')
+    progress_page=Paginator(progress_records,10).get_page(request.GET.get('progress_page'))
+    from .progress import STAGES
+    for entry in progress_page:
+        entry.progress_labels=[dict(STAGES).get(key,key) for key in entry.context['progress'].get('stages',[])]
     from projects.subcontracts import orders as subcontract_orders
     subcontract_open=bool(job.subcontract_order_id and subcontract_orders(request.user,True).filter(pk=job.subcontract_order_id).exists())
     from .navigation import return_url
     back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
     problem_report=job.reports.filter(kind='problem').first()
     from projects.material_views import job_panel
-    return render(request,'repairs/detail.html',{'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    return render(request,'repairs/detail.html',{'progress_page':progress_page,'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):
-    if action not in ('start','result','problem','note','correction','resolve','repaired','unrepaired'):raise Http404
+    if action not in ('start','result','problem','note','correction','resolve','repaired','unrepaired','progress'):raise Http404
     job=get_object_or_404(reportable_jobs(request.user),pk=pk)
     if action=='correction' and not request.user.is_leader:return render(request,'403.html',status=403)
-    form=ReportForm(request.POST or None,request.FILES or None,job=job,action=action,user=request.user)
+    progress_contract=''
+    if action=='progress':
+        from projects.access import contract_card
+        progress_contract=contract_card(job.contract,request.user)['title'] if job.contract_id else 'Без контракта'
+        from .progress import ProgressForm
+        form=ProgressForm(request.POST or None,request.FILES or None,job=job,user=request.user)
+    else:form=ReportForm(request.POST or None,request.FILES or None,job=job,action=action,user=request.user)
     status=200
     if request.method=='POST' and form.is_valid():
         try:
@@ -257,8 +268,8 @@ def report(request,pk,action):
                 return JsonResponse({'ok':False,'errors':{'__all__':[{'message':e.messages[0]}]},'new_record_version':e.params['version']},status=409)
             form.add_error(None,e.messages[0] if isinstance(e,ValidationError) else 'Назначение изменилось. Откройте список своих работ.');status=409
     if request.method=='POST' and form.errors and request.headers.get('Accept')=='application/json':return JsonResponse({'ok':False,'errors':form.errors.get_json_data()},status=status if status!=200 else 400)
-    titles={'repaired':'Устранён','unrepaired':'Не устранён','start':'Начать работу','result':'Внести результат','problem':'Сообщить о проблеме','note':'Добавить фото или пояснение','correction':'Исправить результат','resolve':'Препятствие устранено'}
-    return render(request,'repairs/report.html',{'form':form,'job':job,'action':action,'title':titles[action],'report_back':report_return_url(request,job)},status=status)
+    titles={'progress':'Фото хода работ','repaired':'Устранён','unrepaired':'Не устранён','start':'Начать работу','result':'Внести результат','problem':'Сообщить о проблеме','note':'Добавить фото или пояснение','correction':'Исправить результат','resolve':'Препятствие устранено'}
+    return render(request,'repairs/progress_form.html' if action=='progress' else 'repairs/report.html',{'progress_contract':progress_contract,'form':form,'job':job,'action':action,'title':titles[action],'report_back':report_return_url(request,job)},status=status)
 
 @leader_required
 @require_POST

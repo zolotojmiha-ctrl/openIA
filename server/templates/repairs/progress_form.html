@@ -1,0 +1,15 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<link rel="stylesheet" href="/static/repairs/repairs.css?v={{ release_version }}">
+<div class="small-page repair-field-page"><a class="back-link" href="{{ report_back }}">← К работам</a><h1>Фото хода работ</h1>
+<p>Контракт: {{ progress_contract }}<br>{{ job.section.project_object.name }} · {{ job.section.name }}<br>{% for d in job.active_defects %}км {{ d.km }} · № {{ d.number }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</p>
+<p>Добавляйте фотографии за каждый день. Первый фотоотчёт отмечает начало работы. Это не завершает ремонт и не списывает материалы.</p>
+<form method="post" enctype="multipart/form-data" class="panel" data-repair-draft="{{ user.pk }}:{{ job.pk }}:progress" data-draft-label="Фото хода работ · {{ job.section.name }}">
+{% csrf_token %}<input type="hidden" name="return_to" value="{{ report_back }}">{{ form.token }}{{ form.expected_version }}
+<div data-draft-state role="status" hidden></div><div data-report-errors role="alert">{{ form.non_field_errors }}</div>
+<p>{{ form.performed_date.label_tag }}{{ form.performed_date }}{{ form.performed_date.errors }}</p>
+<details{% if form.stages.errors %} open{% endif %}><summary>Что сделано — необязательно</summary>{{ form.stages }}{{ form.stages.errors }}</details>
+<div class="repair-camera"><h2>Фотографии</h2><div class="repair-file-actions"><label for="camera-files" class="button secondary">Сделать фото</label><input id="camera-files" type="file" name="files" accept="image/*" capture="environment" data-camera><span class="repair-device-file"><span class="repair-file-fallback">{{ form.files.label_tag }}</span><label for="{{ form.files.id_for_label }}" class="button secondary repair-file-trigger">Выбрать с устройства</label>{{ form.files }}</span></div>{{ form.files.errors }}<p data-photo-errors role="alert" hidden></p><p data-photo-count hidden></p><ul data-photo-list aria-live="polite"></ul><small>До 20 фото PNG/JPEG, до 10 МБ каждое и до 40 МБ за фотоотчёт.</small></div>
+<p>{{ form.note.label_tag }}{{ form.note }}{{ form.note.errors }}</p>
+<div class="repair-submit"><button class="button" type="submit" data-send-report>Сохранить фотоотчёт</button><small>После сохранения можно добавить ещё фотографии или выбрать другую работу.</small></div>
+</form></div><script src="/static/repairs/field.js?v={{ release_version }}&amp;photos=3" defer></script>
+{% endblock %}

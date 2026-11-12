@@ -66,6 +66,8 @@ def report_date(value):
 def start(binding, job, action):
     if not available(binding.user).filter(pk=job.pk).exists():
         raise PermissionDenied
+    if Draft.objects.filter(binding=binding,action='progress',state__in=['photos','editing'],photos__isnull=False).exists():
+        raise ValidationError('Есть несохранённый фотоотчёт. Вернитесь /фото и сохраните или отмените его.')
     Draft.objects.filter(binding=binding, state__in=['editing', 'photos', 'confirm']).update(state='cancelled')
     form = ReportForm(job=job, action=action, user=binding.user)
     raw = {name: str(value) if value is not None else '' for name, value in form.initial.items()
@@ -160,13 +162,15 @@ def summarize(event, binding, draft):
 
 def handle(event, binding, stored_keys):
     user = binding.user
+    from . import progress
+    if progress.handle(event,binding,stored_keys):return
     if user.is_leader or user.role=='pto':
         from .leadership import handle
         return handle(event, binding)
     text = event.payload.get('text', '').strip()
     if text in ('/menu','/меню'):
         queue(event,'Меню мастера. Выберите действие.',
-              [button('Мои работы','/работы'),button('Сообщить о неисправности техники','/техника')],binding=binding)
+              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Сообщить о неисправности техники','/техника')],binding=binding)
         return
     if text=='/техника':
         from projects.equipment import visible_equipment
@@ -182,6 +186,7 @@ def handle(event, binding, stored_keys):
             raise ValidationError('Неверная страница.')
         sections = list(available(user).order_by('section_id').values_list('section_id', 'section__name', 'section__project_object__name').distinct()[page * 8:page * 8 + 9])
         buttons = [button(f'{obj} · {name}', f'section:{pk}:0') for pk, name, obj in sections[:8]]
+        buttons.append(button('Фото хода работ','/фото'))
         buttons.append(button('Сообщить о неисправности техники','/техника'))
         if len(sections) > 8:
             buttons.append(button('Следующие участки', f'sections:{page + 1}'))
@@ -208,7 +213,7 @@ def handle(event, binding, stored_keys):
         job = available(user).filter(pk=uuid.UUID(text.split(':')[1])).first()
         if not job:
             raise PermissionDenied
-        queue(event, job_title(job), [button('Работа выполнена', f'begin:{job.pk}:repaired'),
+        queue(event, job_title(job), [button('Фото хода работ',f'progress:select:{job.pk}'),button('Работа выполнена', f'begin:{job.pk}:repaired'),
                 button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired')], binding=binding, job=job)
         return
     if text.startswith('begin:'):

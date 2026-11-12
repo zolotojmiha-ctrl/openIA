@@ -60,7 +60,7 @@ def process(key):
                 text = '\n'.join(exc.messages) if isinstance(exc, ValidationError) else 'Действие недоступно или устарело. Откройте актуальную карточку в ЛК.'
                 valid = binding if binding and links.current(binding) else None
                 draft = Draft.objects.filter(binding=valid, state__in=['editing', 'photos', 'confirm']).order_by('-created_at').first() if valid else None
-                buttons = [dialog.button('Исправить черновик', f'edit:{draft.pk}')] if draft else []
+                buttons = [dialog.button('Вернуться к фотоотчёту','/фото') if draft.action=='progress' else dialog.button('Исправить черновик',f'edit:{draft.pk}')] if draft else []
                 if not valid:
                     text = 'Привязка не выполнена или доступ изменился. Проверьте профиль в ЛК.'
                 dialog.queue(event, text[:3500], buttons, binding=valid, job=draft.job if draft else None, suffix='error')

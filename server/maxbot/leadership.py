@@ -73,6 +73,12 @@ def access_signature(user):
 def subject(user, event):
     details = event.details
     try:
+        if event.action=='repair_reported' and details.get('kind')=='note':
+            job=visible_jobs(user).exclude(contract__status='archived').exclude(section__project_object__status='archived').filter(pk=details.get('entity_id')).first()
+            if not job:return None
+            report=job.reports.filter(pk=details.get('report_id'),context__progress__isnull=False).first()
+            if not report:return None
+            return 'Фото хода работ · '+report.performed_date.strftime('%d.%m.%Y')+'\n'+title(user,job),link('Открыть ход работ','repair_detail',[job.pk])
         if event.action == 'repair_reported' and details.get('kind') in ('complete', 'partial', 'problem', 'correction'):
             job = visible_jobs(user).exclude(contract__status='archived').filter(pk=details.get('entity_id')).first()
             if not job or (details.get('kind') != 'problem' and job.state != 'reported'):return None
@@ -142,7 +148,7 @@ def handle(event,binding):
     elif text.startswith('leader:'):
         try:_,category,raw=text.split(':');page=int(raw)
         except (ValueError,TypeError):raise ValidationError('Откройте меню: /меню')
-    if category not in ('menu','summary','works','reports','equipment','issues','materials','shortage','rentals','contracts','sections') or not 0<=page<=10000:raise ValidationError('Неверная страница меню.')
+    if category not in ('menu','summary','works','progress','reports','equipment','issues','materials','shortage','rentals','contracts','sections') or not 0<=page<=10000:raise ValidationError('Неверная страница меню.')
     jobs=visible_jobs(user).exclude(contract__status='archived').exclude(section__project_object__status='archived')
     machines=visible_equipment(user);needed=materials(user);hire=rentals(user);complaints=issues(user).filter(state='open')
     query={}
@@ -157,7 +163,7 @@ def handle(event,binding):
     reports=jobs.filter(state='reported')
     contract=visible_contracts(user).filter(pk=selection.get('contract')).first() if selection.get('contract') else None
     context='Контракт: '+(contract_name(user,contract) if contract else 'Все')+'\nУчасток: '+(section.project_object.name+' · '+section.name if selection.get('section') else 'Все')
-    menu=[('Работы и дефекты','works'),('Отчёты на проверку','reports'),('Техника в ремонте','equipment'),('Заявки на ремонт техники','issues'),('Заявки на материалы','materials'),('Нехватка муфт','shortage'),('Сводка по участкам','summary')]
+    menu=[('Работы и дефекты','works'),('Фото хода работ','progress'),('Отчёты на проверку','reports'),('Техника в ремонте','equipment'),('Заявки на ремонт техники','issues'),('Заявки на материалы','materials'),('Нехватка муфт','shortage'),('Сводка по участкам','summary')]
     if rental_service.financial_reader(user):menu.insert(-1,('Аренда: наработка и стоимость','rentals'))
     if not permitted(user,'stock.manage'):
         menu=[entry for entry in menu if entry[1]!='shortage']
@@ -193,12 +199,18 @@ def handle(event,binding):
         if len(lines)>page*5+5:buttons.append(button('Далее',f'leader:shortage:{page+1}'))
         buttons.append(link('Подробная потребность в ЛК','stock_coverage',query=query))
     else:
-        queryset={'works':jobs,'reports':reports,'equipment':machines.filter(status='repair'),'issues':complaints,'materials':needed,'rentals':hire}[category].order_by('pk')
+        queryset={'works':jobs,'progress':jobs.filter(reports__context__progress__isnull=False).distinct(),'reports':reports,'equipment':machines.filter(status='repair'),'issues':complaints,'materials':needed,'rentals':hire}[category].order_by('pk')
         entries=list(queryset[page*5:page*5+6])
         if not entries:body+='\nЗаписей нет.'
         for index,row in enumerate(entries[:5],1):
-            if category in ('works','reports'):
-                body+='\n\n'+title(user,row)[:500]+'\n'+row.get_state_display();buttons.append(link(f'{index}. Открыть работу','repair_detail',[row.pk]))
+            if category in ('works','progress','reports'):
+                body+='\n\n'+title(user,row)[:500]+'\n'+row.get_state_display()
+                if category=='progress':
+                    latest=row.reports.filter(context__progress__isnull=False).first()
+                    body+='\nФото за '+latest.performed_date.strftime('%d.%m.%Y')+f': {latest.attachments.count()} шт.'
+                target=link(f'{index}. Открыть ход работ' if category=='progress' else f'{index}. Открыть работу','repair_detail',[row.pk])
+                if category=='progress':target['url']+='#progress-timeline'
+                buttons.append(target)
             elif category in ('equipment','issues'):
                 machine=row.equipment if category=='issues' else row
                 body+='\n\n'+str(machine)+('\n'+row.description[:350] if category=='issues' else '')

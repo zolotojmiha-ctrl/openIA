@@ -36,13 +36,20 @@ def report_work(user,job_id,action,data):
                 if action not in ('result','correction') or data.get('outcome')!='complete':
                     raise ValidationError('Замер нового покрытия указывается при завершении ремонта.')
                 data=dict(data,actual_coating_length_m=actual)
-            digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},**({'actual_coating_length_m':format(data['actual_coating_length_m'].normalize(),'f')} if data.get('actual_coating_length_m') is not None else {}),**({'actual_cleaning_length_m':str(data['actual_cleaning_length_m'])} if data.get('actual_cleaning_length_m') is not None else {}),**({'installation':data['installation']} if 'installation' in data else {}),'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            if data.get('progress') is not None:
+                from .progress import normalize,check_images
+                if action!='note' or data.get('couplings') or data.get('outcome') or data.get('method') or data.get('actual_coating_length_m') is not None:raise ValidationError('Фото хода работ сохраняются отдельно от результата.')
+                progress=normalize(data['progress']);check_images(data.get('files',[]))
+                if data['performed_date']>timezone.localdate():raise ValidationError('Дата работ не может быть в будущем.')
+                data=dict(data,progress=progress)
+            digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**({'progress':data['progress']} if data.get('progress') is not None else {}),**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},**({'actual_coating_length_m':format(data['actual_coating_length_m'].normalize(),'f')} if data.get('actual_coating_length_m') is not None else {}),**({'actual_cleaning_length_m':str(data['actual_cleaning_length_m'])} if data.get('actual_cleaning_length_m') is not None else {}),**({'installation':data['installation']} if 'installation' in data else {}),'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
             previous=Report.objects.filter(token=data['token']).first()
             if previous:
                 if previous.job_id==job.pk and previous.author_id==user.pk:
                     if previous.request_digest==digest:return previous
                     raise ValidationError('Предыдущая отправка уже получена сервером, но этот черновик отличается. Можно сохранить изменения отдельной записью после проверки карточки.',code='already_saved',params={'version':job.version})
                 raise ValidationError('Этот запрос уже использован для другой записи.')
+            if data.get('progress') is not None and (job.state in ('reported','confirmed','unrepairable') or job.section.project_object.status=='archived'):raise ValidationError('Работа уже завершена или закрыта. Откройте актуальную карточку.')
             if job.version!=data['expected_version']:raise ValidationError('Работу уже изменили. Ваш черновик сохранён. Откройте актуальную карточку, сравните данные и повторите отправку.')
             if action=='correction' and not current.is_leader:raise ValidationError('Исправление доступно руководителю.')
             if job.state=='unrepairable' and action!='note':raise ValidationError('Руководитель признал дефект не подлежащим устранению. Сначала требуется решение о возвращении в работу.')
@@ -79,7 +86,7 @@ def report_work(user,job_id,action,data):
                 method=data.get('method',''),length_m=data.get('length_m'),composition=data.get('composition',''),note=data.get('note',''),problem=data.get('problem',''),
                 latitude=data.get('latitude'),longitude=data.get('longitude'),outcome=data.get('outcome',''),
                 coupling_snapshot=[{'id':str(c.pk),'serial':c.serial,'method':c.get_method_display(),'length_mm':c.length_mm,'wall_mm':str(c.wall_mm or ''),'warehouse':c.warehouse} for c in couplings],
-                context={'actual_coating_length_m':str(data['actual_coating_length_m']) if data.get('actual_coating_length_m') is not None else None,'actual_cleaning_length_m':str(data['actual_cleaning_length_m']) if data.get('actual_cleaning_length_m') is not None else None,**({'installation':data['installation']} if 'installation' in data else {}),'subcontract':{'order':str(job.subcontract_order_id),'company':str(job.subcontract_order.company_id),'name':job.subcontract_order.company.name} if job.subcontract_order_id else None,'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.active_defects],'crew':{'assignment':str(job.crew_assignment_id),'name':job.crew_assignment.brigade.name,'roster':job.crew_assignment.roster} if job.crew_assignment_id else None,'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
+                context={**({'progress':data['progress']} if data.get('progress') is not None else {}),'actual_coating_length_m':str(data['actual_coating_length_m']) if data.get('actual_coating_length_m') is not None else None,'actual_cleaning_length_m':str(data['actual_cleaning_length_m']) if data.get('actual_cleaning_length_m') is not None else None,**({'installation':data['installation']} if 'installation' in data else {}),'subcontract':{'order':str(job.subcontract_order_id),'company':str(job.subcontract_order.company_id),'name':job.subcontract_order.company.name} if job.subcontract_order_id else None,'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.active_defects],'crew':{'assignment':str(job.crew_assignment_id),'name':job.crew_assignment.brigade.name,'roster':job.crew_assignment.roster} if job.crew_assignment_id else None,'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
             for datafile in data.get('files',[]):
                 key=store_file(datafile);stored.append(key)
                 Attachment.objects.create(report=report,storage_key=key,**{k:datafile[k] for k in ['name','content_type','size','sha256']})
@@ -102,7 +109,9 @@ def report_work(user,job_id,action,data):
                 job.problem=data['problem'];job.problem_note=report.note[:1000]
                 if not_repaired:job.state='progress'
             elif action=='resolve':job.problem='';job.problem_note=''
-            job.version+=1;job.save()
+            if data.get('progress') is None or job.state=='planned':
+                if data.get('progress') is not None:job.state='progress'
+                job.version+=1;job.save()
             audit(current,'repair_reported',entity_id=str(job.pk),report_id=str(report.pk),kind=kind)
             return report
     except Exception:
