@@ -128,3 +128,12 @@ class ReservedP1DemandTests(TestCase):
         with patch('postoffice.transport.deliver') as deliver:
             self.assertTrue(process_one());deliver.assert_not_called()
         self.assertEqual(Letter.objects.get().state,'failed')
+
+    def test_global_stock_example_covers_short_and_long_jobs_without_purchase(self):
+        self.job(length='1.5');self.job(length='3')
+        pieces=[self.piece(length=length,wall=8) for length in (1500,1500,1000,2000)]
+        records=repair_materials.all_demand(self.leader)
+        self.assertEqual(sum(line['missing'] for row in records for line in row['couplings']),0)
+        self.assertEqual(sum(line['need'] for row in records for line in row['couplings']),3)
+        for piece in pieces:
+            piece.refresh_from_db();self.assertIsNone(piece.reserved_job_id)
