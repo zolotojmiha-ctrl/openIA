@@ -18,7 +18,7 @@ for name,entry in manifest['files'].items():
     if name.endswith('.py'):compile((package/'files'/name).read_bytes(),name,'exec')
 # The manifest guards both old/new rental_views; its money-form fix is preserved.
 p=root/'server/projects/rental_views.py'
-if 'server/projects/rental_views.py' not in manifest['files'] and hashlib.sha256(p.read_bytes()).hexdigest()!='65203517de42622ce244e5ae1335de692b9a801d7ab04ed7164b719b2909d49d':raise SystemExit('Сначала требуется ранее выданное исправление тарифа и аванса.')
+if 'server/projects/rental_views.py' not in manifest['files'] and hashlib.sha256(p.read_bytes()).hexdigest()!='ffff3c425b1b3190e12477d89d7bcc4a94039b4603903b0ec85399d3af249bc2':raise SystemExit('Сначала требуется ранее выданное исправление тарифа и аванса.')
 for name,expected in manifest.get('requires',{}).items():
     if hashlib.sha256((root/name).read_bytes()).hexdigest()!=expected:raise SystemExit('Сначала установите предыдущее исправление: '+name)
 print('Файлы проверены. Предыдущие исправления сохранятся.')
