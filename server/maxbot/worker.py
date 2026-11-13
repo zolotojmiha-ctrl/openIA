@@ -86,6 +86,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('rental_reminder'):
+        from .rental_reminders import delivery_allowed as rental_allowed
+        return rental_allowed(binding.user,row.scope)
     if row.scope.get('mechanic'):
         from .mechanic import delivery_allowed
         return delivery_allowed(binding.user,row.scope)
@@ -151,6 +154,8 @@ def deliver(pk):
 def tick(deliver_messages=False, limit=30):
     if not settings.ARMADA_MAX_ENABLED:
         return 0
+    from .rental_reminders import maybe_queue_due
+    maybe_queue_due()
     count = 0
     for key in Inbox.objects.filter(state='pending').order_by('created_at', 'key').values_list('pk', flat=True)[:limit]:
         process(key)
