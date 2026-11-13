@@ -11,3 +11,26 @@
 Прогнозный график и мастерская смена метода после ДДК — отдельные обсуждения, этим пакетом не реализуются. Ближайшие заметки о прогнозе: requirements/REPAIR_FORECAST_IDEA_2026_11_13.md.
 
 Заключительные 12 тестов PostgreSQL/Chromium OK/14,802 с: добавлена проверка итогов и экспорта за всеми страницами, в том числе покрытия после шлифовки без длины конструкции. Снимки только синтетического стенда сохранены вне Git. Отдельный новый Docker-образ этого пакета в облаке не собирался; приложение и настоящий браузер проверены с рабочими зависимостями, PostgreSQL 17 из локального образа, без доступа к производственным системам.
+
+Подписанный пакет: коммит 0222ed72ebce52f68f4b52be945819c298ba3972, исходники 3582ec64c6cbbd03371ef34053326e0163b0b45f, 8 runtime-файлов. ZIP 18420 байт, SHA-256 b6a0863fbac68bbbe9c278a40408342078c969261d2500bd80b0acbbdd02d45a. ZIP и подпись повторно скачаны из опубликованного GitHub HTTPS, хэш совпал, Verified OK. Оба режима установщика (MAX работал/был выключен) проверены: отказ изменённому исходнику до резервирования, успешная установка и повтор, сохранение посторонних данных/двух резервов исходников. Установка этого пакета на VPS пока не подтверждена.
+
+На Mac:
+
+```bash
+ssh -o UseKeychain=yes -o IdentitiesOnly=yes -o PasswordAuthentication=no -i ~/.ssh/armada_beget root@185.23.35.28
+```
+
+На VPS:
+
+```bash
+cd /root &&
+ARMADA_FIX_URL='https://raw.githubusercontent.com/zolotojmiha-ctrl/openIA/0222ed72ebce52f68f4b52be945819c298ba3972' &&
+curl -fL --retry 3 -o armada-pto-completion-register.zip "$ARMADA_FIX_URL/armada-pto-completion-register.zip" &&
+curl -fL --retry 3 -o armada-pto-completion-register.zip.sig "$ARMADA_FIX_URL/armada-pto-completion-register.zip.sig" &&
+echo 'b6a0863fbac68bbbe9c278a40408342078c969261d2500bd80b0acbbdd02d45a  armada-pto-completion-register.zip' | sha256sum -c - &&
+openssl dgst -sha256 -verify /root/armada-6.32.0/armada-release-signing.public.pem -signature armada-pto-completion-register.zip.sig armada-pto-completion-register.zip &&
+python3 -m zipfile -e armada-pto-completion-register.zip /root &&
+ARMADA_APP_ROOT=/opt/armada bash /root/armada-pto-completion-register/install.sh
+```
+
+Проверка после установки: обновить страницу «Выполнение работ» или ведомость участка, открыть «Ведомость выполнения» под руководителем и ПТО. Выбрать период/участок, сверить пару фактических результатов и общий ремонт с карточкой, скачать Excel и проверить числовые длины общей конструкции один раз. На настоящем сервере это должен подтвердить владелец. Прежний импортный Excel не заменён новой сверочной ведомостью.
