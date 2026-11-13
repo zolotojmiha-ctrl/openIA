@@ -7,7 +7,7 @@ from projects.subcontracts import orders,can_report
 from projects.closure import pending_contracts
 from documents.access import visible_documents,unsorted_documents
 from documents.deadlines import due_documents
-from repairs.access import visible_jobs
+from repairs.access import visible_jobs,can_report_scoped
 
 TITLES={
  'leader':('Проверки и сводка объектов','Результаты работ, заявки на закрытие и состояние объектов'),
@@ -56,7 +56,7 @@ def role_home(user):
         own=jobs.filter(assigned_to=user)
         todo=own.exclude(state__in=['confirmed','reported','unrepairable'])
         card('Все назначенные мне работы','repairs',own.count(),'?master='+str(user.pk))
-        if can('repairs.overview'):card('Все дефекты доступных участков','repairs',jobs.count(),detail='Просмотр работ; отчёты — по вашим назначениям')
+        if can('repairs.overview') or can_report_scoped(user):card('Все дефекты доступных участков','repairs',jobs.count(),detail='Результаты и фото по разрешённым участкам' if can_report_scoped(user) else 'Просмотр работ; отчёты — по вашим назначениям')
         card('Мои результаты на проверке','repairs',own.filter(state='reported').count(),'?master='+str(user.pk)+'&state=reported')
         card('Вернули мне на доработку','repairs',own.exclude(review_note='').count(),'?master='+str(user.pk)+'&state=revision')
         card('Черновики на этом устройстве','repair_drafts',detail='Неотправленные сведения и фотографии')

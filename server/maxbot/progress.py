@@ -67,7 +67,7 @@ def handle(event,binding,stored_keys):
             buttons.append(button(label,f'progress:select:{job.pk}'))
         if len(jobs)>6:buttons.append(button('Следующие работы',f'progress:list:{page+1}'))
         buttons.append(button('Меню','/menu'))
-        queue(event,'Выберите работу для фотографий. Начатые работы показаны первыми.\n\n'+'\n\n'.join(title(user,j)[:450] for j in jobs[:6]) if jobs else 'Назначенных работ для фотоотчёта нет.',buttons,binding=binding,scope={'jobs':[str(j.pk) for j in jobs[:6]]})
+        queue(event,'Выберите работу для фотографий. Начатые работы показаны первыми.\n\n'+'\n\n'.join(title(user,j)[:450] for j in jobs[:6]) if jobs else 'Доступных работ для фотоотчёта нет.',buttons,binding=binding,scope={'jobs':[str(j.pk) for j in jobs[:6]]})
         return True
     if action=='select':
         job=available(user).filter(pk=uuid.UUID(parts[2])).first()

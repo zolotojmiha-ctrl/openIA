@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
 from documents.storage import validate_upload, store_file, verified_file, private_path
-from repairs.access import reportable_jobs
+from repairs.access import reportable_jobs,can_report_scoped
 from repairs.forms import ReportForm
 from repairs.services import report_work
 from .models import Draft, Photo, Outbox
@@ -195,7 +195,7 @@ def handle(event, binding, stored_keys):
             buttons.append(button('Следующие участки', f'sections:{page + 1}'))
         if page:
             buttons.append(button('К началу списка', '/работы'))
-        queue(event, 'Выберите участок. Показаны только назначенные вам работы.' if sections else 'Назначенных работ для отчёта нет.',
+        queue(event, ('Выберите участок. Показаны работы доступных вам участков.' if can_report_scoped(user) else 'Выберите участок. Показаны только назначенные вам работы.') if sections else 'Доступных работ для отчёта нет.',
               buttons, binding=binding, scope={'sections': [str(pk) for pk, name, obj in sections[:8]]})
         return
     if text.startswith('section:'):
