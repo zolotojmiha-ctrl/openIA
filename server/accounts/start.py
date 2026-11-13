@@ -56,6 +56,7 @@ def role_home(user):
         own=jobs.filter(assigned_to=user)
         todo=own.exclude(state__in=['confirmed','reported','unrepairable'])
         card('Все назначенные мне работы','repairs',own.count(),'?master='+str(user.pk))
+        if can('repairs.overview'):card('Все дефекты доступных участков','repairs',jobs.count(),detail='Просмотр работ; отчёты — по вашим назначениям')
         card('Мои результаты на проверке','repairs',own.filter(state='reported').count(),'?master='+str(user.pk)+'&state=reported')
         card('Вернули мне на доработку','repairs',own.exclude(review_note='').count(),'?master='+str(user.pk)+'&state=revision')
         card('Черновики на этом устройстве','repair_drafts',detail='Неотправленные сведения и фотографии')

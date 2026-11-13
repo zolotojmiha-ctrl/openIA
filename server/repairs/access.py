@@ -17,6 +17,7 @@ def prepare_required(view):
 
 from django.db.models import Q
 from projects.access import visible_objects,visible_contracts
+from accounts.permissions import permitted
 from .models import Job, Section, Coupling
 
 def visible_sections(user):
@@ -32,7 +33,7 @@ def visible_jobs(user,include_archived=False):
         from projects.subcontracts import own_order_filter
         own=SubcontractOrder.objects.filter(own_order_filter(user)).values('pk')
         qs=qs.filter(Q(subcontract_order__in=own)|Q(subcontract_order__isnull=True,assigned_to=user))
-    elif not can_prepare(user) and user.role!='pto':qs=qs.filter(assigned_to=user)
+    elif not can_prepare(user) and user.role!='pto' and not permitted(user,'repairs.overview'):qs=qs.filter(assigned_to=user)
     return qs.select_related('subcontract_order__company','crew_assignment','crew_assignment__brigade','contract','section','section__project_object','assigned_to').prefetch_related('defects')
 
 def selectable_couplings(job,include_historical=False):

@@ -16,7 +16,7 @@ class EmployeeForm(forms.Form):
     role=forms.ChoiceField(label='Роль в ЛК (сама по себе не выдаёт права)',choices=ROLES)
     profile=forms.ChoiceField(label='Набор возможностей',choices=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items()],required=False,help_text='Права выбранного набора включаются при сохранении. Галочки ниже — дополнительные разрешения. Доступ к конкретным контрактам, участкам и файлам выдаётся отдельно.')
     is_active=forms.BooleanField(label='Учётная запись активна',required=False,initial=True)
-    permissions=forms.MultipleChoiceField(label='Индивидуальные разрешения',choices=list(PERMISSIONS.items()),required=False,widget=forms.CheckboxSelectMultiple)
+    permissions=forms.MultipleChoiceField(label='Индивидуальные разрешения',choices=list(PERMISSIONS.items()),required=False,widget=forms.CheckboxSelectMultiple,help_text='Просмотр всех дефектов открывает работы других мастеров только в доступных контрактах и участках. Отчёты остаются у ответственного мастера; доступ к участкам выдаётся отдельно.')
     def __init__(self,*args,user=None,actor=None,**kwargs):
         self.edit_user=user
         self.actor=actor

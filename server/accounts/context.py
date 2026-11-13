@@ -10,7 +10,7 @@ def local_testing(request):
         context.update(can_manage_users=permitted(request.user,'users.manage'),can_manage_projects=permitted(request.user,'projects.manage'),can_manage_project_access=permitted(request.user,'projects.access'),can_manage_personnel=permitted(request.user,'personnel.manage'),can_link_accounts=can_link_person(request.user),can_customer_changes=permitted(request.user,'projects.manage') or permitted(request.user,'contract.changes'),can_work=visible_contracts(request.user).exists())
         from repairs.access import visible_jobs,can_prepare
         jobs=visible_jobs(request.user)
-        context.update(can_repairs=can_prepare(request.user) or jobs.exists(),can_prepare_repairs=can_prepare(request.user),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
+        context.update(can_overview_repairs=request.user.role!='subcontractor' and permitted(request.user,'repairs.overview'),can_repairs=can_prepare(request.user) or jobs.exists(),can_prepare_repairs=can_prepare(request.user),repair_job_count=jobs.count(),repair_review_count=jobs.filter(state='reported').count() if request.user.is_leader else 0)
         context['can_work']=context['can_work'] or can_prepare(request.user) or jobs.exists() or context['can_manage_projects']
         if request.user.is_leader:
             from projects.daily import works as daily_works
