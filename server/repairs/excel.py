@@ -15,7 +15,7 @@ HEADERS=['Код ремонта','Км','№ секции','№ дефекта',
 SIMPLE_HEADERS=['Км','№ дефекта','№ секции','Метод ремонта','Длина, м','Толщина стенки муфты, мм','Состав конструкции, м','Плановая дата','Мастер','Общая конструкция (необязательно)']
 NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-def workbook(rows,headers=None,sheet_name='Дефекты',hidden_columns=(),column_choices=None):
+def workbook(rows,headers=None,sheet_name='Дефекты',hidden_columns=(),column_choices=None,numeric_columns=()):
     ET.register_namespace('',NS)
     sheet=ET.Element('{'+NS+'}worksheet')
     if hidden_columns:
@@ -27,7 +27,11 @@ def workbook(rows,headers=None,sheet_name='Дефекты',hidden_columns=(),col
         for c,value in enumerate(values,1):
             letters='';n=c
             while n:n,k=divmod(n-1,26);letters=chr(65+k)+letters
-            cell=ET.SubElement(row,'{'+NS+'}c',r=f'{letters}{r}',t='inlineStr')
+            numeric=r>1 and c-1 in numeric_columns and isinstance(value,(int,Decimal)) and (not isinstance(value,Decimal) or value.is_finite())
+            cell=ET.SubElement(row,'{'+NS+'}c',r=f'{letters}{r}',t='n' if numeric else 'inlineStr')
+            if numeric:
+                ET.SubElement(cell,'{'+NS+'}v').text=str(value)
+                continue
             text=re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]','',str(value) if value is not None else '')
             ET.SubElement(ET.SubElement(cell,'{'+NS+'}is'),'{'+NS+'}t').text=text
     if column_choices:

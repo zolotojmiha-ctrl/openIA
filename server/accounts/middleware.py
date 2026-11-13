@@ -11,6 +11,16 @@ class AccountStateMiddleware:
                 return redirect('login')
             if request.user.must_change_password and request.path.startswith('/cabinet/') and request.path not in ['/cabinet/password/','/cabinet/logout/']:
                 return redirect('password')
+        if request.user.is_authenticated and request.user.role=='lessor' and not request.user.is_leader and request.path.startswith('/cabinet/'):
+            from django.urls import resolve,Resolver404
+            from django.http import HttpResponseForbidden
+            try:name=resolve(request.path).url_name
+            except Resolver404:name=None
+            allowed={'dashboard','equipment','lessor_home','lessor_detail','lessor_export','profile','password','logout','end_sessions','max_connection','max_onboarding'}
+            if name not in allowed:
+                response=HttpResponseForbidden('Этот раздел недоступен арендодателю.')
+                response['Cache-Control']='private, no-store'
+                return response
         if request.user.is_authenticated and request.user.role=='customer' and not request.user.is_leader:
             from django.http import HttpResponseForbidden
             allowed=('/cabinet/customer/','/cabinet/password/','/cabinet/logout/')

@@ -6,7 +6,7 @@ from django.core.exceptions import PermissionDenied
 def permitted(user,key):
     if not user.is_authenticated or not user.is_active:return False
     if user.is_leader:return True
-    if user.role=='customer':return False
+    if user.role in ('customer','lessor'):return False
     if user.role=='foreman' and key in ('finance.read','finance.write','rental.manage'):return False
     return user.grants.filter(permission=key).exists()
 
@@ -23,6 +23,7 @@ def permission_required(key):
 def manageable_user(actor,user):
     if user.is_leader:return False
     if actor.is_leader:return True
+    if user.role=='lessor':return False
     # A delegate cannot reset/block an account holding powers they do not hold.
     return not user.grants.exclude(permission__in=actor.grants.values('permission')).exists()
 

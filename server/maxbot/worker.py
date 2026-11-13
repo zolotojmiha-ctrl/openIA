@@ -86,9 +86,15 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('rental_event') or row.scope.get('rental_overdue'):
+        from .rental_notices import delivery_allowed as rental_notice_allowed
+        return rental_notice_allowed(binding.user,row.scope)
     if row.scope.get('rental_reminder'):
         from .rental_reminders import delivery_allowed as rental_allowed
         return rental_allowed(binding.user,row.scope)
+    if row.scope.get('lessor'):
+        from .lessor import delivery_allowed as lessor_allowed
+        return lessor_allowed(binding.user,row.scope)
     if row.scope.get('mechanic'):
         from .mechanic import delivery_allowed
         return delivery_allowed(binding.user,row.scope)

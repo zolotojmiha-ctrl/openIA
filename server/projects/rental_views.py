@@ -141,6 +141,8 @@ def detail(request,pk,embedded=False):
     if rentals.technical_reader(request.user):
         from django.db.models import Sum
         context['technical_hours']=rental.days.filter(date__lte=timezone.localdate()).aggregate(v=Sum('hours'))['v'] or 0
+    from .models import RentalDispute
+    context['rental_disputes']=RentalDispute.objects.filter(access__rental=rental).select_related('access__user').order_by('-created_at')[:100] if can_manage else []
     if embedded:return context
     return render(request,'projects/rental_detail.html',context)
 

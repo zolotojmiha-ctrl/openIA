@@ -86,6 +86,7 @@ class RateBucket(models.Model):
 
 
 class DemandWatch(models.Model):
+    format_version=models.PositiveSmallIntegerField(default=2)
     binding=models.OneToOneField(Binding,on_delete=models.CASCADE)
     digest=models.CharField(max_length=64,blank=True)
     version=models.PositiveIntegerField(default=0)

@@ -108,6 +108,7 @@ def password_view(request):
 
 @login_required
 def dashboard(request):
+    if request.user.role=='lessor' and not request.user.is_leader:return redirect('lessor_home')
     from projects.access import visible_objects, visible_contracts,contract_card
     from documents.access import visible_documents,unread_documents
     from .personal import favorite_items
@@ -177,7 +178,7 @@ def employee_edit(request,pk=None):
                     from projects.models import CustomerAccess
                     CustomerAccess.objects.filter(user=employee).delete()
                     CustomerAccess.objects.bulk_create([CustomerAccess(user=employee,contract=s.contract,project_object=s.project_object,created_by=actor) for s in form.cleaned_data['customer_scopes']])
-                if temporary and employee.role!='customer':
+                if temporary and employee.role not in ('customer','lessor'):
                     from documents.models import Person
                     from projects.models import LegalEntity,COMPANY_TAX_ID
                     Person.objects.create(user=employee,legal_entity=LegalEntity.objects.get(tax_id=COMPANY_TAX_ID),full_name=employee.full_name,position=employee.get_role_display(),created_by=request.user)

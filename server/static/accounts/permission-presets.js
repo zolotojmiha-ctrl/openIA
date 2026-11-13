@@ -8,13 +8,13 @@
  const available=key=>[...select.options].some(option=>option.value===key);
  const roleAvailable=key=>role&&[...role.options].some(option=>option.value===key);
  function renderRole(){
-  const customer=role?.value==='customer',scopes=document.querySelector('[data-account-field=customer_scopes]');
+  const customer=role?.value==='customer',external=customer||role?.value==='lessor',scopes=document.querySelector('[data-account-field=customer_scopes]');
   if(scopes)scopes.hidden=!customer;
   for(const name of ['permissions','request_mail','mail_address']){
-   const box=document.querySelector('[data-account-field='+name+']');if(box)box.hidden=customer;
+   const box=document.querySelector('[data-account-field='+name+']');if(box)box.hidden=external;
   }
   for(const input of document.querySelectorAll('[name=request_mail]')){
-   input.disabled=customer;if(customer)input.checked=false;
+   input.disabled=external;if(external)input.checked=false;
   }
   if(applyButton)applyButton.disabled=!available(role?.value);
   if(help)help.textContent=presets[select.value]?.help||originalHelp;
@@ -28,7 +28,7 @@
   }
   prior=chosen?.permissions||[];
   for(const input of inputs)if(prior.includes(input.value)){input.checked=true;input.disabled=true;}
-  if(role?.value==='customer')for(const input of inputs){input.checked=false;input.disabled=true;}
+  if(['customer','lessor'].includes(role?.value))for(const input of inputs){input.checked=false;input.disabled=true;}
   renderRole();
  }
  function chooseRole(){select.value=available(role?.value)?role.value:'custom';applyProfile();}

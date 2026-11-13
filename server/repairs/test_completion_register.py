@@ -104,6 +104,23 @@ class CompletionRegisterTests(TestCase):
             self.pto.role=role;self.pto.save(update_fields=['role']);self.client.force_login(self.pto)
             self.assertEqual(self.client.get(self.url).status_code,403)
             self.assertEqual(self.client.get(self.url,{'download':'xlsx'}).status_code,403)
+    def test_contract_entry_includes_all_accessible_sections_and_no_longer_in_each_place(self):
+        area=ProjectObject.objects.create(legal_entity=self.company,name='ТЕСТ второй участок')
+        ContractObject.objects.create(contract=self.contract,project_object=area)
+        ObjectAccess.objects.create(user=self.pto,project_object=area,granted_by=self.leader)
+        section=Section.objects.create(project_object=area,rnu='ТЕСТ',pipeline='ТЕСТ',name='ТЕСТ второй')
+        job=Job.objects.create(contract=self.contract,section=section,method='grind',state='confirmed',created_by=self.leader)
+        defect=Defect.objects.create(contract=self.contract,section=section,kilometre=3,number='ТЕСТ второй участок')
+        JobDefect.objects.create(job=job,defect=defect)
+        Report.objects.create(job=job,author=self.worker,kind='complete',performed_date=self.today,method='grind')
+        page=self.client.get(reverse('work_contract',args=[self.contract.pk]))
+        self.assertContains(page,self.url+'?contract='+str(self.contract.pk))
+        self.assertContains(page,'Ведомость выполнения по контракту')
+        report=self.client.get(self.url,{'contract':str(self.contract.pk)})
+        self.assertEqual(report.context['summary']['jobs'],2)
+        place=self.client.get(reverse('work_place',args=[self.contract.pk,self.obj.pk]))
+        self.assertNotContains(place,'Ведомость выполнения')
+
     def test_link_in_existing_register_and_card_return_keeps_filters(self):
         response=self.client.get(reverse('repairs'));self.assertContains(response,self.url)
         path=self.url+'?start='+str(self.today-timedelta(days=3))

@@ -77,6 +77,8 @@ def queue_due(now=None):
                 if row.binding_id!=binding.pk and (row.state=='pending' or row.state=='cancelled' and row.attempts==0):
                     for name,value in defaults.items():setattr(row,name,value)
                     row.state='pending';row.save(update_fields=[*defaults,'state']);queued+=1
+    from .rental_notices import queue_overdue
+    queued+=queue_overdue(now)
     return queued
 
 

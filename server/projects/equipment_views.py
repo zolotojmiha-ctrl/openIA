@@ -81,6 +81,7 @@ def filtered(user,params):
 
 @login_required
 def listing(request):
+    if request.user.role=='lessor' and not request.user.is_leader:return redirect('lessor_home')
     try:target_id=UUID(request.GET.get('assign_object',''))
     except ValueError:target_id=None
     target=visible_objects(request.user).filter(pk=target_id).first() if target_id else None

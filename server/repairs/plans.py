@@ -46,9 +46,12 @@ def record_change(actor,job,before,note=''):
     return released
 
 @transaction.atomic
-def revise(user,pk,expected_version,values,reason):
+def revise(user,pk,expected_version,values,reason,*,ddk=False):
     actor=User.objects.select_for_update(no_key=True).get(pk=user.pk)
-    if not can_prepare(actor) or actor.session_version!=user.session_version:raise PermissionDenied
+    from .access import reportable_jobs
+    permitted_ddk=ddk and actor.is_active and actor.role=='foreman' and reportable_jobs(actor).filter(pk=pk).exists()
+    if not (can_prepare(actor) or permitted_ddk) or actor.session_version!=user.session_version:raise PermissionDenied
+    if ddk and not permitted_ddk and not (actor.is_active and can_prepare(actor)):raise PermissionDenied
     stock.lock()
     candidate=visible_jobs(actor).get(pk=pk)
     if candidate.contract_id:

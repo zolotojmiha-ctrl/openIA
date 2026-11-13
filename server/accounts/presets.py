@@ -1,5 +1,6 @@
 """Visible role presets; opening an existing employee never applies a new grant."""
 PRESETS={
+ 'lessor':{'label':'Арендодатель: табель выбранной аренды','permissions':[],'help':'Только выбранная аренда; финансовые сведения руководитель включает отдельно.'},
  'customer':{'label':'Заказчик: свои участки, ход работ, потребность и документы','permissions':[],
     'help':'Заказчик видит опубликованные сведения по выбранным контрактам и участкам. Внутренние разрешения не выдаются.'},
  'technician':{'label':'Техник: учёт аренды и сверка счетов','permissions':['rental.manage','document.upload'],

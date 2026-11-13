@@ -28,7 +28,7 @@ PERMISSIONS = {
  'finance.write':'Вносить финансовые записи и распределять выплаты',
 }
 
-ROLES = [('technician','Техник'),('pto','Инженер ПТО'),('other','Другая должность'),('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Инженер по ОТ и ПБ'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик'),('customer','Заказчик')]
+ROLES = [('technician','Техник'),('pto','Инженер ПТО'),('other','Другая должность'),('accounting','Бухгалтерия'),('foreman','Мастер / прораб'),('mechanic','Механик'),('safety','Инженер по ОТ и ПБ'),('ecology','Эколог'),('supply','Снабжение / склад'),('as_built','Исполнительная документация'),('subcontractor','Субподрядчик'),('lessor','Арендодатель'),('customer','Заказчик')]
 
 def normalize_phone(value):
     value = str(value).strip()

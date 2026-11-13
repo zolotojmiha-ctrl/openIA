@@ -35,7 +35,9 @@ def available(user):
 
 def job_title(job):
     defects = ', '.join(f'№{d.number} · км {d.km}' for d in job.active_defects)
-    return f'{job.section.project_object.name}\n{job.section.name}\n{defects or "Ремонт"}\n{job.get_method_display()} · {job.length_m or "—"} м'
+    from .labels import location
+    place=location(job.section.project_object.name,job.section.name,'\n')
+    return f'{place}\n{defects or "Ремонт"}\n{job.get_method_display()} · {job.length_m or "—"} м'
 
 
 def form_for(draft, user, files=None):
@@ -162,6 +164,9 @@ def summarize(event, binding, draft):
 
 def handle(event, binding, stored_keys):
     user = binding.user
+    if user.role=='lessor' and not user.is_leader:
+        from .lessor import handle
+        return handle(event,binding)
     if user.role=='mechanic' and not user.is_leader:
         from .mechanic import handle
         return handle(event,binding)
@@ -216,8 +221,9 @@ def handle(event, binding, stored_keys):
         job = available(user).filter(pk=uuid.UUID(text.split(':')[1])).first()
         if not job:
             raise PermissionDenied
+        from .leadership import link as ddk_link
         queue(event, job_title(job), [button('Фото хода работ',f'progress:select:{job.pk}'),button('Работа выполнена', f'begin:{job.pk}:repaired'),
-                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired')], binding=binding, job=job)
+                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired'),ddk_link('Изменить метод после ДДК','repair_ddk',[job.pk])], binding=binding, job=job)
         return
     if text.startswith('begin:'):
         _, pk, action = text.split(':')

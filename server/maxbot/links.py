@@ -14,7 +14,7 @@ def digest(code):
 
 
 def supported(user):
-    return user.is_leader or user.role in ('foreman','pto','mechanic')
+    return user.is_leader or user.role in ('foreman','pto','mechanic','lessor')
 
 
 def needs_onboarding(user):
@@ -84,14 +84,16 @@ def approve(user, key):
     from .dialog import button
     leader = user.is_leader or user.role=='pto'
     mechanic = user.role=='mechanic' and not leader
+    lessor = user.role=='lessor' and not leader
     Outbox.objects.create(key='binding:' + str(binding.pk), binding=binding,
         max_user=binding.max_user, chat=binding.chat,
         body={'text': ('MAX подключён. Откройте меню руководителя.' if leader else
                        'MAX подключён. Откройте меню механика.' if mechanic else
+                       'MAX подключён. Доступен табель предоставленной вам техники.' if lessor else
                        'MAX подключён к вашему личному кабинету. Выберите назначенную вам работу.'),
               'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[
-                  button('Меню руководителя' if leader else 'Меню механика' if mechanic else 'Мои работы', '/menu' if leader or mechanic else '/работы')]]}}]},
-        scope={'leader': True} if leader else {'mechanic': True} if mechanic else {},
+                  button('Меню руководителя' if leader else 'Меню механика' if mechanic else 'Моя техника' if lessor else 'Мои работы', '/menu' if leader or mechanic or lessor else '/работы')]]}}]},
+        scope={'leader': True} if leader else {'mechanic': True} if mechanic else {'lessor':True} if lessor else {},
         available_at=timezone.now(), expires=timezone.now() + timedelta(minutes=30))
     return binding
 

@@ -14,6 +14,9 @@ from accounts.models import AuditEvent
 
 @receiver(post_save, sender=AuditEvent, dispatch_uid='max_leader_notice')
 def leader_notice(sender, instance, created, **kwargs):
+    if created and instance.action=='equipment_assigned' and instance.details.get('kind') in ('rental_day','rental_dispute','rental_dispute_resolved'):
+        from .rental_notices import queue_event
+        queue_event(instance)
     if (not settings.ARMADA_MAX_ENABLED or not created or
             instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared','equipment_issue')):
         return

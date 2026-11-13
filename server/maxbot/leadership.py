@@ -1,5 +1,6 @@
 """Scoped read-only management menu; decisions stay in the cabinet."""
 import hashlib
+from .labels import location
 from uuid import UUID
 from urllib.parse import urlencode
 from django.conf import settings
@@ -164,7 +165,7 @@ def handle(event,binding):
     machines=machines.filter(pk__in=p.values('equipment_id')) if selection or not user.is_leader else machines
     reports=jobs.filter(state='reported')
     contract=visible_contracts(user).filter(pk=selection.get('contract')).first() if selection.get('contract') else None
-    context='Контракт: '+(contract_name(user,contract) if contract else 'Все')+'\nУчасток: '+(section.project_object.name+' · '+section.name if selection.get('section') else 'Все')
+    context='Контракт: '+(contract_name(user,contract) if contract else 'Все')+'\nУчасток: '+(location(section.project_object.name,section.name) if selection.get('section') else 'Все')
     menu=[('Работы и дефекты','works'),('Фото хода работ','progress'),('Отчёты на проверку','reports'),('Техника в ремонте','equipment'),('Заявки на ремонт техники','issues'),('Заявки на материалы','materials'),('Нехватка муфт','shortage'),('Сводка по участкам','summary')]
     if rental_service.financial_reader(user):menu.insert(-1,('Аренда: наработка и стоимость','rentals'))
     if not permitted(user,'stock.manage'):
@@ -176,7 +177,7 @@ def handle(event,binding):
         if category=='sections' and contract:rows=rows.filter(project_object__contracts=contract)
         entries=list(rows[page*5:page*5+6]);kind='contract' if category=='contracts' else 'section'
         buttons=[button('Все контракты' if kind=='contract' else 'Все участки',f'scope:{kind}:all')]
-        buttons += [button(contract_name(user,r) if kind=='contract' else r.project_object.name+' · '+r.name,f'scope:{kind}:{r.pk}') for r in entries[:5]]
+        buttons += [button(contract_name(user,r) if kind=='contract' else location(r.project_object.name,r.name),f'scope:{kind}:{r.pk}') for r in entries[:5]]
         if len(entries)>5:buttons.append(button('Далее',f'scope:{category}:{page+1}'))
     elif category in ('menu','summary'):
         body=('Меню руководителя' if user.is_leader else 'Меню ПТО')+'\n'+context+f'\nОтчётов на проверке: {reports.count()}\nТехники в ремонте: {machines.filter(status="repair").count()}\nЗаявок на материалы: {needed.count()}'

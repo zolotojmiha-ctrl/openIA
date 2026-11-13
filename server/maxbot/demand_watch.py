@@ -1,5 +1,8 @@
 """Notify on observed shortage changes; no stock movement or mail sending."""
 import hashlib,json
+from decimal import Decimal
+from .labels import location
+from projects.diameters import label as diameter_label
 from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -25,9 +28,11 @@ def snapshot(user):
         for line in record['couplings']:
             if line['missing']:
                 rows.append({'job':str(job.pk),'contract':contract_name(user,job.contract),'object':job.section.project_object.name,
-                    'section':job.section.name,'method':line['method'],'length':line['length'],'wall':str(line['wall']),'quantity':line['missing']})
+                    'section':job.section.name,'contract_id':str(job.contract_id or ''),'object_id':str(job.section.project_object_id),'section_id':str(job.section_id),
+                    'diameter':job.section.diameter_mm,'method':line['method'],'length':line['length'],'wall':format(Decimal(str(line['wall'])).normalize(),'f') if line['wall'] is not None else '','quantity':line['missing']})
     rows.sort(key=lambda r:(r['job'],r['method'],r['length'],r['wall']))
-    digest=hashlib.sha256(json.dumps(rows,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    facts=[{k:v for k,v in row.items() if k not in ('contract','object','section')} for row in rows]
+    digest=hashlib.sha256(json.dumps(facts,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return digest,rows
 
 
@@ -41,12 +46,22 @@ def queue_changes():
             fresh=Binding.objects.select_for_update(of=('self',),no_key=True).select_related('user').get(pk=binding.pk)
             if not current(fresh) or access_signature(fresh.user)!=access_signature(binding.user):continue
             watch,_=DemandWatch.objects.select_for_update().get_or_create(binding=fresh)
+            if watch.format_version<2:
+                watch.digest=digest;watch.format_version=2;watch.save(update_fields=['digest','format_version'])
+                continue  # Establish the new comparison baseline without a fake change notice.
             if watch.digest==digest:continue
             initial=not watch.digest;watch.digest=digest;watch.version+=1;watch.save()
             if initial and not rows:continue
             body='Текущая нехватка муфт' if initial else 'Потребность в муфтах изменилась'
             if not rows:body+='\nНедостающих позиций нет.'
-            for row in rows[:6]:body+=f'\n\nКонтракт: {row["contract"]}\n{row["object"]} · {row["section"]}\n{dict(METHODS).get(row["method"],row["method"])} · {row["length"]} мм · стенка {row["wall"]} мм: {row["quantity"]} шт.'
+            grouped={}
+            for row in rows:
+                key=tuple(row.get(k,row.get(k.replace('_id',''))) for k in ('contract_id','object_id','section_id','diameter','method','length','wall'))
+                item=grouped.setdefault(key,dict(row,quantity=0));item['quantity']+=row['quantity']
+            for row in list(grouped.values())[:6]:
+                dn=diameter_label(row['diameter'])+' · ' if row.get('diameter') else ''
+                body+=f'\n\nКонтракт: {row["contract"]}\n{location(row["object"],row["section"])}\n{dict(METHODS).get(row["method"],row["method"])} · {dn}{row["length"]} мм · стенка {row["wall"]} мм: {row["quantity"]} шт.'
+            if len(grouped)>6:body+=f'\nЕщё типоразмеров: {len(grouped)-6}. Полный список — в ЛК.'
             Outbox.objects.get_or_create(key=f'shortage:{fresh.pk}:{watch.version}',defaults={'binding':fresh,'max_user':fresh.max_user,'chat':fresh.chat,
                 'body':{'text':body[:3500],'attachments':[{'type':'inline_keyboard','payload':{'buttons':[[link('Открыть подробную потребность','stock_coverage')]]}}]},
                 'scope':{'leader':True,'demand_digest':digest,'access_signature':access_signature(fresh.user)},

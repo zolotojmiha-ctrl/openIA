@@ -33,9 +33,9 @@ class EmployeeForm(forms.Form):
         from postoffice.forms import add_request_fields
         add_request_fields(self,actor)
         if actor and not actor.is_leader:
-            allowed_profiles=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items() if k!='customer' and set(v['permissions']).issubset(set(actor.grants.values_list('permission',flat=True)))]
+            allowed_profiles=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items() if k not in ('customer','lessor') and set(v['permissions']).issubset(set(actor.grants.values_list('permission',flat=True)))]
             self.fields['profile'].choices=allowed_profiles
-            self.fields['role'].choices=[v for v in ROLES if v[0]!='customer']
+            self.fields['role'].choices=[v for v in ROLES if v[0] not in ('customer','lessor')]
             allowed=set(actor.grants.values_list('permission',flat=True))
             self.fields['permissions'].choices=[(k,v) for k,v in PERMISSIONS.items() if k in allowed]
         if not self.is_bound:
@@ -57,6 +57,9 @@ class EmployeeForm(forms.Form):
         if profile and data.get('profile')!=data.get('role'):
             raise forms.ValidationError('Набор возможностей не соответствует профессии. Выберите подходящий набор или индивидуальную настройку.')
         if profile:data['permissions']=list(set(data.get('permissions',[]))|set(profile['permissions']))
+        if data.get('role')=='lessor':
+            if not self.actor or not self.actor.is_leader:raise forms.ValidationError('Арендодателя создаёт руководитель.')
+            if data.get('permissions') or data.get('request_mail'):raise forms.ValidationError('Арендодателю не выдаются внутренние права или корпоративная почта.')
         if data.get('role')=='customer':
             if not self.actor or not self.actor.is_leader:raise forms.ValidationError('Заказчика создаёт руководитель.')
             if data.get('permissions') or data.get('request_mail'):raise forms.ValidationError('Заказчику не выдаются внутренние права и корпоративная почта. Выберите набор заказчика без внутренних прав.')

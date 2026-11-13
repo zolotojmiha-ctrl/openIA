@@ -113,13 +113,15 @@ def save_day(user,pk,date,kind,version=0,note=''):
     if row and row.kind==kind:return row
     if row and row.version!=version:raise ValidationError('Этот день уже изменён. Обновите табель.')
     if row and not note.strip():raise ValidationError('Для исправления укажите короткую причину.')
+    previous_kind=row.kind if row else ''
+    previous_hours=row.hours if row else None
     rate=rental.rates.filter(starts_on__lte=date).order_by('-starts_on').first()
     hours=HOURS[kind]
     amount=ZERO if not hours or not rate else (rate.work_price if kind=='work' else rate.idle_price)*(hours if rate.basis=='hour' else 1)
     if not row:row=RentalDay(rental=rental,date=date,version=0)
     row.kind=kind;row.hours=hours;row.amount=amount;row.rate=rate;row.updated_by=actor;row.version+=1;row.save()
     RentalDayRevision.objects.create(day=row,number=row.version,data={'kind':kind,'hours':hours,'amount':str(amount),'rate':rate.pk if rate else None,'note':note},author=actor)
-    audit(actor,'equipment_assigned',kind='rental_day',rental=str(pk),date=str(date),hours=hours)
+    audit(actor,'equipment_assigned',kind='rental_day',rental=str(pk),date=str(date),hours=hours,version=row.version,previous_kind=previous_kind,previous_hours=previous_hours,reason=note)
     return row
 
 @transaction.atomic

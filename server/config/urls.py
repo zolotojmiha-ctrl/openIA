@@ -18,7 +18,7 @@ from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
-from repairs import stock_assignment,plan_views,completion_views
+from repairs import stock_assignment,plan_views,completion_views,ddk
 from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
@@ -169,6 +169,7 @@ urlpatterns=[
  path('cabinet/contract-changes/<uuid:pk>/',changes.detail,name='contract_change'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
  path('cabinet/repairs/completed/',completion_views.completed,name='repair_completed'),
+ path('cabinet/repairs/<uuid:pk>/ddk/',ddk.revise,name='repair_ddk'),
  path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
  path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),
@@ -273,7 +274,7 @@ urlpatterns=[
 ]
 
 
-from projects import rental_views
+from projects import rental_views,rental_owner
 urlpatterns += [
  path('cabinet/rentals/<uuid:pk>/periods/<int:period_id>/reopen/', rental_views.reopen, name='rental_period_reopen'),
     path('cabinet/rentals/',rental_views.listing,name='rental_list'),
@@ -323,4 +324,12 @@ urlpatterns += [
  path('cabinet/profile/max/', maxbot_views.connection, name='max_connection'),
  path('cabinet/profile/max/welcome/', maxbot_views.onboarding, name='max_onboarding'),
  path('integrations/max/webhook/', maxbot_views.webhook, name='max_webhook'),
+]
+
+urlpatterns += [
+ path('cabinet/equipment/owner/',rental_owner.home,name='lessor_home'),
+ path('cabinet/equipment/owner/<uuid:pk>/',rental_owner.detail,name='lessor_detail'),
+ path('cabinet/equipment/owner/<uuid:pk>/excel/',rental_owner.export,name='lessor_export'),
+ path('cabinet/rentals/<uuid:pk>/access/',rental_owner.manage,name='rental_access'),
+ path('cabinet/rentals/disputes/<int:pk>/resolve/',rental_owner.resolve,name='rental_dispute_resolve'),
 ]
