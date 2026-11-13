@@ -30,7 +30,14 @@ def connect(box):
     client=None
     try:
         client=imaplib.IMAP4_SSL(settings.ARMADA_IMAP_HOST,settings.ARMADA_IMAP_PORT,ssl_context=ssl.create_default_context(),timeout=15)
-        client.login(box.address,reveal(box.credential));yield client
+        client.login(box.address,reveal(box.credential))
+        # imaplib caches capabilities before LOGIN and does not refresh them on login.
+        # Servers may advertise MOVE/UIDPLUS only to authenticated sessions.
+        data=checked(client.capability())
+        advertised=b' '.join(value for value in data if isinstance(value,bytes))
+        if not advertised:raise ValidationError('Почтовый сервер не подтвердил возможности после входа.')
+        client.capabilities=tuple(advertised.decode('ascii').upper().split())
+        yield client
     except (OSError,imaplib.IMAP4.error,ValueError):raise ValidationError('Не удалось связаться с почтовым сервером. Проверьте подключение ящика и повторите позже.') from None
     finally:
         if client:

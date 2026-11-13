@@ -180,3 +180,14 @@ class SharedTrashTests(TestCase):
         for selection,uids in [(self.selection()+'tampered',['1']),(self.selection(),[]),(self.selection('INBOX',['4294967296']),['4294967296'])]:
             with self.assertRaises(ValidationError):trash.apply_selection(self.worker,self.mailbox.pk,selection,uids,'trash')
         self.assertEqual(len(self.server.data['INBOX']),3)
+
+
+    def test_strict_status_reports_missing_capabilities_without_mutation(self):
+        import io
+        from django.core.management import call_command,CommandError
+        self.server.capabilities=('IMAP4REV1',)
+        output=io.StringIO()
+        with self.assertRaises(CommandError):call_command('mail_trash_status',require_trash=True,stdout=output)
+        self.assertIn('перемещение недоступно',output.getvalue())
+        self.assertEqual(self.server.commands,[])
+        self.assertFalse(TrashEntry.objects.exists())

@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory() as tmp:
  (root/'existing-data').write_text('TEST unchanged')
  (binpath/'docker').write_text("""#!/bin/sh
 printf '%s\n' "$*" >> "$ARMADA_TEST_DOCKER_LOG"
-case "$*" in *" ps --status running -q maxworker") [ "$ARMADA_TEST_MAX" = 1 ] && printf '%s\n' TEST-MAX-CONTAINER;; esac
+case "$*" in *" mail_trash_status --require-trash") [ "$ARMADA_TEST_STATUS_FAIL" = 1 ] && exit 1;; *" ps --status running -q maxworker") [ "$ARMADA_TEST_MAX" = 1 ] && printf '%s\n' TEST-MAX-CONTAINER;; esac
 exit 0
 """);(binpath/'docker').chmod(0o755)
  env=os.environ|{'PATH':str(binpath)+':'+os.environ['PATH'],'ARMADA_TEST_DOCKER_LOG':str(Path(tmp)/'docker.log'),'ARMADA_TEST_MAX':'1' if '--expect-max' in sys.argv else '0','ARMADA_APP_ROOT':str(root),'ARMADA_SOURCE_BACKUP_ROOT':str(Path(tmp)/'backups')}
@@ -34,3 +34,14 @@ exit 0
   up=next(i for i,line in enumerate(entries) if ' up -d ' in line)
   assert build<stop<migrate<up,commands
  print('PASS installer rejects altered source before backup; installs; repeats safely; preserves unrelated data; retains source backups')
+
+ if '--expect-status-check' in sys.argv:
+  failed_env=env|{'ARMADA_TEST_STATUS_FAIL':'1'}
+  result=subprocess.run(command,env=failed_env,capture_output=True)
+  output=(result.stdout+result.stderr).decode()
+  assert result.returncode!=0,output
+  assert 'Код обновлён, сервисы запущены.' in output,output
+  assert 'Возможности корзины подтверждены' not in output,output
+  assert (root/'existing-data').read_text()=='TEST unchanged'
+  for name in manifest['files']:assert (root/name).read_bytes()==(package/'files'/name).read_bytes()
+  print('PASS failed server capability check cannot produce success; updated code and unrelated data remain intact')
