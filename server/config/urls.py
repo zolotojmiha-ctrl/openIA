@@ -18,7 +18,7 @@ from documents import views as documents
 from finance import views as finance
 from repairs import excel_views as repair_excel
 from repairs import views as repairs
-from repairs import stock_assignment,plan_views
+from repairs import stock_assignment,plan_views,completion_views
 from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import review_views as repair_review
@@ -168,6 +168,7 @@ urlpatterns=[
  path('cabinet/contracts/<uuid:contract_id>/changes/<uuid:pk>/edit/',changes.edit,name='contract_change_edit'),
  path('cabinet/contract-changes/<uuid:pk>/',changes.detail,name='contract_change'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
+ path('cabinet/repairs/completed/',completion_views.completed,name='repair_completed'),
  path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),
  path('cabinet/repairs/export.xlsx',repair_excel.export,name='repair_excel_export'),

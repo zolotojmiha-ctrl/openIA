@@ -1,0 +1,29 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<link rel="stylesheet" href="/static/repairs/completed.css?v=1">
+<a class="back-link" href="{% url 'repairs' %}">← Работы и дефекты</a>
+<div class="page-head"><div><h1>Ведомость выполнения</h1><p class="muted">Устранённые дефекты: фактические результаты и проверка</p></div><a class="button secondary" href="{{ export_url }}">↓ Скачать Excel</a></div>
+<form method="get" class="panel completion-filters">
+{{ form.non_field_errors }}
+{% for field in form %}<div>{% if field.name == 'contract' or field.name == 'object' %}<details class="completion-scope" {% if field.errors %}open{% endif %}><summary>{{ field.label }}{% if field.value %} · {{ field.value|length }} выбрано{% endif %}</summary>{{ field }}{{ field.errors }}<small>{{ field.help_text }}</small></details>{% else %}{{ field.label_tag }}{{ field }}{{ field.errors }}{% endif %}</div>{% endfor %}
+<div class="completion-filter-actions"><button class="button">Показать</button><a href="{% url 'repair_completed' %}">Сбросить фильтры</a></div>
+</form>
+{% if summary %}<section class="panel completion-summary" aria-label="Итоги ведомости"><p>Дефектов: <strong>{{ summary.defects }}</strong> · Общих работ: <strong>{{ summary.jobs }}</strong> · Изоляционное покрытие: <strong>{{ summary.coating|floatformat:'-3' }} м</strong>.</p><p class="muted">Итоги по всему выбранному списку. Покрытие каждой общей работы учтено один раз.{% if summary.missing %} Без замера покрытия: {{ summary.missing }} работ — в сумму не включены.{% endif %}</p></section>{% endif %}
+<p class="muted">Одна строка — один дефект. Объединённые ячейки относятся к общей работе. В Excel длина конструкции и покрытия записана только в первой строке общей работы; остальные строки связаны с ней кодом работы.</p>
+<div class="completion-scroll" role="region" aria-label="Фактические результаты ремонта" tabindex="0"><table class="completion-table"><thead><tr>
+<th>Участок / контракт</th><th>Км</th><th>№ дефекта</th><th>№ секции</th><th>Дата выполнения</th><th>Фактический метод</th><th>Длина конструкции, м</th><th>Фактическая длина покрытия, м</th><th>Состав конструкции, м</th><th>Мастер / автор</th><th>Проверка</th><th>Приёмка заказчиком</th><th>Фото и история</th>
+</tr></thead><tbody>
+{% for group in groups %}{% for defect in group.defects %}<tr>
+{% if forloop.first %}<td rowspan="{{ group.count }}">{{ group.job.section.project_object.name }}{% if group.job.section.name != group.job.section.project_object.name %}<br>{{ group.job.section.name }}{% endif %}<small>{{ group.contract }}</small>{% if group.count > 1 %}<small>Общая конструкция на {{ group.count }} дефектов · длины учтены один раз</small>{% endif %}</td>{% endif %}
+<td>{{ defect.km }}</td><td>{{ defect.number }}</td><td>{{ defect.pipe_section|default:'—' }}</td>
+{% if forloop.first %}<td rowspan="{{ group.count }}">{{ group.report.performed_date|date:'d.m.Y'|default:'Не указана' }}</td>
+<td rowspan="{{ group.count }}">{{ group.report.get_method_display|default:'Не указан' }}</td>
+<td rowspan="{{ group.count }}">{{ group.report.length_m|floatformat:'-3'|default:'—' }}</td>
+<td rowspan="{{ group.count }}">{% if group.coating != None %}{{ group.coating|floatformat:'-3' }}{% else %}Не указан{% endif %}</td>
+<td rowspan="{{ group.count }}">{{ group.report.composition|default:'—' }}</td>
+<td rowspan="{{ group.count }}">{{ group.job.assigned_to.full_name|default:'Не назначен' }}{% if group.report and group.report.author_id != group.job.assigned_to_id %}<small>Автор результата: {{ group.report.author.full_name }}</small>{% endif %}</td>
+<td rowspan="{{ group.count }}">{{ group.job.verification_label }}</td><td rowspan="{{ group.count }}">{{ group.job.accepted_date|date:'d.m.Y'|default:'Не отмечена' }}{% if group.job.acceptance_basis %}<small>{{ group.job.acceptance_basis }}</small>{% endif %}</td>
+<td rowspan="{{ group.count }}"><a href="{% url 'repair_detail' group.job.pk %}?return_to={{ return_to|urlencode }}">Открыть</a></td>{% endif %}
+</tr>{% endfor %}{% empty %}<tr><td colspan="13">Нет устранённых дефектов по выбранным фильтрам.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav class="pagination" aria-label="Страницы ведомости">{% if page.has_previous %}<a href="?{{ query }}&amp;page={{ page.previous_page_number }}">← Назад</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }} · по 25 работ на странице</span>{% if page.has_next %}<a href="?{{ query }}&amp;page={{ page.next_page_number }}">Далее →</a>{% endif %}</nav>{% endif %}
+{% endblock %}

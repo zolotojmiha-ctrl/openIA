@@ -9,7 +9,7 @@ def return_url(request,fallback):
     if parsed.scheme or parsed.netloc or not value.startswith('/cabinet/') or '\\' in value:return fallback
     try:match=resolve(parsed.path)
     except Resolver404:return fallback
-    return value if match.url_name in ('repairs','work_place','repair_detail') else fallback
+    return value if match.url_name in ('repairs','work_place','repair_detail','repair_completed') else fallback
 
 def detail_url(request,pk):
     from urllib.parse import urlencode
@@ -27,7 +27,7 @@ def report_return_url(request,job):
         if nested and len(nested)<=4096 and '\\' not in nested:
             try:
                 parsed=urlsplit(nested)
-                if not parsed.scheme and not parsed.netloc and resolve(parsed.path).url_name in ('repairs','work_place'):return nested
+                if not parsed.scheme and not parsed.netloc and resolve(parsed.path).url_name in ('repairs','work_place','repair_completed'):return nested
             except (ValueError,Resolver404):pass
         return fallback
     return back
