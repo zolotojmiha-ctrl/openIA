@@ -29,7 +29,14 @@ def actor(user):
     if not fresh.is_active or fresh.session_version!=user.session_version:raise PermissionDenied
     return fresh
 
-def request_address(user,address,owner=None,person=None):
+def checked_members(members):
+    ids={u.pk for u in members}
+    users=list(User.objects.filter(pk__in=ids,is_active=True).exclude(role='customer'))
+    if {u.pk for u in users}!=ids:raise ValidationError('Один из выбранных сотрудников недоступен.')
+    return users
+
+
+def request_address(user,address,owner=None,person=None,*,members=None):
     address=address.strip().lower();validate_email(address)
     if person and owner and person.user_id!=owner.pk:raise ValidationError('Выберите сотрудника или его связанную учётную запись, а не разных людей.')
     if address.rsplit('@',1)[-1]!=settings.ARMADA_MAIL_DOMAIN:raise ValidationError('Используйте корпоративный почтовый домен.')
@@ -41,24 +48,29 @@ def request_address(user,address,owner=None,person=None):
         if person and (person.archived or person.legal_entity.tax_id!='8604073687'):raise ValidationError('Сотрудник недоступен.')
         if Mailbox.objects.filter(address=address).exists():raise ValidationError('Такой адрес уже добавлен. Откройте существующий ящик.')
         box=Mailbox.objects.create(address=address,owner=owner,person=person,created_by=admin)
+        if members is not None:box.members.set(checked_members(members))
         from .provider import queue
         queue(box)
         audit(admin,'mailbox_updated',kind='requested',mailbox=str(box.pk),address=box.address)
         return box
 
-def configure(user,box_id,version,password,owner,person,enabled):
+def configure(user,box_id,version,password,owner,person,enabled,*,members=None):
     with transaction.atomic():
         admin=actor(user);leader(admin)
         box=Mailbox.objects.select_for_update().get(pk=box_id)
         if box.version!=version:raise ValidationError('Ящик изменён. Обновите страницу.')
-        if owner and not User.objects.filter(pk=owner.pk,is_active=True).exists():raise ValidationError('Учётная запись неактивна.')
+        selected=checked_members(members) if members is not None else None
+        if selected is not None:owner=None;person=None
+        if owner and not User.objects.filter(pk=owner.pk,is_active=True).exclude(role='customer').exists():raise ValidationError('Учётная запись неактивна.')
         if person and (person.archived or person.legal_entity.tax_id!='8604073687'):raise ValidationError('Сотрудник недоступен.')
         if person and owner and person.user_id!=owner.pk:raise ValidationError('Сотрудник и учётная запись не связаны.')
         if enabled and not password and not box.credential:raise ValidationError('Введите пароль существующего почтового ящика.')
-        if not password and box.owner_id==getattr(owner,'pk',None) and box.person_id==getattr(person,'pk',None) and box.state==('active' if enabled else 'disabled'):return box
+        membership_same=selected is None or set(box.members.values_list('pk',flat=True))=={u.pk for u in selected}
+        if membership_same and not password and box.owner_id==getattr(owner,'pk',None) and box.person_id==getattr(person,'pk',None) and box.state==('active' if enabled else 'disabled'):return box
         if password:box.credential=seal(password)
         box.owner=owner;box.person=person;box.state='active' if enabled else 'disabled';box.version+=1;box.save()
-        audit(admin,'mailbox_updated',kind='configured',mailbox=str(box.pk),owner=str(owner.pk) if owner else '',person=str(person.pk) if person else '',state=box.state)
+        if selected is not None:box.members.set(selected)
+        audit(admin,'mailbox_updated',kind='configured',mailbox=str(box.pk),owner=str(owner.pk) if owner else '',person=str(person.pk) if person else '',state=box.state,members=[str(pk) for pk in box.members.values_list('pk',flat=True)])
         return box
 
 @transaction.atomic

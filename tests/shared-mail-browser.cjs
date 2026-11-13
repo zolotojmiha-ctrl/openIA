@@ -1,0 +1,23 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ const p=await browser.newPage({viewport:{width:1440,height:1000}}),base=process.env.ARMADA_TEST_URL,box=process.env.ARMADA_BOX,errors=[];
+ p.on('pageerror',e=>errors.push(e.message));
+ await p.goto(base+'/cabinet/login/');await p.locator('[name=phone]').fill('+70000000901');await p.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await p.locator('button[type=submit]').click();await p.waitForURL(base+'/cabinet/');
+ await p.goto(base+`/cabinet/mail/${box}/configure/`);
+ await p.locator(`[name=members][value="${process.env.ARMADA_MEMBER_ONE}"]`).check();await p.locator(`[name=members][value="${process.env.ARMADA_MEMBER_TWO}"]`).check();
+ await p.getByRole('button',{name:'Сохранить',exact:true}).click();await p.getByText('Настройки сохранены.',{exact:true}).waitFor();
+ fs.mkdirSync('/workspace/artifacts',{recursive:true});await p.screenshot({path:'/workspace/artifacts/mail-shared-access.png',fullPage:true});
+ await p.getByRole('button',{name:'Выйти',exact:true}).click();await p.waitForURL(/login/);
+ await p.locator('[name=phone]').fill('+70000000903');await p.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await p.locator('button[type=submit]').click();await p.waitForURL(base+'/cabinet/');
+ await p.goto(base+`/cabinet/mail/${box}/`);assert.equal(await p.locator('[name=uids]').count(),3);
+ await p.locator('[name=uids][value="1"]').check();await p.locator('[name=uids][value="2"]').check();
+ await p.getByRole('button',{name:'Удалить выбранные',exact:true}).click();await p.waitForURL(/folder=INBOX/);assert.equal(await p.locator('[name=uids]').count(),1);
+ await p.getByRole('link',{name:'Корзина',exact:true}).click();assert.equal(await p.locator('[name=uids]').count(),2);await p.setViewportSize({width:390,height:844});
+ await p.locator('[data-mail-select-all]').check();assert.equal(await p.locator('[name=uids]:checked').count(),2);
+ assert.ok((await p.locator('main').textContent()).includes('30 дней'));assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await p.screenshot({path:'/workspace/artifacts/mail-trash-phone.png',fullPage:true});
+ await p.getByRole('button',{name:'Восстановить выбранные',exact:true}).click();await p.waitForURL(/folder=Trash/);assert.equal(await p.locator('[name=uids]').count(),0);
+ await p.getByRole('link',{name:'Входящие',exact:true}).click();assert.equal(await p.locator('[name=uids]').count(),3);assert.deepEqual(errors,[]);
+ await browser.close();console.log('PASS multi-employee shared mailbox, selected trash and restore, 30-day notice, responsive phone');
+})().catch(e=>{console.error(String(e));process.exit(1)});

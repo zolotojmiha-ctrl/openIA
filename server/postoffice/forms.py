@@ -5,11 +5,11 @@ from .models import Mailbox
 
 class RequestForm(forms.Form):
     address=forms.EmailField(label='Адрес корпоративной почты')
-    owner=forms.ModelChoiceField(label='Учётная запись сотрудника',queryset=User.objects.none(),required=False)
-    person=forms.ModelChoiceField(label='Сотрудник из персонала',queryset=Person.objects.none(),required=False)
+    members=forms.ModelMultipleChoiceField(label='Сотрудники с доступом к ящику',queryset=User.objects.none(),required=False,widget=forms.CheckboxSelectMultiple,help_text='Можно выбрать нескольких сотрудников. Руководители видят все ящики независимо от этого списка.')
     def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['owner'].queryset=User.objects.filter(is_active=True).exclude(role='customer').order_by('full_name');self.fields['owner'].label_from_instance=lambda u:u.full_name
-        self.fields['person'].queryset=Person.objects.filter(legal_entity__tax_id='8604073687',archived=False).order_by('full_name')
+        super().__init__(*args,**kwargs)
+        self.fields['members'].queryset=User.objects.filter(is_active=True).exclude(role='customer').order_by('full_name','pk')
+        self.fields['members'].label_from_instance=lambda u:f'{u.full_name} · {u.get_role_display()}'
 class ConnectForm(RequestForm):
     version=forms.IntegerField(widget=forms.HiddenInput)
     password=forms.CharField(label='Пароль почтового ящика (не пароль ЛК)',required=False,max_length=256,widget=forms.PasswordInput)

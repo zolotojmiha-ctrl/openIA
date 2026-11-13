@@ -42,6 +42,11 @@ class Command(BaseCommand):
                         Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(ids),unread_digest=hashlib.sha256(b' '.join(ids)).hexdigest(),synced_at=timezone.now())
                     except ValidationError:continue
             if ticks%60==0:
+                from postoffice.trash import cleanup_box
+                for box_id in Mailbox.objects.filter(state='active').values_list('pk',flat=True):
+                    try:cleanup_box(box_id)
+                    except Exception:self.stderr.write('Очистка корзины не завершена; проверьте подключение почтового сервера.')
+            if ticks%60==0:
                 from maxbot.demand_watch import queue_changes
                 try:queue_changes()
                 except Exception:self.stderr.write('Проверка изменений потребности не завершена; складские данные сохранены.')

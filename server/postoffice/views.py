@@ -29,13 +29,17 @@ def home(request):
 def configure(request,pk=None):
     leader(request.user)
     box=get_object_or_404(boxes(request.user),pk=pk) if pk else None
-    initial={'address':box.address,'owner':box.owner_id,'person':box.person_id,'version':box.version,'enabled':box.state=='active'} if box else {'address':request.GET.get('address',''),'owner':request.GET.get('owner'),'person':request.GET.get('person')}
+    member_ids=set(box.members.values_list('pk',flat=True)) if box else set()
+    if box and box.owner_id:member_ids.add(box.owner_id)
+    if box and box.person_id and not box.person.archived and box.person.user_id:member_ids.add(box.person.user_id)
+    if not box and request.GET.get('owner'):member_ids.add(request.GET['owner'])
+    initial={'address':box.address,'members':list(member_ids),'version':box.version,'enabled':box.state=='active'} if box else {'address':request.GET.get('address',''),'members':list(member_ids)}
     form=(ConnectForm if box else RequestForm)(request.POST or None,initial=initial)
     if request.method=='POST' and form.is_valid():
         c=form.cleaned_data
         try:
-            if box:services.configure(request.user,box.pk,c['version'],c['password'],c['owner'],c['person'],c['enabled'])
-            else:box=services.request_address(request.user,c['address'],c['owner'],c['person'])
+            if box:services.configure(request.user,box.pk,c['version'],c['password'],None,None,c['enabled'],members=c['members'])
+            else:box=services.request_address(request.user,c['address'],members=c['members'])
         except ValidationError as e:form.add_error(None,e)
         else:messages.success(request,'Настройки сохранены.' if pk else 'Адрес добавлен как заявка. Сам почтовый ящик ещё нужно создать у провайдера.');return redirect('mailbox_configure',pk=box.pk)
     return render(request,'postoffice/configure.html',{'form':form,'box':box,'provider_enabled':BegetSettings.objects.filter(pk=1,enabled=True).exists(),'provision':MailboxProvision.objects.filter(mailbox=box).first() if box else None})
@@ -47,24 +51,36 @@ def inbox(request,pk):
     try:page=max(1,min(int(request.GET.get('page','1')),100000))
     except ValueError:page=1
     query=request.GET.get('q','').strip()[:150]
+    selection='';is_trash=False
     if box.state=='active':
         try:
             with transport.connect(box) as client:
                 all_folders=transport.folders(client);rows,total=transport.listing(client,folder,page,query,unread_only=request.GET.get('unread')=='1')
+                from . import trash
+                try:
+                    transport.select(client,folder);selection=trash.token(request.user,box,folder,trash.validity(client),[r['uid'] for r in rows])
+                except ValidationError as exc:error='; '.join(exc.messages)
+                is_trash=any(f['name']==folder and f.get('trash') for f in all_folders)
                 transport.select(client,'INBOX');unread=transport.checked(client.uid('SEARCH',None,'UNSEEN','UNDELETED'))[0].split()
                 Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(unread),unread_digest=hashlib.sha256(b' '.join(unread)).hexdigest(),synced_at=timezone.now())
             audit(request.user,'mail_read',mailbox=str(box.pk),kind='folder')
         except ValidationError as e:error='; '.join(e.messages)
-    return render(request,'postoffice/inbox.html',{'box':box,'rows':rows,'folders':all_folders,'folder':folder,'page_number':page,'has_next':page*25<total,'previous':page-1,'next':page+1,'query':query,'error':error})
+    return render(request,'postoffice/inbox.html',{'box':box,'rows':rows,'folders':all_folders,'folder':folder,'page_number':page,'has_next':page*25<total,'previous':page-1,'next':page+1,'query':query,'error':error,'selection':selection,'is_trash':is_trash})
 
 @login_required
 def detail(request,pk,uid):
     box=get_object_or_404(boxes(request.user),pk=pk);folder=request.GET.get('folder','INBOX')
     try:
-        with transport.connect(box) as client:letter=transport.message(client,folder,uid)
+        with transport.connect(box) as client:
+            letter=transport.message(client,folder,uid)
+            from . import trash
+            selection=''
+            try:selection=trash.token(request.user,box,folder,trash.validity(client),[str(uid)])
+            except ValidationError:messages.warning(request,'Перемещение недоступно: обновите письмо после восстановления связи с сервером.')
+            is_trash=any(f['name']==folder and f.get('trash') for f in transport.folders(client))
         audit(request.user,'mail_read',mailbox=str(box.pk),kind='message',uid=uid)
     except ValidationError as e:messages.error(request,'; '.join(e.messages));return redirect(reverse('mail_inbox',args=[pk])+'?'+urlencode({'folder':folder}))
-    return render(request,'postoffice/detail.html',{'box':box,'letter':letter,'folder':folder,'uid':uid})
+    return render(request,'postoffice/detail.html',{'box':box,'letter':letter,'folder':folder,'uid':uid,'selection':selection,'is_trash':is_trash})
 
 @login_required
 def attachment(request,pk,uid,index):
@@ -125,14 +141,14 @@ def compose(request,pk,letter_id=None):
 @login_required
 def outbox(request,pk):
     box=get_object_or_404(boxes(request.user),pk=pk)
-    qs=Letter.objects.filter(mailbox=box).order_by('-created_at')
+    qs=Letter.objects.filter(mailbox=box,purged_at__isnull=True).order_by('-created_at')
     if not request.user.is_leader:qs=qs.filter(author=request.user)
     return render(request,'postoffice/outbox.html',{'box':box,'letters':qs[:100]})
 
 @login_required
 def local_letter(request,pk,letter_id,attachment_id=None):
     box=get_object_or_404(boxes(request.user),pk=pk)
-    row=get_object_or_404(Letter,pk=letter_id,mailbox=box)
+    row=get_object_or_404(Letter,pk=letter_id,mailbox=box,purged_at__isnull=True)
     if not request.user.is_leader and row.author_id!=request.user.pk:raise PermissionDenied
     audit(request.user,'mail_read',mailbox=str(box.pk),kind='local_letter',letter=str(row.pk))
     if attachment_id is not None:
@@ -145,18 +161,13 @@ def local_letter(request,pk,letter_id,attachment_id=None):
 def message_action(request,pk,uid):
     if request.method!='POST':return HttpResponse(status=405)
     box=get_object_or_404(boxes(request.user),pk=pk);folder=request.POST.get('folder','INBOX')
+    if request.POST.get('action') in ('trash','restore'):
+        return bulk_action(request,pk,single_uid=str(uid))
     try:
         with transport.connect(box) as client:
             transport.select(client,folder,readonly=False)
             action=request.POST.get('action')
             if action=='seen':transport.checked(client.uid('STORE',str(uid),'+FLAGS','(\\Seen)'))
-            elif action in ('trash','restore'):
-                target='INBOX' if action=='restore' else next((f['name'] for f in transport.folders(client) if f['trash']),None)
-                if not target or target==folder:raise ValidationError('Папка назначения не найдена или письмо уже в ней.')
-                target='"'+target.replace('\\','\\\\').replace('"','\\"')+'"'
-                if b'MOVE' in client.capabilities:transport.checked(client.uid('MOVE',str(uid),target))
-                else:
-                    transport.checked(client.uid('COPY',str(uid),target));transport.checked(client.uid('STORE',str(uid),'+FLAGS','(\\Deleted)'))
             else:raise ValidationError('Неизвестное действие.')
             transport.select(client,'INBOX');unread=transport.checked(client.uid('SEARCH',None,'UNSEEN','UNDELETED'))[0].split()
             Mailbox.objects.filter(pk=box.pk,version=box.version).update(unread=len(unread),unread_digest=hashlib.sha256(b' '.join(unread)).hexdigest(),synced_at=timezone.now())
@@ -167,3 +178,18 @@ def message_action(request,pk,uid):
     else:
         if request.headers.get('Accept')=='application/json':return JsonResponse({'ok':True,'mail':sum(boxes(request.user).filter(state='active').values_list('unread',flat=True)),'box':str(box.pk),'unread':len(unread)})
     return redirect(reverse('mail_inbox',args=[pk])+'?'+urlencode({'folder':folder}))
+
+
+@login_required
+def bulk_action(request,pk,single_uid=None):
+    if request.method!='POST':return HttpResponse(status=405)
+    get_object_or_404(boxes(request.user),pk=pk)
+    from .trash import apply_selection
+    try:
+        count=apply_selection(request.user,pk,request.POST.get('selection',''),
+            [single_uid] if single_uid else request.POST.getlist('uids'),request.POST.get('action'))
+    except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    else:messages.success(request,f'Писем перемещено: {count}.')
+    params={'folder':request.POST.get('folder','INBOX'),'q':request.POST.get('filter_q','')[:150],
+            'unread':'1' if request.POST.get('filter_unread')=='1' else ''}
+    return redirect(reverse('mail_inbox',args=[pk])+'?'+urlencode(params))

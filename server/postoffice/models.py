@@ -6,6 +6,7 @@ from django.utils import timezone
 class Mailbox(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     address=models.EmailField(unique=True)
+    members=models.ManyToManyField(settings.AUTH_USER_MODEL,blank=True,related_name='shared_mailboxes')
     owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='mailboxes')
     person=models.ForeignKey('documents.Person',on_delete=models.PROTECT,null=True,blank=True,related_name='mailboxes')
     state=models.CharField(max_length=16,choices=[('requested','Ожидает создания у провайдера'),('active','Подключён'),('disabled','Доступ через ЛК отключён')],default='requested')
@@ -34,6 +35,7 @@ class Letter(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
     sent_at=models.DateTimeField(null=True,blank=True)
+    purged_at=models.DateTimeField(null=True,blank=True)
 
 class Attachment(models.Model):
     letter=models.ForeignKey(Letter,on_delete=models.CASCADE,related_name='attachments')
@@ -90,3 +92,13 @@ class MailboxProvision(models.Model):
     state=models.CharField(max_length=20,choices=[('queued','Ожидает создания'),('creating','Создаётся в Beget'),('active','Создан и подключён'),('failed','Не создан — проверьте настройку'),('uncertain','Проверьте результат в Beget')],default='queued')
     error=models.CharField(max_length=300,blank=True)
     updated_at=models.DateTimeField(auto_now=True)
+
+
+class TrashEntry(models.Model):
+    mailbox=models.ForeignKey(Mailbox,on_delete=models.CASCADE,related_name='trash_entries')
+    folder=models.CharField(max_length=250)
+    uidvalidity=models.CharField(max_length=20)
+    uid=models.PositiveBigIntegerField()
+    trashed_at=models.DateTimeField(default=timezone.now,db_index=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['mailbox','folder','uidvalidity','uid'],name='mail_trash_uid')]

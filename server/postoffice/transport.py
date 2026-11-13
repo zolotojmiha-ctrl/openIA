@@ -58,7 +58,7 @@ def folders(client):
             label=re.sub(r'&([^-]*)-',lambda m:'&' if not m[1] else base64.b64decode(m[1].replace(',','/')+'='*((-len(m[1]))%4)).decode('utf-16-be'),value)
         except (ValueError,UnicodeError):pass
         label={'inbox':'Входящие','drafts':'Черновики','junk':'Спам','spam':'Спам','trash':'Корзина','sent':'Отправленные'}.get(value.rsplit('.',1)[-1].lower(),label)
-        rows.append({'name':value,'label':label,'sent':'\\sent' in flags,'trash':'\\trash' in flags})
+        rows.append({'name':value,'label':label,'sent':'\\sent' in flags,'trash':'\\trash' in flags or value.rsplit('.',1)[-1].lower()=='trash' or label.lower()=='корзина'})
     return rows
 
 def select(client,folder,readonly=True):
