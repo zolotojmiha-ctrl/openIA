@@ -13,8 +13,8 @@ class EmployeeForm(forms.Form):
     expected_version=forms.IntegerField(required=False,widget=forms.HiddenInput)
     full_name=forms.CharField(label='Фамилия, имя и отчество',max_length=150)
     phone=forms.CharField(label='Телефон',max_length=40,widget=forms.TextInput(attrs={'type':'tel'}))
-    role=forms.ChoiceField(label='Роль в ЛК (сама по себе не выдаёт права)',choices=ROLES)
-    profile=forms.ChoiceField(label='Набор возможностей',choices=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items()],required=False,help_text='Права выбранного набора включаются при сохранении. Галочки ниже — дополнительные разрешения. Доступ к конкретным контрактам, участкам и файлам выдаётся отдельно.')
+    role=forms.ChoiceField(label='Профессия / роль в ЛК',choices=ROLES)
+    profile=forms.ChoiceField(label='Набор возможностей',choices=[('custom','Индивидуальная настройка')]+[(k,v['label']) for k,v in PRESETS.items()],required=False,help_text='При выборе профессии подставляется её набор прав. Отмеченные права применяются после сохранения. Доступ к конкретным контрактам, участкам и файлам выдаётся отдельно.')
     is_active=forms.BooleanField(label='Учётная запись активна',required=False,initial=True)
     permissions=forms.MultipleChoiceField(label='Индивидуальные разрешения',choices=list(PERMISSIONS.items()),required=False,widget=forms.CheckboxSelectMultiple,help_text='Просмотр всех дефектов открывает работы других мастеров только в доступных контрактах и участках. Отдельное право «Мастеру: вносить результаты и фото по всем доступным участкам» разрешает отчёты в ЛК и MAX независимо от ответственного. Доступ к участкам и контрактам выдаётся отдельно.')
     def __init__(self,*args,user=None,actor=None,**kwargs):
@@ -38,10 +38,24 @@ class EmployeeForm(forms.Form):
             self.fields['role'].choices=[v for v in ROLES if v[0]!='customer']
             allowed=set(actor.grants.values_list('permission',flat=True))
             self.fields['permissions'].choices=[(k,v) for k,v in PERMISSIONS.items() if k in allowed]
+        if not self.is_bound:
+            selected_role=self.initial.get('role') or (user.role if user else next(iter(self.fields['role'].choices))[0])
+            self.initial.setdefault('role',selected_role)
+            choices={key for key,label in self.fields['profile'].choices}
+            current=set(self.initial.get('permissions',user.grants.values_list('permission',flat=True) if user else []))
+            self.initial.setdefault('permissions',sorted(current))
+            # Existing custom grants are authoritative. Infer a preset only when
+            # all of its grants already exist; never grant on an ordinary save.
+            default=selected_role if selected_role in choices else 'custom'
+            if user and not set(PRESETS.get(default,{}).get('permissions',[])).issubset(current):default='custom'
+            self.initial.setdefault('profile',default)
+            if not user:self.initial['permissions']=sorted(current|set(PRESETS.get(default,{}).get('permissions',[])))
     def clean(self):
         from postoffice.forms import validate_request
         data=super().clean()
         profile=PRESETS.get(data.get('profile'))
+        if profile and data.get('profile')!=data.get('role'):
+            raise forms.ValidationError('Набор возможностей не соответствует профессии. Выберите подходящий набор или индивидуальную настройку.')
         if profile:data['permissions']=list(set(data.get('permissions',[]))|set(profile['permissions']))
         if data.get('role')=='customer':
             if not self.actor or not self.actor.is_leader:raise forms.ValidationError('Заказчика создаёт руководитель.')

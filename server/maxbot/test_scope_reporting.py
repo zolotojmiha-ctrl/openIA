@@ -103,6 +103,8 @@ class ScopeReportingTests(TestCase):
         row=self.reply(self.event('/работы'))
         self.assertIn(f'section:{self.section.pk}:0',str(row.body));self.assertTrue(worker.delivery_allowed(row))
 
-    def test_no_default_scope_reporting_grants(self):
+    def test_only_selected_foreman_preset_contains_scope_reporting(self):
         from accounts.presets import PRESETS
-        self.assertTrue(all('repairs.report_scope' not in profile['permissions'] for profile in PRESETS.values()))
+        self.assertIn('repairs.report_scope',PRESETS['foreman']['permissions'])
+        self.assertTrue(all('repairs.report_scope' not in profile['permissions'] for name,profile in PRESETS.items() if name!='foreman'))
+        self.assertFalse(AccessGrant.objects.filter(permission='repairs.report_scope').exists())
