@@ -161,6 +161,35 @@ def retry(user,job):
     return reconcile(actor,job,row.report,pieces)
 
 
+def coupling_plan(job,installed,held):
+    """Keep an existing P1 assembly fixed; standardise only its uncovered length."""
+    total,parts=demand_parts(job.length_m,job.composition,job.method)
+    if job.method!='p1':
+        initial=stock_fit.consume(job,installed,Counter(int(p*1000) for p in parts),check_diameter=False)
+        return initial,stock_fit.consume(job,held,initial),set()
+    if any(stock_fit.reason(c,job,False) for c in installed):
+        raise ValidationError('Параметры установленной муфты отличаются от задания. Проверьте фактический результат.')
+    installed_ids={c.pk for c in installed}
+    held=list({item.pk:item for item in held if item.coupling_id not in installed_ids}.values())
+    if any(item.kind!='coupling' or stock_fit.reason(item,job) for item in held):
+        raise ValidationError('Параметры закреплённой муфты отличаются от задания. Уточните закреплённый комплект.')
+    pieces=installed+held
+    if any(not piece.length_mm or piece.length_mm<=0 for piece in pieces):
+        raise ValidationError('Проверьте длины установленной и закреплённой П1.')
+    walls={Decimal(piece.wall_mm) for piece in pieces}
+    if len(walls)>1:raise ValidationError('В закреплении составной П1 смешаны стенки. Требуется уточнить распределение.')
+    covered=sum(piece.length_mm for piece in pieces)
+    if covered>10500:raise ValidationError('Суммарная длина закреплённой и установленной П1 превышает 10,5 м.')
+    gap=max(Decimal(0),total-Decimal(covered)/1000)
+    parts=demand_parts(gap,'','p1')[1] if gap else []
+    if covered+sum(int(part*1000) for part in parts)>10500:
+        raise ValidationError('Закреплённый комплект П1 не позволяет добрать типовые муфты в пределах 10,5 м. Уточните состав.')
+    remaining=Counter(int(part*1000) for part in parts)
+    initial=remaining.copy()
+    initial.update(item.length_mm for item in held)
+    return initial,remaining,walls
+
+
 def all_demand(user=None):
     """Shared physical stock is allocated once; output is projected per viewer later."""
     from collections import defaultdict,deque
@@ -182,21 +211,12 @@ def all_demand(user=None):
         row={'job':job,'couplings':[],'materials':[],'issues':[]};rows.append(row)
         try:
             installed=[u.coupling for u in job.installed_couplings.all()]
-            total,parts=demand_parts(job.length_m,job.composition,job.method)
-            if job.method=='p1' and installed:
-                if any(stock_fit.reason(c,job,False) for c in installed):raise ValidationError('Параметры установленной муфты отличаются от задания. Проверьте фактический результат.')
-                left=max(Decimal(0),total-sum(Decimal(c.length_mm)/1000 for c in installed))
-                parts=demand_parts(left,'',job.method)[1] if left else []
-            if job.method=='p2' and len(parts)>1:raise ValidationError('П2 нельзя стыковать. Уточните прежний состав задания.')
-            if job.method=='p1' and total>Decimal('10.5'):raise ValidationError('П1 длиннее рабочего ограничения 10,5 м. Требуется проверка задания.')
             if not job.section.diameter_mm or not job.wall_mm:raise ValidationError('Укажите диаметр участка и стенку конструкции.')
-            initial=Counter(int(p*1000) for p in parts) if job.method=='p1' and installed else stock_fit.consume(job,installed,Counter(int(p*1000) for p in parts),check_diameter=False)
             held=[s['item'] for s in supply if s['item'].reserved_job_id==job.pk]
-            remaining=stock_fit.consume(job,held,initial)
-            walls={Decimal(i.wall_mm) for i in held+installed if i.wall_mm}
-            if job.method=='p1' and len(walls)>1:raise ValidationError('В закреплении составной П1 смешаны стенки. Требуется уточнить распределение.')
+            initial,remaining,walls=coupling_plan(job,installed,held)
+            demand_wall=job.wall_mm
             candidates=[(n,s) for n,s in enumerate(supply) if s['item'].kind=='coupling' and not s['item'].reserved_job_id and eligible(s['warehouse'],job) and not stock_fit.reason(s['item'],job)]
-            if job.method=='p1' and len(parts)>1:
+            if job.method=='p1' and (walls or sum(initial.values())>1):
                 if walls:wall=next(iter(walls))
                 else:
                     possible=sorted({Decimal(s['item'].wall_mm) for n,s in candidates})
@@ -207,10 +227,11 @@ def all_demand(user=None):
                             for _ in range(min(int(s['left']),sum(left.values()))):left=stock_fit.consume(job,[s['item']],left)
                         return sum(remaining.values())-sum(left.values())
                     wall=min(possible,key=lambda w:(-score(w),w)) if possible else job.wall_mm
+                demand_wall=wall
                 candidates=[(n,s) for n,s in candidates if Decimal(s['item'].wall_mm)==wall]
             for length,count in initial.items():
                 if not count:continue
-                line={'method':job.method,'diameter':job.section.diameter_mm,'length':length,'wall':job.wall_mm,'name':f'{job.get_method_display()} {dn_label(job.section.diameter_mm)} · {length} × {job.wall_mm} мм','need':count,'reserved':count-remaining[length],'missing':remaining[length],'unit':'шт.'};row['couplings'].append(line)
+                line={'method':job.method,'diameter':job.section.diameter_mm,'length':length,'wall':demand_wall,'name':f'{job.get_method_display()} {dn_label(job.section.diameter_mm)} · {length} × {demand_wall} мм','need':count,'reserved':count-remaining[length],'missing':remaining[length],'unit':'шт.'};row['couplings'].append(line)
                 if not remaining[length]:continue
                 node=('need',len(nodes));nodes.append((node,line));edge(node,sink,remaining[length])
                 for n,s in candidates:
