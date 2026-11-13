@@ -17,6 +17,23 @@ const toggle=document.querySelector('.nav-toggle'),nav=document.getElementById('
 for(const link of document.querySelectorAll('.sidebar nav a')){const path=new URL(link.href).pathname;link.classList.toggle('active',path==='/cabinet/'?location.pathname===path:location.pathname.startsWith(path));}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.action-menu[open],.inline-menu[open]').forEach(x=>x.open=false);nav?.classList.remove('mobile-open');toggle?.setAttribute('aria-expanded','false')}});
 document.addEventListener('click',e=>{for(const menu of document.querySelectorAll('.action-menu[open],.inline-menu[open]'))if(!menu.contains(e.target))menu.open=false});
+// Keep popup actions inside the visible viewport, whichever edge holds the trigger.
+function fitActionMenu(menu){
+ const panel=menu.querySelector(':scope > div');if(!menu.open||!panel)return;
+ const viewport=window.visualViewport,gap=12,left=(viewport?.offsetLeft||0)+gap;
+ const right=left+(viewport?.width||document.documentElement.clientWidth)-2*gap,available=Math.max(0,right-left);
+ panel.style.transform='';panel.style.maxWidth=Math.min(290,available)+'px';panel.style.minWidth=Math.min(220,available)+'px';
+ const box=panel.getBoundingClientRect(),shift=box.left<left?left-box.left:box.right>right?right-box.right:0;
+ if(shift)panel.style.transform='translateX('+shift+'px)';
+}
+let menuFrame;
+function fitOpenMenus(){cancelAnimationFrame(menuFrame);menuFrame=requestAnimationFrame(()=>document.querySelectorAll('.action-menu[open],.inline-menu[open]').forEach(fitActionMenu));}
+document.addEventListener('toggle',event=>{if(event.target.matches('.action-menu,.inline-menu'))fitActionMenu(event.target)},true);
+window.addEventListener('resize',fitOpenMenus);
+document.addEventListener('scroll',fitOpenMenus,{capture:true,passive:true});
+window.visualViewport?.addEventListener('resize',fitOpenMenus);
+window.visualViewport?.addEventListener('scroll',fitOpenMenus);
+fitOpenMenus();
 // Reveal invalid fields inside optional details after server-side validation.
 for(const list of document.querySelectorAll('.errorlist')){let details=list.closest('details');while(details){details.open=true;details=details.parentElement.closest('details')}}
 
