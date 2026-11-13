@@ -198,7 +198,10 @@ def coverage(request):
     from .repair_materials import all_demand
     from .demand_details import location,order
     allowed=set(jobs.values_list('pk',flat=True));grouped={};unknown=[]
-    for record in all_demand(request.user):
+    records=all_demand(request.user)
+    from .stock_allocation import proposal
+    stock_plan,stock_plan_token=proposal(request.user,records,allowed)
+    for record in records:
         job=record['job']
         if job.pk not in allowed:continue
         for issue in record['coupling_issues']:
@@ -219,7 +222,7 @@ def coverage(request):
                 ('Нужно уточнить',['Работы','Причина'],[[r['label'],r['reason']] for r in unknown])]
         response=HttpResponse(workbook(sheets),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="coupling-coverage.xlsx"';response['Cache-Control']='private, no-store';return response
     query=request.GET.copy();query['export']='xlsx'
-    return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'scoped':bool(request.GET.get('contract') or request.GET.get('object')),'export_query':query.urlencode()})
+    return render(request,'projects/stock_coverage.html',{'rows':rows,'unknown':unknown,'stock_plan':stock_plan,'stock_plan_token':stock_plan_token,'scoped':bool(request.GET.get('contract') or request.GET.get('object')),'export_query':query.urlencode()})
 
 
 
@@ -252,3 +255,15 @@ def diameter(request,pk):
         except ValidationError as e:form.add_error(None,'; '.join(e.messages));status=409
         else:return redirect('stock_coverage')
     return render(request,'projects/stock_form.html',{'form':form,'title':'Уточнить диаметр: '+section.pipeline+' · '+section.project_object.name},status=status)
+
+
+@permission_required('stock.manage')
+def approve_allocation(request):
+    if request.method!='POST':
+        from django.http import HttpResponse
+        return HttpResponse(status=405)
+    from .stock_allocation import apply
+    try:count=apply(request.user,request.POST.get('proposal',''))
+    except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    else:messages.success(request,f'Комплекты закреплены за работами: {count}. Наличие и прежние закрепления сохранены.')
+    return redirect('stock_coverage')

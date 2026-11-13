@@ -70,6 +70,7 @@ def listing(request):
     return render(request,'projects/repair_materials.html',{'grouped':grouped,'issues':issues,'rows':rows,'can_manage_materials':permitted(request.user,'stock.manage')})
 
 def friendly_issue(job,issues):
+    if any('Совместный подбор' in issue for issue in issues):return 'Совместный подбор не завершён. Обновите проверку перед формированием потребности.'
     if not job.section.diameter_mm:return 'Нужно указать диаметр трубопровода.'
     if not job.wall_mm:return 'Нужно указать толщину стенки конструкции.'
     if any('В таблице ПТО нет' in s for s in issues):return 'В таблице ПТО нет нормы покрытия П1 для этой длины или диаметра.'

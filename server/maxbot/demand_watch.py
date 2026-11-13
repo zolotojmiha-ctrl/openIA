@@ -2,6 +2,7 @@
 import hashlib,json
 from datetime import timedelta
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -17,6 +18,8 @@ from .leadership import supported,contract_name,access_signature,link
 def snapshot(user):
     allowed=set(visible_jobs(user).values_list('pk',flat=True));rows=[]
     for record in all_demand(user):
+        if record.get('allocation_failed'):
+            raise ValidationError('Совместный подбор не завершён.')
         job=record['job']
         if job.pk not in allowed:continue
         for line in record['couplings']:
@@ -32,7 +35,8 @@ def queue_changes():
     if not settings.ARMADA_MAX_ENABLED:return
     for binding in Binding.objects.filter(active=True).filter(Q(user__leader_slot__in=[1,2])|Q(user__role='pto')).select_related('user'):
         if not current(binding) or not supported(binding.user) or not permitted(binding.user,'stock.manage'):continue
-        digest,rows=snapshot(binding.user)
+        try:digest,rows=snapshot(binding.user)
+        except ValidationError:continue
         with transaction.atomic():
             fresh=Binding.objects.select_for_update(of=('self',),no_key=True).select_related('user').get(pk=binding.pk)
             if not current(fresh) or access_signature(fresh.user)!=access_signature(binding.user):continue

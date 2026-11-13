@@ -60,7 +60,7 @@ def snapshot(config,user,now=None):
     recipients=list(dict.fromkeys(addresses(config.recipients)))
     if not recipients:raise ValidationError('Укажите получателей.')
     details.sort(key=lambda r:(r['object'],r['section'],r['object_id'],r['section_id'],order(r),r['method'],r['length'],r['wall']))
-    data={'basis':'shortage-v2','rows':rows,'details':details,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
+    data={'basis':'shortage-v3','rows':rows,'details':details,'recipients':recipients,'sender':config.mailbox.address,'version':config.version}
     digest=hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return dict(data,digest=digest,date=(now or timezone.now()).astimezone(ZoneInfo(config.timezone)).strftime('%d.%m.%Y'))
 
@@ -108,7 +108,7 @@ def enqueue(user,pk,token,expected_digest=None,automatic=False,week=None):
 def authorize_letter(letter):
     delivery=DemandMailDelivery.objects.filter(letter=letter).select_related('run__mailing','run__author').first()
     if not delivery:return ''
-    if delivery.run.snapshot.get('basis')!='shortage-v2':return 'Потребность сформирована по прежним правилам. Сформируйте её заново.'
+    if delivery.run.snapshot.get('basis')!='shortage-v3':return 'Потребность сформирована по прежним правилам. Сформируйте её заново.'
     config=delivery.run.mailing
     if config.version!=delivery.run.version or delivery.run.automatic and not config.enabled:return 'Рассылка выключена или её настройки изменились.'
     try:scopes(config,delivery.run.author)

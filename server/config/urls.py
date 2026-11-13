@@ -309,6 +309,7 @@ urlpatterns += [
  path('cabinet/stock/coverage/mail/',demand_mail_views.listing,name='demand_mail_list'),
  path('cabinet/stock/coverage/mail/new/',demand_mail_views.settings,name='demand_mail_new'),
  path('cabinet/stock/coverage/mail/<uuid:pk>/',demand_mail_views.settings,name='demand_mail_edit'),
+ path('cabinet/stock/coverage/allocate/',stock_planning_views.approve_allocation,name='stock_allocation_apply'),
  path('cabinet/stock/coverage/mail/<uuid:pk>/preview/',demand_mail_views.preview,name='demand_mail_preview'),
  path('cabinet/stock/coverage/mail/<uuid:pk>/history/',demand_mail_views.history,name='demand_mail_history'),
 ]

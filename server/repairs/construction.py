@@ -52,7 +52,7 @@ def demand_parts(length,composition='',method=None):
     # Minimise excess length, then joins, then use of rare 2500 mm pieces.
     target=max(1000,((millimetres+499)//500)*500)
     best={0:()}
-    def rank(parts):return (len(parts),parts.count(2500),tuple(-n for n in sorted(parts,reverse=True)))
+    def rank(parts):return (len(parts),parts.count(2500),sum(n*n for n in parts),tuple(-n for n in sorted(parts,reverse=True)))
     for value in range(500,target+1,500):
         choices=[tuple(sorted(best[value-size]+(size,),reverse=True)) for size in (1000,1500,2000,2500) if value-size in best]
         if choices:best[value]=min(choices,key=rank)

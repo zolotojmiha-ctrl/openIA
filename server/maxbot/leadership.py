@@ -114,7 +114,9 @@ def delivery_allowed(user,scope):
     if scope.get('demand_digest'):
         if not permitted(user,'stock.manage'):return False
         from .demand_watch import snapshot
-        if snapshot(user)[0]!=scope['demand_digest']:return False
+        try:current_digest=snapshot(user)[0]
+        except ValidationError:return False
+        if current_digest!=scope['demand_digest']:return False
     if scope.get('leader_event'):
         event=AuditEvent.objects.filter(pk=scope['leader_event']).first()
         return bool(event and subject(user,event))
@@ -194,8 +196,8 @@ def handle(event,binding):
                 if line['missing']:lines.append((job,line))
         for job,line in lines[page*5:page*5+5]:
             body+='\n\n'+title(user,job)+f'\nНе хватает: {line["missing"]} шт. · {line["length"]} мм · стенка {line["wall"]} мм'
-        if not lines:body+='\nНехватки муфт нет.'
-        if unknown:body+=f'\nРабот с неуточнёнными размерами: {unknown}. Проверьте в ЛК.'
+        if not lines:body+='\nНехватка пока не рассчитана.' if unknown else '\nНехватки муфт нет.'
+        if unknown:body+=f'\nРабот, требующих уточнения расчёта: {unknown}. Проверьте в ЛК.'
         if len(lines)>page*5+5:buttons.append(button('Далее',f'leader:shortage:{page+1}'))
         buttons.append(link('Подробная потребность в ЛК','stock_coverage',query=query))
     else:

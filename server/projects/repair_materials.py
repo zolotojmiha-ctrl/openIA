@@ -199,59 +199,40 @@ def all_demand(user=None):
     supply=[]
     if user is not None:
         accessible=set(stock.warehouses(user).values_list('pk',flat=True));warehouses={pk:w for pk,w in warehouses.items() if pk in accessible}
-    for b in StockBalance.objects.filter(item__legal_entity__tax_id=COMPANY_TAX_ID,item__archived=False,item__deleted_at__isnull=True,quantity__gt=0).select_related('item'):
+    for b in StockBalance.objects.filter(item__legal_entity__tax_id=COMPANY_TAX_ID,item__archived=False,item__deleted_at__isnull=True,quantity__gt=0).exclude(item__coupling__installation__isnull=False).select_related('item'):
         wh=warehouses.get(b.warehouse_id)
         if wh:supply.append({'item':b.item,'warehouse':wh,'left':b.quantity})
     jobs.sort(key=lambda j:(j.planned_date or timezone.localdate(),str(j.pk)))
-    rows=[];nodes=[];graph=defaultdict(dict);source=('s',);sink=('t',)
-    def edge(a,b,q):graph[a][b]=q;graph[b][a]=0
-    for index,s in enumerate(supply):
-        if s['item'].kind=='coupling' and not s['item'].reserved_job_id:edge(source,('stock',index),int(s['left']))
+    rows=[]
     for job in jobs:
-        row={'job':job,'couplings':[],'materials':[],'issues':[]};rows.append(row)
+        row={'job':job,'couplings':[],'materials':[],'issues':[],'allocation':[],'stock_complete':False};rows.append(row)
         try:
             installed=[u.coupling for u in job.installed_couplings.all()]
             if not job.section.diameter_mm or not job.wall_mm:raise ValidationError('Укажите диаметр участка и стенку конструкции.')
-            held=[s['item'] for s in supply if s['item'].reserved_job_id==job.pk]
+            held=[source['item'] for source in supply if source['item'].reserved_job_id==job.pk]
             initial,remaining,walls=coupling_plan(job,installed,held)
-            demand_wall=job.wall_mm
-            candidates=[(n,s) for n,s in enumerate(supply) if s['item'].kind=='coupling' and not s['item'].reserved_job_id and eligible(s['warehouse'],job) and not stock_fit.reason(s['item'],job)]
-            if job.method=='p1' and (walls or sum(initial.values())>1):
-                if walls:wall=next(iter(walls))
-                else:
-                    possible=sorted({Decimal(s['item'].wall_mm) for n,s in candidates})
-                    def score(w):
-                        left=Counter(remaining)
-                        for n,s in sorted(candidates,key=lambda x:x[1]['item'].length_mm):
-                            if Decimal(s['item'].wall_mm)!=w:continue
-                            for _ in range(min(int(s['left']),sum(left.values()))):left=stock_fit.consume(job,[s['item']],left)
-                        return sum(remaining.values())-sum(left.values())
-                    wall=min(possible,key=lambda w:(-score(w),w)) if possible else job.wall_mm
-                demand_wall=wall
-                candidates=[(n,s) for n,s in candidates if Decimal(s['item'].wall_mm)==wall]
-            for length,count in initial.items():
-                if not count:continue
-                line={'method':job.method,'diameter':job.section.diameter_mm,'length':length,'wall':demand_wall,'name':f'{job.get_method_display()} {dn_label(job.section.diameter_mm)} · {length} × {demand_wall} мм','need':count,'reserved':count-remaining[length],'missing':remaining[length],'unit':'шт.'};row['couplings'].append(line)
-                if not remaining[length]:continue
-                node=('need',len(nodes));nodes.append((node,line));edge(node,sink,remaining[length])
-                for n,s in candidates:
-                    if stock_fit.length_fits(job.method,s['item'].length_mm,length):edge(('stock',n),node,min(int(s['left']),remaining[length]))
-        except ValidationError as e:row['issues'].extend(e.messages)
-    while True:
-        parent={source:None};queue=deque([source])
-        while queue and sink not in parent:
-            n=queue.popleft()
-            for to,q in graph[n].items():
-                if q>0 and to not in parent:parent[to]=n;queue.append(to)
-        if sink not in parent:break
-        n=sink;q=None
-        while parent[n] is not None:
-            frm=parent[n];q=graph[frm][n] if q is None else min(q,graph[frm][n]);n=frm
-        n=sink
-        while parent[n] is not None:
-            frm=parent[n];graph[frm][n]-=q;graph[n][frm]+=q;n=frm
-    for node,line in nodes:line['missing']=graph[node][sink]
+            installed_ids={piece.pk for piece in installed}
+            unique_held={item.pk:item for item in held if item.coupling_id not in installed_ids}
+            row.update(_initial=initial,_remaining=remaining,_walls=walls,
+                _wall=next(iter(walls)) if walls else job.wall_mm,
+                _covered=sum(piece.length_mm for piece in installed)+sum(item.length_mm for item in unique_held.values()))
+            if not sum(remaining.values()):
+                row['stock_complete']=True
+                for length,count in initial.items():
+                    if count:row['couplings'].append({'method':job.method,'diameter':job.section.diameter_mm,'length':length,
+                        'wall':row['_wall'],'name':f'{job.get_method_display()} {dn_label(job.section.diameter_mm)} · {length} × {row["_wall"]} мм',
+                        'need':count,'reserved':count,'missing':0,'unit':'шт.'})
+        except ValidationError as exc:row['issues'].extend(exc.messages)
+    from .stock_optimizer import allocate
+    try:allocate(rows,supply,eligible)
+    except ValidationError as exc:
+        for row in rows:
+            if not row['issues'] and sum(row.get('_remaining',{}).values()):
+                row['couplings']=[];row['allocation']=[];row['stock_complete']=False
+                row['allocation_failed']=True;row['issues'].extend(exc.messages)
     for row in rows:row['coupling_issues']=list(row['issues'])
+    graph=defaultdict(dict);nodes=[];source=('s',);sink=('t',)
+    def edge(a,b,q):graph[a][b]=q;graph[b][a]=0
     # Material allocation uses the same residual matching principle as couplings:
     # a generic stock location must not starve a job restricted to that location.
     graph=defaultdict(dict);nodes=[]
