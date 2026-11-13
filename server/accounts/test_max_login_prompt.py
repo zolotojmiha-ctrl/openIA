@@ -35,9 +35,31 @@ class MaxLoginPromptTests(TestCase):
         self.assertRedirects(self.enter(self.employee),reverse('dashboard'))
 
     def test_unsupported_role_not_offered_unusable_connection(self):
-        self.employee.role='mechanic';self.employee.save()
+        self.employee.role='safety';self.employee.save()
         self.assertRedirects(self.enter(self.employee),reverse('dashboard'))
 
     def test_direct_onboarding_without_login_marker_is_ignored(self):
         self.client.force_login(self.employee)
         self.assertRedirects(self.client.get(reverse('max_onboarding')),reverse('dashboard'))
+
+    def test_mechanic_prompt_profile_connection_and_defer(self):
+        self.employee.role='mechanic';self.employee.save()
+        self.assertRedirects(self.enter(self.employee),reverse('max_onboarding'))
+        self.assertContains(self.client.get(reverse('max_onboarding')),'меню механика')
+        self.assertRedirects(self.client.post(reverse('max_onboarding'),{'action':'connect'}),reverse('max_connection'))
+        self.assertContains(self.client.get(reverse('max_connection')),'меню механика')
+        self.assertContains(self.client.get(reverse('profile')),reverse('max_connection'))
+        self.assertRedirects(self.client.post(reverse('max_onboarding'),{'action':'later'}),reverse('dashboard'))
+        self.client.logout()
+        self.assertRedirects(self.enter(self.employee),reverse('max_onboarding'))
+
+    def test_bound_mechanic_is_not_prompted_again(self):
+        self.employee.role='mechanic';self.employee.save()
+        Binding.objects.create(user=self.employee,max_user=54321,chat=54321,session_version=self.employee.session_version)
+        self.assertRedirects(self.enter(self.employee),reverse('dashboard'))
+
+    @override_settings(ARMADA_MAX_ENABLED=False)
+    def test_mechanic_connection_explains_disabled_service(self):
+        self.employee.role='mechanic';self.employee.save()
+        self.client.force_login(self.employee)
+        self.assertContains(self.client.get(reverse('max_connection')),'Подключение ещё не включено администратором')

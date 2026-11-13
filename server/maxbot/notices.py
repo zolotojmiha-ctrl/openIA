@@ -18,16 +18,20 @@ def leader_notice(sender, instance, created, **kwargs):
             instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared','equipment_issue')):
         return
     from .leadership import subject
-    for binding in Binding.objects.select_related('user').filter(active=True).filter(Q(user__leader_slot__in=[1,2])|Q(user__role='pto')):
+    for binding in Binding.objects.select_related('user').filter(active=True).filter(Q(user__leader_slot__in=[1,2])|Q(user__role__in=['pto','mechanic'])):
         if not current(binding):
             continue
-        notice = subject(binding.user, instance)
+        mechanic = binding.user.role=='mechanic' and not binding.user.is_leader
+        if mechanic:
+            from .mechanic import subject as mechanic_subject
+            notice = mechanic_subject(binding.user,instance)
+        else:notice = subject(binding.user, instance)
         if not notice:
             continue
         text, target = notice
-        Outbox.objects.get_or_create(key=f'leader:{instance.pk}:{binding.pk}', defaults={
+        Outbox.objects.get_or_create(key=f'{"mechanic" if mechanic else "leader"}:{instance.pk}:{binding.pk}', defaults={
             'binding': binding, 'max_user': binding.max_user, 'chat': binding.chat,
-            'scope': {'leader': True, 'leader_event': instance.pk},
+            'scope': {'mechanic':True,'mechanic_event':instance.pk} if mechanic else {'leader': True, 'leader_event': instance.pk},
             'body': {'text': text[:3500], 'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[target]]}}]},
             'available_at': timezone.now(), 'expires': timezone.now() + timedelta(days=1)})
 

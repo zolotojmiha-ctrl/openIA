@@ -45,7 +45,7 @@ def connection(request):
                 except IntegrityError:
                     raise ValidationError('Этот аккаунт MAX уже привязан. Обновите страницу.')
                 messages.success(request, 'MAX подключён. Вернитесь в бот и откройте ' +
-                                 ('«Меню руководителя».' if request.user.is_leader or request.user.role=='pto' else '«Мои работы».'))
+                                 ('«Меню руководителя».' if request.user.is_leader or request.user.role=='pto' else '«Меню механика».' if request.user.role=='mechanic' else '«Мои работы».'))
                 return redirect('max_connection')
             else:
                 raise ValidationError('Неизвестное действие.')

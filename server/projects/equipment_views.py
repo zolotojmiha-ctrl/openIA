@@ -98,7 +98,10 @@ def listing(request):
             return redirect(url)
     qs=filtered(request.user,request.GET);page=Paginator(qs,25).get_page(request.GET.get('page'))
     location_map={}
-    for row in service.current(service.placements(request.user)).filter(equipment__in=page.object_list):location_map.setdefault(row.equipment_id,[]).append(row)
+    object_ids=set(visible_objects(request.user).values_list('pk',flat=True))
+    for row in service.current(service.operational_placements(request.user)).filter(equipment__in=page.object_list):
+        row.object_access=row.project_object_id in object_ids
+        location_map.setdefault(row.equipment_id,[]).append(row)
     from . import rentals
     rental_map={}
     for r in rentals.visible(request.user).filter(placement__equipment__in=page.object_list,placement__start_date__lte=timezone.localdate()).filter(Q(placement__end_date__isnull=True)|Q(placement__end_date__gte=timezone.localdate())):rental_map.setdefault(r.placement.equipment_id,[]).append(r)
@@ -135,7 +138,11 @@ def detail(request,pk):
     cards={c.pk:contract_card(c,request.user) for c in visible_contracts(request.user)}
     from .crews import visible_assignments
     crews={a.pk:a.brigade.name for a in visible_assignments(request.user)}
-    history=[{'row':a,'contract':cards.get(a.contract_id),'crew':crews.get(a.crew_assignment_id)} for a in service.placements(request.user).filter(equipment=item).order_by('-start_date','-pk')]
+    editable=set(service.placements(request.user).filter(equipment=item).values_list('pk',flat=True))
+    object_ids=set(visible_objects(request.user).values_list('pk',flat=True))
+    history=[{'row':a,'contract':cards.get(a.contract_id),'crew':crews.get(a.crew_assignment_id),
+              'object_access':a.project_object_id in object_ids,'can_edit':a.pk in editable}
+             for a in service.operational_placements(request.user).filter(equipment=item).order_by('-start_date','-pk')]
     files=list(service.equipment_files(request.user).filter(equipment=item))
     for link in files:
         days=(link.expires_on-timezone.localdate()).days if link.expires_on else None
@@ -164,7 +171,7 @@ def detail(request,pk):
     maintenance=[]
     for part in item.maintenance_parts.all():
         part.search=search_links(part);maintenance.append(part)
-    return render(request,'projects/equipment_detail.html',{**panel,**issue_panel,'maintenance_parts':[p for p in maintenance if not p.archived],'maintenance_archived_parts':[p for p in maintenance if p.archived],'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
+    return render(request,'projects/equipment_detail.html',{**panel,**issue_panel,'maintenance_parts':[p for p in maintenance if not p.archived],'maintenance_archived_parts':[p for p in maintenance if p.archived],'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not item.placements.exists(),'rental_restricted':item.ownership=='rent' and item.placements.exists() and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

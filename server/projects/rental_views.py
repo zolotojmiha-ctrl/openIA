@@ -119,16 +119,19 @@ def detail(request,pk,embedded=False):
         elif action=='period':period=bound
         elif action=='finance_link':finance_link=bound
         else:info=bound
-    days=[d for d in rental.days.select_related('updated_by').prefetch_related('revisions__author').order_by('-date') if financial or rentals.allowed_on(request.user,rental,d.date)][:100]
+    days=[d for d in rental.days.select_related('updated_by').prefetch_related('revisions__author').order_by('-date') if rentals.can_read_day(request.user,rental,d.date)][:100]
     for d in days:d.can_change=rentals.allowed_on(request.user,rental,d.date)
     chart=[]
     for kind,label in [('work','Работал'),('idle','Наш простой'),('external','Не по нашей вине')]:
-        count=rental.days.filter(kind=kind).count() if financial else sum(d.kind==kind for d in days)
+        count=rental.days.filter(kind=kind).count() if financial or rentals.technical_reader(request.user) else sum(d.kind==kind for d in days)
         chart.append({'label':label,'count':count})
     high=max([d['count'] for d in chart]+[1])
     for bar in chart:bar['percent']=round(bar['count']/high*100)
     context={'can_record_rental':can_manage or bool(missing) or any(d.can_change for d in days),'chart':chart,'finance_link_form':finance_link,'can_write_rental_finance':can_write,'rental':rental,'days':days,'missing':missing,'day_form':day,'rate_form':rate,'payment_form':payment,'period_form':period,'can_manage_rental':can_manage,'rental_financial':financial,'total':rentals.totals(rental) if financial else None,'payments':rental.payments.all() if financial else [],'periods':rental.periods.all() if financial else []}
     context['info_form']=info
+    if rentals.technical_reader(request.user):
+        from django.db.models import Sum
+        context['technical_hours']=rental.days.filter(date__lte=timezone.localdate()).aggregate(v=Sum('hours'))['v'] or 0
     if embedded:return context
     return render(request,'projects/rental_detail.html',context)
 
@@ -150,12 +153,12 @@ def export(request,pk):
     headers=['Дата','Техника','Госномер','Объект','Состояние','Часы к оплате','Внёс']+(['Начислено, тыс. руб.'] if financial else [])
     rows=[]
     for d in rental.days.select_related('updated_by').order_by('date'):
-        if not financial and not rentals.allowed_on(request.user,rental,d.date):continue
+        if not rentals.can_read_day(request.user,rental,d.date):continue
         rows.append([str(d.date),rental.placement.equipment.name,rental.placement.equipment.registration_number,rental.placement.project_object.name,d.get_kind_display(),d.hours,d.updated_by.full_name]+([thousands(d.amount) if d.rate_id or not d.hours else 'Тариф не задан'] if financial else []))
     sheets=[('Табель',headers,rows)]
     history=[]
     for d in rental.days.prefetch_related('revisions__author').filter(version__gt=1).order_by('date'):
-        if not financial and not rentals.allowed_on(request.user,rental,d.date):continue
+        if not rentals.can_read_day(request.user,rental,d.date):continue
         for revision in d.revisions.all().order_by('number'):
             history.append([str(d.date),revision.number,revision.data.get('hours',''),revision.author.full_name,str(revision.created_at),revision.data.get('note','')]+([thousands(revision.data.get('amount') or 0)] if financial else []))
     sheets.append(('История отметок',['Дата','Редакция','Часы','Кто внёс','Когда','Причина']+(['Начислено, тыс. руб.'] if financial else []),history))

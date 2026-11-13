@@ -23,10 +23,22 @@ def financial_writer(user):
 def financial_reader(user):
     return manager(user) or bool(user.is_authenticated and user.is_active and (user.is_leader or user.role not in ('customer','foreman')) and permitted(user,'finance.read'))
 
+def technical_reader(user):
+    # Mechanics may inspect hours for maintenance without receiving financial rights.
+    return bool(user.is_authenticated and user.is_active and user.role=='mechanic' and permitted(user,'equipment.manage'))
+
+
+def can_read_day(user,rental,date):
+    return financial_reader(user) or technical_reader(user) or allowed_on(user,rental,date)
+
+
 def visible(user):
     rows=EquipmentRental.objects.filter(placement__equipment__legal_entity__tax_id=COMPANY_TAX_ID).select_related('placement__equipment','placement__project_object','placement__crew_assignment__brigade','placement__contract','agreement')
     if not user.is_authenticated or not user.is_active or user.role=='customer':return rows.none()
     if financial_reader(user):return rows
+    if technical_reader(user):
+        from .equipment import visible_equipment
+        return rows.filter(placement__equipment__in=visible_equipment(user))
     allowed=rows.filter(Q(placement__crew_assignment__master=user)|Q(placement__equipment__custodies__brigade__assignments__master=user))
     return rows.filter(pk__in=allowed.values('pk'))
 

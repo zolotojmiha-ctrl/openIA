@@ -162,6 +162,9 @@ def summarize(event, binding, draft):
 
 def handle(event, binding, stored_keys):
     user = binding.user
+    if user.role=='mechanic' and not user.is_leader:
+        from .mechanic import handle
+        return handle(event,binding)
     from . import progress
     if progress.handle(event,binding,stored_keys):return
     if user.is_leader or user.role=='pto':

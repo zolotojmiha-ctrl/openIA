@@ -1,0 +1,24 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ const page=await browser.newPage({viewport:{width:390,height:844}}),base=process.env.ARMADA_TEST_URL,errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(base+'/cabinet/login/');
+ await page.locator('[name=phone]').fill('+70000000002');await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);
+ await page.locator('button[type=submit]').click();await page.waitForURL(/profile\/max\/welcome\//);
+ await page.getByRole('button',{name:'Подключить MAX',exact:true}).waitFor();
+ assert.ok((await page.locator('main').textContent()).includes('меню механика'));
+ await page.getByRole('button',{name:'Позже',exact:true}).click();
+ await page.waitForURL(base+'/cabinet/');await page.goto(base+'/cabinet/equipment/');
+ await page.getByRole('link',{name:'Наработка',exact:true}).click();
+ assert.ok(page.url().includes(process.env.ARMADA_CARD_PATH));
+ await page.getByRole('heading',{name:'Табель',exact:true}).waitFor();
+ assert.equal(await page.getByRole('link',{name:'Указать начало работы',exact:true}).count(),0);
+ assert.equal(await page.locator('#rental-day-form').count(),0);
+ const content=await page.locator('main').textContent();
+ assert.ok(content.includes('Часов по табелю на текущую дату: 14'));assert.ok(content.includes('Работал'));assert.ok(content.includes('Наш простой'));
+ assert.ok(!content.includes('Взаиморасчёты'));assert.ok(!content.includes('СЕКРЕТ'));
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ fs.mkdirSync('/workspace/artifacts',{recursive:true});await page.screenshot({path:'/workspace/artifacts/mechanic-existing-hours-phone.png',fullPage:true});
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS mechanic MAX prompt, defer and existing read-only hours on phone without finance or duplicate setup');
+})().catch(e=>{console.error(String(e));process.exit(1)});

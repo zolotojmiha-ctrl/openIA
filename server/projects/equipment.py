@@ -27,6 +27,14 @@ def placements(user):
     if not user.is_leader:qs=qs.filter(project_object__in=visible_objects(user))
     return qs.select_related('equipment','project_object')
 
+def operational_placements(user):
+    """Read-only fleet location/history for mechanics; assignment writes keep their scope."""
+    from .rentals import technical_reader
+    if technical_reader(user):
+        return EquipmentAssignment.objects.filter(equipment__in=visible_equipment(user)).select_related('equipment','project_object')
+    return placements(user)
+
+
 def current(qs,on=None):
     on=on or timezone.localdate()
     return qs.filter(start_date__lte=on).filter(Q(end_date__isnull=True)|Q(end_date__gte=on))
