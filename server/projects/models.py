@@ -573,4 +573,4 @@ from .demand_mail_models import DemandMailing, DemandMailRun, DemandMailDelivery
 
 from .disk_backup_models import DiskBackupSettings, DiskBackupJob
 
-from .management_models import EquipmentIssue, PhotoArchive
+from .management_models import EquipmentIssue, PhotoArchive, EquipmentMaintenancePart

@@ -160,7 +160,11 @@ def detail(request,pk):
         panel=rental_views.detail(request,active.pk,embedded=True)
         from django.http.response import HttpResponseBase
         if isinstance(panel,HttpResponseBase):return panel
-    return render(request,'projects/equipment_detail.html',{**panel,**issue_panel,'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
+    from .equipment_parts import search_links
+    maintenance=[]
+    for part in item.maintenance_parts.all():
+        part.search=search_links(part);maintenance.append(part)
+    return render(request,'projects/equipment_detail.html',{**panel,**issue_panel,'maintenance_parts':[p for p in maintenance if not p.archived],'maintenance_archived_parts':[p for p in maintenance if p.archived],'equipment_back':back or reverse('equipment'),'rental_history':available,'rental_unassigned':item.ownership=='rent' and not available.exists(),'custodies':item.custodies.select_related('brigade','driver').order_by('-start_date'),'item':item,'history':history,'files':files,'events':[]})
 
 @permission_required('equipment.manage')
 def edit(request,pk=None):

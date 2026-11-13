@@ -24,3 +24,24 @@ class PhotoArchive(models.Model):
     remote_path=models.CharField(max_length=200)
     verified_at=models.DateTimeField()
     local_removed_at=models.DateTimeField(null=True,blank=True)
+
+
+class EquipmentMaintenancePart(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    creation_token=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
+    equipment=models.ForeignKey('projects.Equipment',on_delete=models.PROTECT,related_name='maintenance_parts')
+    name=models.CharField('Запчасть / материал для ТО',max_length=160)
+    article=models.CharField('Артикул / каталожный номер',max_length=120)
+    manufacturer=models.CharField('Производитель',max_length=120,blank=True)
+    quantity=models.DecimalField('Количество на одно ТО',max_digits=10,decimal_places=3,null=True,blank=True)
+    unit=models.CharField('Единица',max_length=16,default='шт.')
+    note=models.TextField('Примечание / применимость',max_length=1500,blank=True)
+    archived=models.BooleanField('Скрыть из действующего списка',default=False)
+    version=models.PositiveIntegerField(default=1)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    updated_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering=['name','manufacturer','article','pk']
+        constraints=[models.CheckConstraint(condition=models.Q(quantity__isnull=True)|models.Q(quantity__gt=0),name='equipment_part_quantity_positive')]

@@ -9,7 +9,7 @@ from django.urls import path,include
 from accounts import views
 from accounts import personal,person_accounts,seo
 from projects import views as projects
-from projects import operations,area_actions
+from projects import operations,area_actions,equipment_part_views
 from documents import actions as document_actions
 from projects import agreements,contract_actions,resource_picker
 from projects import daily_views
@@ -129,6 +129,8 @@ urlpatterns=[
  path('cabinet/equipment/assignments/<uuid:pk>/start/',equipment_views.correct_start,name='equipment_assignment_start'),
  path('cabinet/equipment/assignments/<uuid:pk>/end/',equipment_views.end,name='equipment_assignment_end'),
  path('cabinet/equipment/<uuid:pk>/',equipment_views.detail,name='equipment_detail'),
+ path('cabinet/equipment/<uuid:equipment_id>/maintenance/new/',equipment_part_views.edit,name='equipment_part_new'),
+ path('cabinet/equipment/<uuid:equipment_id>/maintenance/<uuid:pk>/',equipment_part_views.edit,name='equipment_part_edit'),
  path('cabinet/equipment/<uuid:pk>/edit/',equipment_views.edit,name='equipment_edit'),
  path('cabinet/equipment/<uuid:pk>/assign/',equipment_views.assign,name='equipment_assign'),
  path('cabinet/equipment/<uuid:equipment_id>/documents/new/',equipment_views.file_edit,name='equipment_document_new'),
