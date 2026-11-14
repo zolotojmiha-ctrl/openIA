@@ -22,8 +22,12 @@ from repairs import stock_assignment,plan_views,completion_views,ddk
 from repairs import defect_actions
 from repairs import import_views as repair_import
 from repairs import archive_views,layout_views
+from repairs import completed_import_views
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('cabinet/work/<uuid:contract_id>/completed-import/',completed_import_views.upload,name='repair_completed_upload'),
+ path('cabinet/completed-import/<uuid:pk>/',completed_import_views.review,name='repair_completed_review'),
+ path('cabinet/completed-import/<uuid:pk>/cancel/',completed_import_views.cancel,name='repair_completed_cancel'),
  path('privacy/',site_forms.privacy,name='public_privacy'),
  path('consent/',site_forms.consent,name='public_consent'),
  path('forms/token/',site_forms.token,name='site_form_token'),

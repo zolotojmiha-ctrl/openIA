@@ -84,6 +84,7 @@ class Job(ArchiveProtectedModel):
 
     @property
     def verification_label(self):
+        if self.source.get('completed_register_import') and self.state=='confirmed':return 'Выполнено по ведомости 2026'
         if self.source.get('historical_import') and self.state=='confirmed':return 'Исторический результат'
         return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем','unrepairable':'Решение руководителя: ремонт невозможен'}.get(self.state,'')
     @property

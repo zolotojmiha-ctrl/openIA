@@ -1,0 +1,9 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<a class="back-link" href="{% url 'work_contract' batch.contract_id %}">← К контракту</a>
+<h1>Проверка выполненных дефектов 2026</h1><p>{{ summary|linebreaksbr }}</p>
+{% if batch.applied_at %}<div class="notice">Перенос уже выполнен. Повтор не добавит дублей.</div>{% else %}
+<form class="panel" method="post">{% csrf_token %}{{ form.as_p }}<button class="button">Добавить устранённые</button></form>
+<form method="post" action="{% url 'repair_completed_cancel' batch.pk %}">{% csrf_token %}<button class="button secondary">Отменить перенос</button></form>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>Участок</th><th>Км / № / секция</th><th>Метод / длина</th><th>Дата завершения</th><th>Действие</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.object }}</td><td>{{ row.defect.kilometre }} / {{ row.defect.number }} / {{ row.defect.pipe_section|default:'не указана' }}</td><td>{{ row.method }} / {{ row.fields.length_m|default:'—' }} м</td><td>{{ row.day|date:'d.m.Y'|default:'Не установлена' }}</td><td>{{ row.action }}<details><summary>Источники</summary>{% for member in row.source.source_members %}<p>{{ member.source_refs|join:', ' }}</p><p>{{ member.evidence.text }}</p>{% for note in member.notes %}<p>{{ note }}</p>{% endfor %}{% for note in member.review %}<p>{{ note }}</p>{% endfor %}{% endfor %}</details></td></tr>{% endfor %}
+</tbody></table></div>{% endblock %}

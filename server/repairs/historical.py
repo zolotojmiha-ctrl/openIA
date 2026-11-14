@@ -7,7 +7,7 @@ from .models import METHODS
 def result(job, report=None):
     if report is not None:return report
     source=job.source if isinstance(job.source,dict) else {}
-    if not source.get('historical_import') or job.state!='confirmed':return None
+    if not (source.get('historical_import') or source.get('completed_register_import')) or job.state!='confirmed':return None
     try:performed=date.fromisoformat(source['completion_date']) if source.get('completion_date') else None
     except (ValueError,TypeError):performed=None
     method='' if source.get('actual_method_unknown') else job.method

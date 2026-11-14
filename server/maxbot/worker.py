@@ -113,6 +113,9 @@ def delivery_allowed(row):
     if row.scope.get('pipe_layout'):
         from .layouts import delivery_allowed as layout_allowed
         return layout_allowed(binding,row.scope)
+    if row.scope.get('completed_import'):
+        from .completed_import import delivery_allowed as completed_allowed
+        return completed_allowed(binding,row.scope['completed_import'])
     if row.scope.get('archive'):
         from .archive import delivery_allowed as archive_allowed
         return archive_allowed(binding,row.scope)

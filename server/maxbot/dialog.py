@@ -183,6 +183,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import completed_import
+    if completed_import.handle(event,binding,stored_keys):return
     from . import layouts
     if layouts.handle(event,binding,stored_keys):return
     from . import archive

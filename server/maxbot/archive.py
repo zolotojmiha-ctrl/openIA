@@ -73,6 +73,7 @@ def list_rows(event,binding,mode,page=0):
     if len(entries)>6:buttons.append(button('Далее',f'archive:page:{mode}:{page+1}'))
     if page:buttons.append(button('Назад',f'archive:page:{mode}:{page-1}'))
     buttons += [button('Найти по км, № или секции',f'archive:search:{mode}'),button('Сбросить поиск',f'archive:clear:{mode}')]
+    if mode=='completed' and service.allowed(binding.user):buttons.append(button('Добавить выполненные 2026','/импорт_2026'))
     emit(event,binding,('Архив ремонтов' if mode=='archive' else 'Устранённые ремонты')+('\nПоиск: '+query if query else '')+('\nВыберите запись.' if entries else '\nДоступных записей нет.'),buttons,jobs=entries[:6])
 
 def handle(event,binding,stored_keys):
@@ -198,8 +199,8 @@ def handle(event,binding,stored_keys):
                 if len(defects)>1:body+='\nОбщая работа; длина и состав учтены один раз.'
                 if (page+1)*5<len(defects):buttons.insert(0,button('Другие дефекты',f'archive:job:{job.pk}:{page+1}'))
                 if page:buttons.insert(0,button('Назад',f'archive:job:{job.pk}:{page-1}'))
-                if job.source.get('historical_import'):
-                    body+='\nИсторическая запись. Отсутствующие даты и замеры не восстанавливались.'
+                if job.source.get('historical_import') or job.source.get('completed_register_import'):
+                    body+='\nРезультат из ведомости. Отсутствующие даты и замеры не восстанавливались.'
                     buttons.insert(0,button('Источники и монтаж',f'archive:evidence:{job.pk}:0'))
             emit(event,binding,body,buttons,jobs=[job]);return True
         return False
