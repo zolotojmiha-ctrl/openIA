@@ -1,0 +1,34 @@
+{
+  "source": "b6340303c3fa90c3cbf075b7b9bdb49a61c43273",
+  "validation": {
+    "focused_sqlite_tests": 25,
+    "passed": 25,
+    "baseline_navigation_postgresql_chromium_tests": 207,
+    "baseline_navigation_skipped": 1,
+    "image_files_match": 742,
+    "new_migrations": false,
+    "installer_template_changed": false,
+    "production_installed": false,
+    "live_max_sent": false,
+    "cumulative_navigation_fix_included": true
+  },
+  "limits": [
+    "Focused display-label tests; full suite not repeated.",
+    "Previous navigation query/ACL flow passed 207 PostgreSQL/Chromium tests (1 skip).",
+    "Installer unchanged; live MAX/production VPS not verified."
+  ]
+}
+Creating test database for alias 'default'...
+......................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-section-labels-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+.
+----------------------------------------------------------------------
+Ran 25 tests in 2.317s
+
+OK
+Destroying test database for alias 'default'...
+Found 25 test(s).
+System check identified no issues (0 silenced).
+
+PASS image matches archive: 742
+System check identified no issues (0 silenced).
