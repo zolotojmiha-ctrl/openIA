@@ -23,3 +23,24 @@ ARMADA_MAX_FILE_HOSTS необязателен и наследует разре�
 - PostgreSQL: широкий прогон 174 сценариев завершился с одной ошибкой устаревшей фикстуры завершения без обязательного замера; после исправления фикстуры все четыре проверки конкурентных подтверждений MAX/ДДК/ЛК — OK/3,853 с. Остальные проверки широкого прогона прошли, один штатный пропуск. Первоначальный сбой не скрыт и не считается полным успешным прогоном.
 - Контейнер с прежними закреплёнными зависимостями, непривилегированным пользователем, отключённой сетью, read-only root и /tmp tmpfs: 41 тест — OK/7,292 с. Проверенное дерево server сверяется с файлами нового комплекта. Рабочий Docker-образ заново соберётся на VPS.
 - Django check, makemigrations --check --dry-run (No changes detected), bash -n и git diff --check — OK.
+
+Опубликован неизменяемый комплект `armada-max-ddk-native-fix.zip`: коммит 480f65ab871b211006b2c72ba9992545bd53618a, исходники 730658185ca2b193b0a4ec3e68bb564a3135576a, 10 runtime-файлов, 45002 байта. SHA-256: `860cf2fb070ccf5144d11d975e1a99aa2d679e66a75f35da38c1330c534522a6`. ZIP и подпись повторно скачаны с GitHub по неизменяемому коммиту: хэш совпал, Verified OK. Оба режима установщика проверены также из скачанного ZIP: отказ изменённым исходникам до резервирования, установка и повторная установка, сохранение посторонних данных и резервных копий, возобновление только ранее работавшего MAX. Все runtime-файлы совпадают с исходным коммитом и деревом контейнерных проверок. Пакет опубликован, установка на VPS разработчиком не выполнялась.
+
+На Mac:
+
+```bash
+ssh -o UseKeychain=yes -o IdentitiesOnly=yes -o PasswordAuthentication=no -i ~/.ssh/armada_beget root@185.23.35.28
+```
+
+На VPS:
+
+```bash
+cd /root &&
+ARMADA_FIX_URL='https://raw.githubusercontent.com/zolotojmiha-ctrl/openIA/480f65ab871b211006b2c72ba9992545bd53618a' &&
+curl -fL --retry 3 -o armada-max-ddk-native-fix.zip "$ARMADA_FIX_URL/armada-max-ddk-native-fix.zip" &&
+curl -fL --retry 3 -o armada-max-ddk-native-fix.zip.sig "$ARMADA_FIX_URL/armada-max-ddk-native-fix.zip.sig" &&
+echo '860cf2fb070ccf5144d11d975e1a99aa2d679e66a75f35da38c1330c534522a6  armada-max-ddk-native-fix.zip' | sha256sum -c - &&
+openssl dgst -sha256 -verify /root/armada-6.32.0/armada-release-signing.public.pem -signature armada-max-ddk-native-fix.zip.sig armada-max-ddk-native-fix.zip &&
+python3 -m zipfile -e armada-max-ddk-native-fix.zip /root &&
+ARMADA_APP_ROOT=/opt/armada bash /root/armada-max-ddk-native-fix/install.sh
+```
