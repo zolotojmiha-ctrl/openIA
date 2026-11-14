@@ -120,3 +120,11 @@ class NativeLayoutTests(TestCase):
         e=self.lead('layout:jobs:1')
         self.assertIn('Выберите участок',self.reply(e).body['text'])
         self.assertIn(f'layout:jobs:{self.section.pk}:0',[b['payload'] for b in self.buttons(e)])
+
+    def test_layout_picker_shortens_rnu_without_changing_stored_names(self):
+        self.section.rnu='Новосибирское РНУ';self.section.name=self.obj.name;self.section.save()
+        e=self.lead('/раскладка')
+        b=next(b for b in self.buttons(e) if b['payload']==f'layout:upload:{self.section.pk}')
+        self.assertTrue(b['text'].startswith(self.obj.name));self.assertIn('НСК',b['text'])
+        self.assertNotIn('Новосибирское РНУ',b['text']);self.assertNotIn('\n',b['text'])
+        self.section.refresh_from_db();self.assertEqual(self.section.rnu,'Новосибирское РНУ')

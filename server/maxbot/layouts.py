@@ -9,6 +9,7 @@ from repairs.models import PipeLayout,Defect
 from repairs.access import can_prepare,visible_sections,visible_jobs
 from .models import Draft
 from .transport import download_file
+from .labels import section_button_title
 
 
 def current_jobs(user):
@@ -105,7 +106,7 @@ def handle(event,binding,stored_keys):
             page=int(parts[2]) if action else 0
             if not 0<=page<=10000:raise ValueError
             rows=list(visible_sections(binding.user).order_by('project_object__name','pipeline','pk')[page*6:page*6+7])
-            buttons=[button(str(s)[:100],f'layout:upload:{s.pk}') for s in rows[:6]]
+            buttons=[button(section_button_title(s),f'layout:upload:{s.pk}') for s in rows[:6]]
             if len(rows)>6:buttons.append(button('Далее',f'layout:sections:{page+1}'))
             if page:buttons.append(button('Назад',f'layout:sections:{page-1}'))
             queue(event,binding,'Выберите участок нефтепровода для раскладки.' if rows else 'Нет доступных участков.',buttons,sections=[str(s.pk) for s in rows[:6]]);return True
@@ -150,7 +151,7 @@ def handle(event,binding,stored_keys):
             page=int(parts[2]) if action=='worksections' else 0
             if not 0<=page<=10000:raise ValueError
             sections=list(visible_sections(binding.user).filter(pk__in=current_jobs(binding.user).values('section_id')).select_related('project_object').order_by('project_object__name','pipeline','pk')[page*6:page*6+7])
-            buttons=[button(' '.join(f'{s.project_object.name} · {s.pipeline}'.split()),f'layout:jobs:{s.pk}:0') for s in sections[:6]]
+            buttons=[button(section_button_title(s),f'layout:jobs:{s.pk}:0') for s in sections[:6]]
             if len(sections)>6:buttons.append(button('Далее',f'layout:worksections:{page+1}'))
             if page:buttons.append(button('Назад',f'layout:worksections:{page-1}'))
             from .dialog import queue as emit

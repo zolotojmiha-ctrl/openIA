@@ -3,7 +3,7 @@ from django.test import TestCase,override_settings
 from projects import test_stock as fixture
 from repairs.models import Report
 from . import tests as base,demand_watch
-from .labels import location
+from .labels import location,section_button_title
 from .models import DemandWatch,Outbox
 from .dialog import job_title
 
@@ -18,6 +18,13 @@ class DemandLabelTests(TestCase):
         self.assertEqual(location('Объект','Другой участок'),'Объект · Другой участок')
         job=self.make_job();job.section.name=self.obj.name;job.section.save()
         self.assertEqual(job_title(job).count(self.obj.name),1)
+
+    def test_section_buttons_put_location_first_and_shorten_only_display_rnu(self):
+        from types import SimpleNamespace
+        for full,short in [('Новосибирское РНУ','НСК'),('Омское РНУ','Омск'),('Другое РНУ','Другое РНУ')]:
+            section=SimpleNamespace(project_object=SimpleNamespace(name='ОИ Омск - Татарская'),name='ОИ Омск — Татарская',pipeline='ОИ',rnu=full)
+            self.assertEqual(section_button_title(section),'ОИ Омск - Татарская · '+short)
+            self.assertEqual(section.rnu,full)
     def test_format_migration_baselines_without_fake_change_and_grouped_dn_notice(self):
         watch=DemandWatch.objects.create(binding=self.binding,digest='old',version=1,format_version=1)
         rows=[{'job':str(n),'contract':'ТЕСТ','contract_id':'A','object':'ТЕСТ участок','object_id':'O','section':'ТЕСТ участок','section_id':'S','diameter':720,'method':'p1','length':2000,'wall':'8','quantity':n} for n in (1,2)]
