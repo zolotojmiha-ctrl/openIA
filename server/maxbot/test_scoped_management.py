@@ -9,7 +9,7 @@ from projects.models import Contract,ContractObject,ProjectObject,Equipment,Equi
 from projects import equipment_issues,rentals
 from projects import test_stock as fixtures
 from repairs.models import Job,Section
-from . import tests as base,leadership,links
+from . import tests as base,leadership,links,worker
 from .models import Binding,Outbox
 
 
@@ -44,7 +44,7 @@ class ScopedManagementTests(TestCase):
         row,_=self.request('scope:section:'+str(self.section.pk));binding.refresh_from_db()
         self.assertEqual(binding.menu_scope,{'contract':str(self.contract.pk),'section':str(self.section.pk)})
         row,_=self.request('scope:contract:all');binding.refresh_from_db();self.assertEqual(binding.menu_scope,{})
-        row,_=self.request('leader:works:0');self.assertIn(other.number,row.body['text'])
+        row,_=self.request('leader:works:0');self.assertIn(f'worknav:jobs:works:{section.pk}:0',str(row.body))
 
     def test_pto_scope_cannot_be_forged_and_lost_access_cancels_queued_menu(self):
         user=self.pto();other,section,job=self.another()
@@ -52,9 +52,9 @@ class ScopedManagementTests(TestCase):
         row,binding=self.request('leader:works:0',user)
         self.assertNotIn(other.number,row.body['text'])
         with self.assertRaises(PermissionDenied):leadership.validate_scope(user,{'contract':str(other.pk)})
-        self.assertTrue(leadership.delivery_allowed(user,row.scope))
+        self.assertTrue(worker.delivery_allowed(row))
         ContractAccess.objects.filter(user=user).delete()
-        self.assertFalse(leadership.delivery_allowed(user,row.scope))
+        self.assertFalse(worker.delivery_allowed(row))
         self.client.force_login(user);self.assertContains(self.client.get(reverse('profile')),'Подключение MAX')
 
     def test_rental_summary_requires_finance_read_and_uses_real_ledger(self):

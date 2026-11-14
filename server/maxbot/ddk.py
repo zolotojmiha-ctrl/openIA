@@ -4,7 +4,6 @@ from datetime import timedelta
 from django import forms
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
-from django.db.models import Min,Q
 from django.utils import timezone
 from documents.storage import validate_upload,store_file,private_path
 from repairs import ddk as service
@@ -170,15 +169,8 @@ def handle(event,binding,stored_keys):
     if text in ('/ддк','/ddk') and not current or action=='list':
         page=int(parts[2]) if action=='list' else 0
         if not 0<=page<=10000:raise ValidationError('Неверная страница списка.')
-        jobs=list(available(user).annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=True))).order_by('section__project_object__name','section__name','first_km','pk')[page*6:page*6+7])
-        buttons=[]
-        for job in jobs[:6]:
-            defects=job.active_defects
-            label=(f'км {defects[0].km} · № {defects[0].number}' if defects else 'Ремонт')+' · '+job.section.project_object.name
-            buttons.append(button(label,f'ddk:select:{job.pk}'))
-        if len(jobs)>6:buttons.append(button('Следующие работы',f'ddk:list:{page+1}'))
-        if current:buttons.insert(0,button('Вернуться к изменению',f'ddk:resume:{current.pk}'))
-        queue(event,'Выберите работу для изменения метода после ДДК.' if jobs else 'Доступных работ для изменения после ДДК нет.',buttons,binding=binding,scope={'jobs':[str(j.pk) for j in jobs[:6]]});return True
+        from .work_navigation import sections
+        sections(event,binding,'ddk');return True
     if action=='select':
         job=available(user).filter(pk=uuid.UUID(parts[2])).first()
         if not job:raise PermissionDenied

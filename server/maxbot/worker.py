@@ -61,7 +61,7 @@ def process(key):
                 discard(stored)
                 stored.clear()
                 # No DB/raw transport errors, signed URLs or credentials in outgoing messages.
-                text = '\n'.join(exc.messages) if isinstance(exc, ValidationError) else 'Действие недоступно или устарело. Откройте актуальную карточку в ЛК.'
+                text = '\n'.join(exc.messages) if isinstance(exc, ValidationError) else 'Действие недоступно или устарело. Откройте /меню и выберите действие заново.'
                 valid = binding if binding and links.current(binding) else None
                 draft = Draft.objects.filter(binding=valid, state__in=['editing', 'photos', 'confirm']).order_by('-created_at').first() if valid else None
                 buttons = [dialog.button('Вернуться к фотоотчёту','/фото') if draft.action=='progress' else dialog.button('Исправить черновик',f'edit:{draft.pk}')] if draft else []
@@ -93,6 +93,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('work_navigation') is not None:
+        from .work_navigation import delivery_allowed as navigation_allowed
+        return navigation_allowed(binding,row.scope['work_navigation'])
     if row.scope.get('layout_work_sections') is not None:
         from .layouts import current_jobs
         ids=row.scope['layout_work_sections']

@@ -35,7 +35,8 @@ class ScopeReportingTests(TestCase):
         row=self.reply(self.event(f'section:{self.section.pk}:0'))
         self.assertIn('135.651',row.body['text']);self.assertIn(f'job:{self.job.pk}',str(row.body))
         self.assertTrue(worker.delivery_allowed(row))
-        row=self.reply(self.event('/фото'));self.assertIn('135.651',row.body['text']);self.assertTrue(worker.delivery_allowed(row))
+        row=self.reply(self.event('/фото'));self.assertIn(f'worknav:jobs:photos:{self.section.pk}:0',str(row.body))
+        row=self.reply(self.event(f'worknav:jobs:photos:{self.section.pk}:0'));self.assertIn('135.651',str(row.body));self.assertTrue(worker.delivery_allowed(row))
     def test_grinding_result_is_saved_with_actual_author_and_original_assignee(self):
         self.grant();self.event(f'begin:{self.job.pk}:repaired');draft=Draft.objects.get(action='repaired')
         self.fill(draft)

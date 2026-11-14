@@ -1,4 +1,4 @@
-"""Scoped read-only management menu; decisions stay in the cabinet."""
+"""Scoped management menu with native work navigation and service-enforced actions."""
 import hashlib
 from .labels import location
 from uuid import UUID
@@ -151,6 +151,16 @@ def handle(event,binding):
     elif text.startswith('leader:'):
         try:_,category,raw=text.split(':');page=int(raw)
         except (ValueError,TypeError):raise ValidationError('Откройте меню: /меню')
+    if category=='works':
+        from .work_navigation import sections
+        sections(event,binding,'works');return
+    if category=='progress':
+        from .progress import available as photo_jobs
+        actions=[button('Полученные фотоотчёты','worknav:sections:history:0'),button('Меню','/меню')]
+        can_add=photo_jobs(user).exists()
+        if can_add:actions.insert(0,button('Добавить фотографии','/фото'))
+        queue(event,'Фото хода работ. '+('Выберите действие: добавить фотографии к работе или посмотреть полученные ежедневные фотоотчёты.' if can_add else 'Можно посмотреть полученные ежедневные фотоотчёты. Доступных работ для добавления фотографий сейчас нет.'),actions,binding=binding,scope={'leader':True,'selection':selection,'access_signature':access_signature(user)})
+        return
     if category not in ('menu','summary','works','progress','reports','equipment','issues','materials','shortage','rentals','contracts','sections') or not 0<=page<=10000:raise ValidationError('Неверная страница меню.')
     jobs=visible_jobs(user).exclude(contract__status='archived').exclude(section__project_object__status='archived')
     machines=visible_equipment(user);needed=materials(user);hire=rentals(user);complaints=issues(user).filter(state='open')

@@ -168,6 +168,7 @@ class NativeDDKTests(TestCase):
             button=next(b[0] for b in row.body['attachments'][0]['payload']['buttons'] if b[0]['text']==label)
             self.assertEqual(button['type'],'callback');send(button['payload'],True)
         send('/ддк')
+        send(f'worknav:jobs:ddk:{self.section.pk}:0')
         row=Outbox.objects.filter(key__endswith=':reply').latest('created_at')
         send(row.body['attachments'][0]['payload']['buttons'][0][0]['payload'],True)
         choose('П2')

@@ -55,7 +55,9 @@ class ProgressBotTests(TestCase):
 
     def test_list_has_assigned_kilometres_before_creating_draft(self):
         event=self.event('/фото');row=Outbox.objects.get(key=f'in:{event.pk}:reply')
-        self.assertIn('№ТЕСТ125',row.body['text'])
+        self.assertIn(f'worknav:jobs:photos:{self.section.pk}:0',str(row.body))
+        event=self.event(f'worknav:jobs:photos:{self.section.pk}:0');row=Outbox.objects.get(key=f'in:{event.pk}:reply')
+        self.assertIn('№ТЕСТ125',str(row.body))
         self.assertIn(f'progress:select:{self.job.pk}',str(row.body))
         self.assertFalse(Draft.objects.exists())
 
@@ -75,6 +77,10 @@ class ProgressBotTests(TestCase):
         draft=self.begin();self.add_photo();self.event('progress:save:'+str(draft.pk))
         event=self.event('leader:progress:0',sender=301,chat=401)
         row=Outbox.objects.get(key=f'in:{event.pk}:reply')
+        self.assertIn('Добавить фотографии',str(row.body));self.assertIn('Полученные фотоотчёты',str(row.body))
+        self.event('worknav:sections:history:0',sender=301,chat=401)
+        self.event(f'worknav:jobs:history:{self.section.pk}:0',sender=301,chat=401)
+        event=self.event(f'worknav:history:{self.job.pk}:0',sender=301,chat=401);row=Outbox.objects.get(key=f'in:{event.pk}:reply')
         self.assertIn('Фото за',row.body['text']);self.assertIn('#progress-timeline',str(row.body))
 
 

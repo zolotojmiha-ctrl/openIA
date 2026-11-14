@@ -4,12 +4,13 @@ import uuid
 from datetime import date, timedelta
 from django import forms
 from django.db import transaction
+from django.db.models import Min,Q,F
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
 from documents.storage import validate_upload, store_file, verified_file, private_path
-from repairs.access import reportable_jobs,can_report_scoped
+from repairs.access import reportable_jobs,can_report_scoped,visible_sections
 from repairs.forms import ReportForm
 from repairs.services import report_work
 from .models import Draft, Photo, Outbox
@@ -186,6 +187,8 @@ def handle(event, binding, stored_keys):
     if layouts.handle(event,binding,stored_keys):return
     from . import archive
     if archive.handle(event,binding,stored_keys):return
+    from . import work_navigation
+    if work_navigation.handle(event,binding):return
     from . import ddk
     if ddk.handle(event,binding,stored_keys):return
     if user.role=='mechanic' and not user.is_leader:
@@ -217,8 +220,9 @@ def handle(event, binding, stored_keys):
         page = int(text.split(':')[1]) if text.startswith('sections:') else 0
         if not 0 <= page <= 10000:
             raise ValidationError('Неверная страница.')
-        sections = list(available(user).order_by('section_id').values_list('section_id', 'section__name', 'section__project_object__name').distinct()[page * 8:page * 8 + 9])
-        buttons = [button(f'{obj} · {name}', f'section:{pk}:0') for pk, name, obj in sections[:8]]
+        from .labels import section_button_title
+        sections = list(visible_sections(user).filter(pk__in=available(user).values('section_id')).select_related('project_object').order_by('project_object__name','pipeline','pk')[page * 8:page * 8 + 9])
+        buttons = [button(section_button_title(s), f'section:{s.pk}:0') for s in sections[:8]]
         buttons.append(button('Фото хода работ','/фото'))
         buttons.append(button('Сообщить о неисправности техники','/техника'))
         if len(sections) > 8:
@@ -226,7 +230,7 @@ def handle(event, binding, stored_keys):
         if page:
             buttons.append(button('К началу списка', '/работы'))
         queue(event, ('Выберите участок. Показаны работы доступных вам участков.' if can_report_scoped(user) else 'Выберите участок. Показаны только назначенные вам работы.') if sections else 'Доступных работ для отчёта нет.',
-              buttons, binding=binding, scope={'sections': [str(pk) for pk, name, obj in sections[:8]]})
+              buttons, binding=binding, scope={'sections': [str(s.pk) for s in sections[:8]]})
         return
     if text.startswith('section:'):
         _, key, page = text.split(':')
@@ -234,8 +238,8 @@ def handle(event, binding, stored_keys):
         page = int(page)
         if not 0 <= page <= 10000:
             raise ValidationError('Неверная страница.')
-        jobs = list(available(user).filter(section_id=key).order_by('pk')[page * 8:page * 8 + 9])
-        buttons = [button(', '.join('№' + d.number for d in j.active_defects) or 'Ремонт', f'job:{j.pk}') for j in jobs[:8]]
+        jobs = list(available(user).filter(section_id=key).annotate(first_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=True))).order_by(F('first_km').asc(nulls_last=True),'pk')[page * 8:page * 8 + 9])
+        buttons = [button(job_button_title(j), f'job:{j.pk}') for j in jobs[:8]]
         if len(jobs) > 8:
             buttons.append(button('Следующие работы', f'section:{key}:{page + 1}'))
         buttons.append(button('Другой участок', '/работы'))

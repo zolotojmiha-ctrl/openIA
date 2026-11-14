@@ -2,7 +2,6 @@
 import uuid
 from datetime import timedelta
 from django.core.exceptions import PermissionDenied,ValidationError
-from django.db.models import Case,When,Value,IntegerField
 from django.utils import timezone
 from documents.storage import validate_upload,store_file
 from repairs.progress import STAGES,ProgressForm
@@ -58,17 +57,8 @@ def handle(event,binding,stored_keys):
         page=int(parts[2]) if action=='list' else 0
         if not 0<=page<=10000:raise ValidationError('Неверная страница.')
         if draft and draft.photos.exists():raise ValidationError('Сначала сохраните или отмените текущий фотоотчёт. Вернуться к нему: /фото')
-        priority=Case(When(state__in=['progress','partial'],then=Value(0)),default=Value(1),output_field=IntegerField())
-        jobs=list(available(user).order_by(priority,'section__project_object__name','section__name','pk')[page*6:page*6+7])
-        buttons=[]
-        for index,job in enumerate(jobs[:6],1):
-            defects=job.active_defects;first=defects[0] if defects else None
-            label=(f'км {first.km} · №{first.number}' if first else 'Ремонт')+' · '+job.section.name
-            buttons.append(button(label,f'progress:select:{job.pk}'))
-        if len(jobs)>6:buttons.append(button('Следующие работы',f'progress:list:{page+1}'))
-        buttons.append(button('Меню','/menu'))
-        queue(event,'Выберите работу для фотографий. Начатые работы показаны первыми.\n\n'+'\n\n'.join(title(user,j)[:450] for j in jobs[:6]) if jobs else 'Доступных работ для фотоотчёта нет.',buttons,binding=binding,scope={'jobs':[str(j.pk) for j in jobs[:6]]})
-        return True
+        from .work_navigation import sections
+        sections(event,binding,'photos');return True
     if action=='select':
         job=available(user).filter(pk=uuid.UUID(parts[2])).first()
         if not job:raise PermissionDenied
