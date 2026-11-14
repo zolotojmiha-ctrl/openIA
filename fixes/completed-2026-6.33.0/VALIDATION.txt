@@ -1,0 +1,6 @@
+Source: 6fdbad88a432c02af66f882562de860c7ca3de46
+73 PostgreSQL17/Chromium regression scenarios passed, including two current-import concurrency cases, historical archive, completion register, layouts and native work navigation. After year-filter support, 27 final SQLite/Chromium guard scenarios passed. No skips.
+Native MAX upload, record/evidence pages, confirm/cancel/repeat, role denial and delivery guard verified. Browser upload, explicit confirmation, active contract/default open tab, completed tab, nullable dates and widths 320/390/1440 verified. Screenshot inspected.
+Full private plan applied to an isolated reconstruction of the earlier export: prior data/stock/access/bindings/queue fingerprint unchanged, exact completed duplicates skipped, repeat idempotent, active contract preserved. This is not a current production clone or live import.
+Docker image built from exact final source ZIP: 756 application hashes match; Django system check passed. No model schema migrations; dependencies and installer template unchanged. Installer bash syntax passed.
+No production write, live MAX message, current production export or real supplier API call.
