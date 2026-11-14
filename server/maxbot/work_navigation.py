@@ -72,6 +72,9 @@ def listing(event,binding,purpose,section_id,page=0):
 
 def delivery_allowed(binding,scope):
     try:
+        if scope.get('contract'):
+            from projects.access import visible_contracts
+            if not visible_contracts(binding.user).exclude(status='archived').filter(pk=scope['contract']).exists():return False
         rows=jobs_for(binding.user,scope['purpose'],scope.get('contract',''))
         if scope.get('section'):
             if not visible_sections(binding.user).filter(pk=scope['section']).exists():return False
@@ -80,7 +83,7 @@ def delivery_allowed(binding,scope):
             ids=scope['sections'];return set(ids)=={str(pk) for pk in rows.filter(section_id__in=ids).values_list('section_id',flat=True)}
         ids=scope.get('jobs',[])
         return set(ids)=={str(pk) for pk in rows.filter(pk__in=ids).values_list('pk',flat=True)}
-    except (ValueError,ValidationError,KeyError):return False
+    except (ValueError,ValidationError,KeyError,TypeError):return False
 
 
 def _handle(event,binding):

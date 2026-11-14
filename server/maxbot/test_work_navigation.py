@@ -93,3 +93,11 @@ class WorkNavigationTests(TestCase):
         rows=[b for b in self.buttons(e) if b['payload'].startswith('job:')]
         self.assertEqual([b['text'].split(' · ')[0] for b in rows],['км 1.000','км 5.000','км 20.000'])
         e=self.event(rows[0]['payload']);self.assertIn(f'begin:{self.job.pk}:repaired',str(self.buttons(e)))
+
+    def test_empty_section_picker_does_not_deliver_a_revoked_contract_title(self):
+        self.job.state='confirmed';self.job.save(update_fields=['state'])
+        self.binding.menu_scope={'contract':str(self.contract.pk)};self.binding.save(update_fields=['menu_scope'])
+        e=self.event('worknav:sections:works:0');out=self.reply(e)
+        self.assertIn('Контракт:',out.body['text']);self.assertEqual(out.scope['work_navigation']['contract'],str(self.contract.pk));self.assertTrue(worker.delivery_allowed(out))
+        ContractAccess.objects.filter(user=self.worker,contract=self.contract).delete()
+        self.assertFalse(worker.delivery_allowed(out))
