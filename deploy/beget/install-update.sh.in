@@ -18,7 +18,11 @@ docker info >/dev/null
 exec 9>"$app_root/.armada-update.lock"
 flock -n 9 || { printf 'Другое обновление уже выполняется.\n' >&2; exit 1; }
 cd -- "$app_root"
-compose=(docker compose -f "$app_root/deploy/beget/compose.yml")
+compose=(docker compose)
+# Match the operator's established deploy/beget/.env commands explicitly.
+# The tree switch preserves this exact file; no MAX or provider setting is reset.
+if [[ -f "$app_root/deploy/beget/.env" ]]; then compose+=(--env-file "$app_root/deploy/beget/.env"); fi
+compose+=(-f "$app_root/deploy/beget/compose.yml")
 # Read the actual running image, without importing settings or displaying secrets.
 version_code='import ast,pathlib; tree=ast.parse(pathlib.Path("/app/server/accounts/context.py").read_text()); versions=[v.value for n in ast.walk(tree) if isinstance(n,ast.Dict) for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value=="release_version" and isinstance(v,ast.Constant)]; assert len(versions)==1; print(versions[0])'
 installed=$("${compose[@]}" exec -T web python -c "$version_code")
