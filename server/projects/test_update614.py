@@ -61,7 +61,7 @@ class UpdateTests(TestCase):
         r=self.client.post(reverse('person_new'),{'full_name':'Работник без ЛК','position':'Монтажник'})
         self.assertEqual(r.status_code,302);self.assertIsNone(Person.objects.get(full_name='Работник без ЛК').user_id)
         self.assertEqual(User.objects.count(),2)
-        self.assertContains(self.client.get(reverse('employee_new')),'Мастеру / прорабу')
+        self.assertContains(self.client.get(reverse('employee_new')),'Подставить набор выбранной профессии')
     def test_mail_badges_and_read_visual_states(self):
         from postoffice.models import Mailbox
         box=Mailbox.objects.create(address='info@armada-sibir.ru',created_by=self.leader,state='active',unread=3)
