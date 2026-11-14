@@ -1,0 +1,7 @@
+Source: 287fbf1ce1492ed40a1e9f7c1238da61dbe56e31
+29 SQLite/Chromium tests passed, then 32 PostgreSQL17/Chromium tests passed (0 skipped).
+Includes four native site forms, separate purpose-specific consent, policy without JavaScript, old-edition rejection, saved old edition preservation, actual browser document tabs with retained draft, receipt/retry, private resumes and inbox, local synthetic TLS SMTP delivery, and three concurrency cases.
+Responsive browser checks: 320, 390, 768, 1440 px; document screenshots inspected.
+Docker image built from the exact packaged ZIP; 747 app file hashes match. Django system check passed.
+makemigrations --check --dry-run: no changes. Installer template, dependencies, models and migrations unchanged. Installer bash syntax check passed.
+No production deployment or live mail delivery. Company organizational procedures are not certified by code tests.
