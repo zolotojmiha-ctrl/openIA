@@ -29,9 +29,17 @@ def register_context(request,scope=None):
     from .filters import filtered_jobs,filter_values
     params=filter_values(request.GET)
     if scope:params.update(scope)
+    if not params['state']:
+        params['state']='all' if archived else 'open'
+        if params['contract'] and not archived:
+            from projects.access import visible_contracts
+            try:
+                selected=visible_contracts(request.user).filter(pk__in=identifiers(params,'contract'))
+                if selected.exists() and not selected.exclude(status='archived').exists():params['state']='confirmed'
+            except ValueError:pass
     qs=filtered_jobs(request.user,params,apply_state=False)
     sid=params['section'];q=params['q'];state=params['state'];year=params['year'];master=params['master']
-    counts={'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').exclude(state='unrepairable').count(),'unrepairable':qs.filter(state='unrepairable').count(),'revision':qs.exclude(review_note='').count()}
+    counts={'open':qs.filter(state__in=['planned','progress','partial']).exclude(contract__status='archived').count(),'total':qs.count(),'reported':qs.filter(state='reported').count(),'confirmed':qs.filter(state='confirmed').count(),'problems':qs.exclude(problem='').exclude(state='unrepairable').count(),'unrepairable':qs.filter(state='unrepairable').count(),'revision':qs.exclude(review_note='').count()}
     qs=filtered_jobs(request.user,params)
     review_filter=signing.dumps({'actor':str(request.user.pk),'filters':params},salt='repair-review-filter',compress=True) if request.user.is_leader and not archived else ''
     summary_defects=Defect.objects.filter(jobs__in=qs,archived_at__isnull=not archived).distinct()
@@ -227,7 +235,8 @@ def job_edit(request,pk=None,section_id=None):
 def detail(request,pk):
     job=get_object_or_404(visible_jobs(request.user,include_archived=can_prepare(request.user)),pk=pk)
     reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
-    result=reports.filter(kind__in=['partial','complete','correction']).first()
+    from .historical import result as historical_result
+    result=historical_result(job,reports.filter(kind__in=['partial','complete','correction']).first())
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
     progress_records=reports.filter(context__progress__isnull=False).order_by('-performed_date','-created_at','-pk')
     progress_page=Paginator(progress_records,10).get_page(request.GET.get('progress_page'))

@@ -93,6 +93,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('archive'):
+        from .archive import delivery_allowed as archive_allowed
+        return archive_allowed(binding,row.scope)
     if row.scope.get('ddk_draft'):
         from .ddk import delivery_allowed as ddk_allowed
         return ddk_allowed(binding,row.scope)

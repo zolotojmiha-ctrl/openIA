@@ -1,0 +1,7 @@
+{% extends 'accounts/base.html' %}{% block content %}
+<a class="back-link" href="{% url 'work_contract' contract.pk %}">← {{ contract.number }}</a>
+<h1>Перенос исторических ремонтов</h1>
+<p>Договор: <strong>{{ contract.number }}</strong></p>
+<div class="notice">Загрузите подготовленный и проверенный план JSON. Сначала откроется предпросмотр. Перенос не меняет действующие работы, права и склады. Неизвестные даты останутся пустыми.</div>
+<form class="panel" method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="button">Проверить план</button></form>
+{% endblock %}

@@ -6,7 +6,7 @@ const fs=require('node:fs');
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
  const technician=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];technician.on('pageerror',e=>errors.push(e.message));
  async function login(page,phone){await page.goto(base+'/cabinet/login/');await page.locator('[name=phone]').fill(phone);await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');}
- await login(technician,'+70000000004');await technician.goto(base+'/cabinet/repairs/');
+ await login(technician,'+70000000004');await technician.goto(base+'/cabinet/repairs/?state=all');
  const resolved=technician.locator('tbody.repair-tone-resolved').first();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(227, 243, 232)');await resolved.hover();assert.equal(await resolved.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(213, 235, 220)');
 
  const template=technician.waitForEvent('download');await technician.getByRole('link',{name:'Шаблон Excel',exact:true}).click();assert.equal((await template).suggestedFilename(),'openIA-defects-template.xlsx');
@@ -17,13 +17,13 @@ const fs=require('node:fs');
  await technician.getByRole('button',{name:'Сохранить проверенные записи'}).click();await technician.waitForURL(base+'/cabinet/repairs/');
  await technician.locator('[name=master]').selectOption({label:'ТЕСТ Мастер'});await technician.getByRole('button',{name:'Найти',exact:true}).click();
  const exported=technician.waitForEvent('download');await technician.getByRole('link',{name:'↓ Скачать Excel',exact:true}).click();assert.equal((await exported).suggestedFilename(),'openIA-defects.xlsx');
- await technician.goto(base+'/cabinet/repairs/');
+ await technician.goto(base+'/cabinet/repairs/?state=all');
  const original=technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]');
  assert.equal(await original.locator('.repair-delete').count(),2);
- await original.locator('.repair-more summary').click();await original.locator('.repair-delete').first().click();await technician.getByRole('button',{name:'Удалить из списка',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');
+ await original.locator('.repair-more summary').click();await original.locator('.repair-delete').first().click();await technician.getByRole('button',{name:'Удалить из списка',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');await technician.goto(base+'/cabinet/repairs/?state=all');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),1);
  await technician.goto(base+'/cabinet/repairs/'+process.env.ARMADA_REPAIR_ID+'/');assert.equal(await technician.locator('.repair-photos img').count(),1);
- await technician.goto(base+'/cabinet/repairs/?archive=1');await technician.getByRole('link',{name:'Восстановить',exact:true}).click();await technician.getByRole('button',{name:'Восстановить',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');
+ await technician.goto(base+'/cabinet/repairs/?archive=1');await technician.getByRole('link',{name:'Восстановить',exact:true}).click();await technician.getByRole('button',{name:'Восстановить',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');await technician.goto(base+'/cabinet/repairs/?state=all');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),2);
  for(const width of [1440,768,390,320]){await technician.setViewportSize({width,height:900});assert.equal(await technician.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'register '+width);}
  await technician.setViewportSize({width:1440,height:900});const firstRow=technician.locator('.repair-register tbody tr').first();assert.ok((await firstRow.boundingBox()).height<100);await technician.setViewportSize({width:1440,height:900});await technician.screenshot({path:out+'/09-compact-register.png',fullPage:true});

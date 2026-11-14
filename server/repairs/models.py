@@ -78,7 +78,14 @@ class Job(ArchiveProtectedModel):
         if self.problem in ('access','water','swamp','winter'):return 'blocked'
         return 'neutral'
     @property
-    def verification_label(self):return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем','unrepairable':'Решение руководителя: ремонт невозможен'}.get(self.state,'')
+    def repair_method_display(self):
+        if self.source.get('historical_import') and self.source.get('actual_method_unknown'):return 'Метод не уточнён'
+        return self.get_method_display()
+
+    @property
+    def verification_label(self):
+        if self.source.get('historical_import') and self.state=='confirmed':return 'Исторический результат'
+        return {'reported':'На проверке руководителя','confirmed':'Проверено руководителем','unrepairable':'Решение руководителя: ремонт невозможен'}.get(self.state,'')
     @property
     def reason_display(self):
         if self.state=='unrepairable':return self.problem_note or 'Ремонт признан невозможным руководителем'

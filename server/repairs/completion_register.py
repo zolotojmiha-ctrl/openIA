@@ -104,7 +104,8 @@ def groups(user,jobs):
     contracts={}
     result=[]
     for job in jobs:
-        report=reports.get(job.result_id)
+        from .historical import result as historical_result
+        report=historical_result(job,reports.get(job.result_id))
         defects=sorted(job.active_defects,key=lambda d:(d.kilometre,d.number,d.pipe_section))
         if job.contract_id not in contracts:
             contracts[job.contract_id]=contract_card(job.contract,user)['title'] if job.contract_id else 'Без контракта'
@@ -125,8 +126,8 @@ def export_rows(groups):
         job=group['job'];report=group['report']
         for index,defect in enumerate(group['defects']):
             rows.append([group['contract'],job.section.project_object.name,job.section.name,defect.km,defect.number,defect.pipe_section,
-                         str(job.pk),report.performed_date.strftime('%d.%m.%Y') if report else '',
-                         job.assigned_to.full_name if job.assigned_to_id else '',report.author.full_name if report else '',
+                         str(job.pk),report.performed_date.strftime('%d.%m.%Y') if report and report.performed_date else '',
+                         job.assigned_to.full_name if job.assigned_to_id else '',report.author.full_name if report and report.author else '',
                          report.get_method_display() if report and report.method else '',
                          report.length_m if report and index==0 else None,report.composition if report else '',
                          group['coating'] if index==0 else None,job.verification_label,

@@ -105,7 +105,7 @@ class DefectStockTests(TestCase):
     def test_completed_work_is_readonly_and_installed_dimensions_remain_visible(self):
         self.receive(serial='МОНТАЖ-123');self.client.post(self.url,self.choice({self.a.name:1}))
         items=list(self.held().select_related('coupling'));self.report(self.job,[i.coupling for i in items])
-        response=self.client.get(reverse('repairs'));self.assertContains(response,'Смонтировано');self.assertContains(response,'МОНТАЖ-123');self.assertNotContains(response,self.url)
+        response=self.client.get(reverse('repairs'),{'state':'reported'});self.assertContains(response,'Смонтировано');self.assertContains(response,'МОНТАЖ-123');self.assertNotContains(response,self.url)
         response=self.client.post(self.url,self.choice({self.a.name:0}));self.assertEqual(response.status_code,409)
         self.assertTrue(CouplingUse.objects.filter(job=self.job).exists())
     def test_return_context_and_empty_review_filter(self):

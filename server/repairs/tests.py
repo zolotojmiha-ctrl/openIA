@@ -70,7 +70,7 @@ class RepairsTests(TestCase):
             with self.subTest(state=state,problem=problem):
                 self.job.state=state;self.job.problem=problem;self.job.save()
                 self.assertEqual(self.job.status_tone,tone)
-                response=self.client.get(reverse('repairs'))
+                response=self.client.get(reverse('repairs'),{'state':'all'})
                 self.assertContains(response,'class="repair-tone-'+tone+'"')
                 self.assertContains(response,'class="repair-status-label"')
 
@@ -505,7 +505,7 @@ class RepairsTests(TestCase):
         self.d1.refresh_from_db();self.assertIsNotNone(self.d1.archived_at)
         self.assertEqual(self.job.defects.count(),2);self.assertEqual(self.job.reports.count(),1)
         report.refresh_from_db();self.assertEqual(report.context,old_context)
-        response=self.client.get(reverse('repairs'));self.assertNotIn(self.d1.pk,[r['defect'].pk for g in response.context['groups'] for r in g['rows']]);self.assertContains(response,self.d2.number)
+        response=self.client.get(reverse('repairs'),{'state':'all'});self.assertNotIn(self.d1.pk,[r['defect'].pk for g in response.context['groups'] for r in g['rows']]);self.assertContains(response,self.d2.number)
         self.assertContains(self.client.get(reverse('repairs'),{'archive':'1'}),self.d1.number)
         from .importer import read_book
         exported=self.client.get(reverse('repair_excel_export'))
@@ -514,7 +514,7 @@ class RepairsTests(TestCase):
         token=self.visibility_token(restore=True)
         self.assertEqual(self.client.post(reverse('repair_defect_restore',args=[self.d1.pk]),{'snapshot':token}).status_code,302)
         self.d1.refresh_from_db();self.assertIsNone(self.d1.archived_at)
-        self.assertContains(self.client.get(reverse('repairs')),self.d1.number)
+        self.assertContains(self.client.get(reverse('repairs'),{'state':'all'}),self.d1.number)
     def test_delete_requires_preparation_permission_object_access_and_confirmation(self):
         url=reverse('repair_defect_delete',args=[self.d1.pk])
         self.assertEqual(self.client.get(url).status_code,403)

@@ -20,7 +20,7 @@
 <td rowspan="{{ group.count }}">{{ group.report.length_m|floatformat:'-3'|default:'—' }}</td>
 <td rowspan="{{ group.count }}">{% if group.coating != None %}{{ group.coating|floatformat:'-3' }}{% else %}Не указан{% endif %}</td>
 <td rowspan="{{ group.count }}">{{ group.report.composition|default:'—' }}</td>
-<td rowspan="{{ group.count }}">{{ group.job.assigned_to.full_name|default:'Не назначен' }}{% if group.report and group.report.author_id != group.job.assigned_to_id %}<small>Автор результата: {{ group.report.author.full_name }}</small>{% endif %}</td>
+<td rowspan="{{ group.count }}">{{ group.job.assigned_to.full_name|default:'Не назначен' }}{% if group.report.author and group.report.author_id != group.job.assigned_to_id %}<small>Автор результата: {{ group.report.author.full_name }}</small>{% endif %}</td>
 <td rowspan="{{ group.count }}">{{ group.job.verification_label }}</td><td rowspan="{{ group.count }}">{{ group.job.accepted_date|date:'d.m.Y'|default:'Не отмечена' }}{% if group.job.acceptance_basis %}<small>{{ group.job.acceptance_basis }}</small>{% endif %}</td>
 <td rowspan="{{ group.count }}"><a href="{% url 'repair_detail' group.job.pk %}?return_to={{ return_to|urlencode }}">Открыть</a></td>{% endif %}
 </tr>{% endfor %}{% empty %}<tr><td colspan="13">Нет устранённых дефектов по выбранным фильтрам.</td></tr>{% endfor %}

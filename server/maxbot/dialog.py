@@ -169,6 +169,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import archive
+    if archive.handle(event,binding,stored_keys):return
     from . import ddk
     if ddk.handle(event,binding,stored_keys):return
     if user.role=='mechanic' and not user.is_leader:
@@ -186,7 +188,7 @@ def handle(event, binding, stored_keys):
         return
     if text in ('/menu','/меню'):
         queue(event,'Меню мастера. Выберите действие.',
-              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Метод после ДДК','ddk:list:0'),button('Сообщить о неисправности техники','/техника')],binding=binding)
+              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Метод после ДДК','ddk:list:0'),button('Архив ремонтов','/архив'),button('Устранённые','/устранённые'),button('Сообщить о неисправности техники','/техника')],binding=binding)
         return
     if text=='/техника':
         from projects.equipment import visible_equipment

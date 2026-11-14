@@ -107,7 +107,7 @@ class InstallationInputTests(TestCase):
         self.assertNotContains(response,'data-review-job=')
         self.client.force_login(self.worker);self.client.post(self.url,self.payload())
         self.client.force_login(self.leader)
-        self.assertContains(self.client.get(reverse('repairs')),'data-review-job=')
+        self.assertContains(self.client.get(reverse('repairs'),{'state':'reported'}),'data-review-job=')
 
 
     def test_reserved_number_conflict_does_not_change_stock_or_save_report(self):

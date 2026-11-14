@@ -145,6 +145,7 @@ def upload(request):
 @prepare_required
 def source(request,pk):
     batch=get_object_or_404(visible_batches(request.user),pk=pk)
+    if batch.payload.get('type')=='historical_archive_v1':raise Http404
     if not batch.contract_id and not request.user.is_leader:
         from .access import visible_jobs
         if Job.objects.filter(source__batch=str(batch.pk)).exclude(pk__in=visible_jobs(request.user,include_archived=True)).exists():raise Http404
@@ -157,6 +158,7 @@ def source(request,pk):
 @prepare_required
 def review(request,pk):
     batch=get_object_or_404(visible_batches(request.user),pk=pk)
+    if batch.payload.get('type')=='historical_archive_v1':raise Http404
     if batch.contract_id is None and not batch.applied_at:
         return render(request,'repairs/legacy_import.html',{'batch':batch},status=409)
     if batch.contract:
