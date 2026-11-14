@@ -50,7 +50,7 @@ def main():
     with zipfile.ZipFile(io.BytesIO(raw)) as src,zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as dst:
         for item in src.infolist():
             relative=Path(item.filename).relative_to('openIA-feature-accounts-foundation')
-            if relative.parts and (relative.parts[0] in ('previous-draft','tests') or len(relative.parts)==1 and relative.suffix in ('.zip','.sig','.bundle','.pem','.key') or relative.name=='AGENTS.md' or len(relative.parts)==1 and relative.suffix=='.md' and relative.name not in ('README.md',f'RELEASE_{"_".join(args.version.split(".")[:2])}.md')):
+            if relative.parts and (relative.parts[0] in ('previous-draft','tests') or len(relative.parts)==1 and relative.suffix in ('.zip','.sig','.bundle','.pem','.key') or relative.name=='AGENTS.md' or len(relative.parts)==1 and relative.suffix=='.md' and relative.name not in ('README.md','THIRD_PARTY_NOTICES.md',f'RELEASE_{"_".join(args.version.split(".")[:2])}.md')):
                 excluded.append(str(relative));continue
             dst.writestr(item,src.read(item.filename))
     with zipfile.ZipFile(archive) as z:
