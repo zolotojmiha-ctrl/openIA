@@ -1,0 +1,86 @@
+Source commit: c3429b05a2acd949e7c32e9c6b4370f7a5219ac1
+Archive SHA256: 249d1f2cc133b3bfb8205092836021f3b198cbb801f6d5a52d070c286f187d4d
+Installer SHA256: 6880d56013274d1d5cf7cc60de4ea6a51a834aa8e3b765a77775d34aa583c119
+
+{
+  "full_suite_before_environment_restart": {
+    "tests": 1430,
+    "seconds": 1314.32,
+    "passed": 1427,
+    "skipped": 1,
+    "errors": 1,
+    "failures": 1,
+    "failed_tests": [
+      "maxbot.test_tls.APITLSTests.test_ca_is_scoped_to_api_and_system_trust_stays_unchanged",
+      "maxbot.test_tls.APITLSTests.test_redirect_is_not_followed_even_with_operator_ca"
+    ],
+    "evidence": "Observed tool output in task history; temporary raw log lost during environment stop. Same source commit and byte-identical rebuilt ZIP/installer.",
+    "resolution": "Local TLS was routed through the environment proxy. All four TLS tests passed with loopback NO_PROXY; no application source changes."
+  },
+  "after_environment_restart": {
+    "archive_layout_max_postgresql_browser_tests": 45,
+    "all_45_passed": true,
+    "tls_tests": 4,
+    "tls_all_passed": true,
+    "installer_scenarios": 28,
+    "installer_27_passed_in_main_run": true,
+    "installer_health_initial_timeout_seconds": 40,
+    "installer_health_recheck_passed_with_timeout_seconds": 120,
+    "installer_runtime_changed": false,
+    "image_application_files_match": 742,
+    "actual_upgrade_baseline": "6.32.0",
+    "actual_upgrade_and_original_backup_restore": true,
+    "max_backup_resume_reinstall_and_restored_draft": true,
+    "encrypted_backup_offline_decryption": true,
+    "write_probes_blocked": 8,
+    "unresolved_checks": 0
+  },
+  "limitations": [
+    "Isolated baseline image 6.32.0, not a clone of the live VPS.",
+    "MAX delivery, SMTP, public TLS and external disk API were not checked. SMTP/proxy stand-ins; test-only df wrapper. Production low-space guard unchanged and exercised.",
+    "Historical plan and XLSX inputs are private and are not imported by the installer.",
+    "Chronological forecasts and road routes are not included."
+  ]
+}
+
+PASS source 6.32.0: real installer built ZIP, captured original backup and started 6.33.0.
+PASS existing records, sessions, rental hours/payments, stock, documents/credentials and MAX link/draft/private photo/queue preserved: 6.33.0
+PASS MAX backup: real process_max without delivery stopped/resumed by stock backup.sh; DB, private photos, MAX keys and .env captured.
+PASS MAX reinstall: installer froze writers during migration, retained settings and resumed only the previously active MAX worker.
+PASS encrypted backup: real backup.sh encrypted its complete archive on a public key; offline decryption succeeded; no private key mounted in server.
+PASS MAX restored: complete host archive recovered into a separate DB/config/documents; hashes and bindings/draft/photo retained, confirmation applied once, external sends disabled.
+PASS existing records, sessions, rental hours/payments, stock, documents/credentials and MAX link/draft/private photo/queue preserved: 6.32.0
+
+Creating test database for alias 'default'...
+/workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-6.33.0-build/test-runtime/static/
+  mw_instance = middleware(adapted_handler)
+......................................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-6.33.0-build/test-runtime/static/
+  mw_instance = middleware(adapted_handler)
+.....
+----------------------------------------------------------------------
+Ran 45 tests in 18.486s
+
+OK
+Destroying test database for alias 'default'...
+Found 45 test(s).
+System check identified no issues (0 silenced).
+
+test_ca_is_scoped_to_api_and_system_trust_stays_unchanged (maxbot.test_tls.APITLSTests.test_ca_is_scoped_to_api_and_system_trust_stays_unchanged) ... ok
+test_invalid_ca_fails_closed_before_sending_token (maxbot.test_tls.APITLSTests.test_invalid_ca_fails_closed_before_sending_token) ... ok
+test_redirect_is_not_followed_even_with_operator_ca (maxbot.test_tls.APITLSTests.test_redirect_is_not_followed_even_with_operator_ca) ... ok
+test_untrusted_api_is_rejected_without_operator_ca (maxbot.test_tls.APITLSTests.test_untrusted_api_is_rejected_without_operator_ca) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.132s
+
+OK
+Found 4 test(s).
+Skipping setup of unused database(s): default.
+System check identified no issues (0 silenced).
+
+test_health_failure_leaves_writers_stopped (__main__.InstallerTests.test_health_failure_leaves_writers_stopped) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 75.727s
+
+OK
