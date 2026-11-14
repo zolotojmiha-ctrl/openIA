@@ -80,27 +80,38 @@ def send(chat, body):
         raise DeliveryError()
 
 
+def attachment_bytes(url,hosts):
+    """Bounded credential-free HTTPS fetch; the configured CDN allowlist is shared."""
+    if not isinstance(url,str) or len(url)>4000:
+        raise ValidationError('Недопустимый адрес вложения.')
+    try:
+        parsed=urlsplit(url)
+        if not (parsed.scheme=='https' and parsed.hostname in hosts and parsed.port in (None,443)
+                and not parsed.username and not parsed.password and not parsed.fragment):raise ValueError
+        addresses=socket.getaddrinfo(parsed.hostname,443,type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):raise ValueError
+    except (ValueError,OSError):
+        raise ValidationError('Источник вложения ещё не разрешён. Сообщите администратору домен источника; черновик сохранён.') from None
+    try:
+        with build_opener(NoRedirect()).open(Request(url),timeout=10) as response:
+            content=response.read(10*1024*1024+1)
+        if not content or len(content)>10*1024*1024:raise ValueError
+        return content
+    except (OSError,URLError,ValueError):
+        raise ValidationError('Не удалось загрузить вложение. Повторите отправку; размер файла — до 10 МБ.') from None
+
+
+def download_file(url,filename):
+    if not isinstance(filename,str) or not filename.strip() or len(filename)>512:
+        raise ValidationError('У файла должно быть название.')
+    content=attachment_bytes(url,getattr(settings,'ARMADA_MAX_FILE_HOSTS',()) or settings.ARMADA_MAX_PHOTO_HOSTS)
+    return SimpleUploadedFile(filename,content)
+
+
 def download_photo(url):
-    """CDN hosts must be explicitly verified by the operator during the pilot."""
-    if not isinstance(url, str) or len(url) > 4000:
-        raise ValidationError('Недопустимый адрес фотографии.')
-    parsed = urlsplit(url)
+    """Images retain decoding and WEBP conversion checks after the same safe fetch."""
+    content=attachment_bytes(url,settings.ARMADA_MAX_PHOTO_HOSTS)
     try:
-        valid = (parsed.scheme == 'https' and parsed.hostname in settings.ARMADA_MAX_PHOTO_HOSTS
-                 and parsed.port in (None, 443) and not parsed.username and not parsed.password and not parsed.fragment)
-        if not valid:
-            raise ValueError
-        addresses = socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)
-        if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
-            raise ValueError
-    except (ValueError, OSError):
-        raise ValidationError('Источник фото ещё не разрешён. Загрузите фото в карточке ЛК.') from None
-    try:
-        # Separate opener/request: the bot token is NEVER supplied to CDN requests.
-        with build_opener(NoRedirect()).open(Request(url), timeout=10) as response:
-            content = response.read(10 * 1024 * 1024 + 1)
-        if not content or len(content) > 10 * 1024 * 1024:
-            raise ValueError
         with warnings.catch_warnings():
             warnings.simplefilter('error', Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(content)) as image:
@@ -135,5 +146,5 @@ def download_photo(url):
                         converted.close()
                     suffix = 'jpg'
     except (OSError, ValueError, SyntaxError, UnidentifiedImageError, Image.DecompressionBombWarning, Image.DecompressionBombError):
-        raise ValidationError('Фото не удалось загрузить или проверить. Повторите отправку либо добавьте фото через ЛК.') from None
+        raise ValidationError('Фото не удалось загрузить или проверить. Повторите отправку фотографии.') from None
     return SimpleUploadedFile('photo.' + suffix, content, content_type='image/' + ('png' if suffix == 'png' else 'jpeg'))

@@ -68,6 +68,8 @@ def report_date(value):
 def start(binding, job, action):
     if not available(binding.user).filter(pk=job.pk).exists():
         raise PermissionDenied
+    from .ddk import active as active_ddk
+    if active_ddk(binding):raise ValidationError('Сначала сохраните или отмените изменение ДДК. Вернуться: /ддк; отменить: /отмена.')
     if Draft.objects.filter(binding=binding,action='progress',state__in=['photos','editing'],photos__isnull=False).exists():
         raise ValidationError('Есть несохранённый фотоотчёт. Вернитесь /фото и сохраните или отмените его.')
     Draft.objects.filter(binding=binding, state__in=['editing', 'photos', 'confirm']).update(state='cancelled')
@@ -167,6 +169,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import ddk
+    if ddk.handle(event,binding,stored_keys):return
     if user.role=='mechanic' and not user.is_leader:
         from .mechanic import handle
         return handle(event,binding)
@@ -176,9 +180,13 @@ def handle(event, binding, stored_keys):
         from .leadership import handle
         return handle(event, binding)
     text = event.payload.get('text', '').strip()
+    from repairs.access import can_prepare
+    if user.role!='foreman' and can_prepare(user) and (text in ('/menu','/меню','/start') or event.payload.get('kind')=='bot_started'):
+        queue(event,'Меню подготовки ремонтов.',[button('Метод после ДДК','ddk:list:0')],binding=binding)
+        return
     if text in ('/menu','/меню'):
         queue(event,'Меню мастера. Выберите действие.',
-              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Сообщить о неисправности техники','/техника')],binding=binding)
+              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Метод после ДДК','ddk:list:0'),button('Сообщить о неисправности техники','/техника')],binding=binding)
         return
     if text=='/техника':
         from projects.equipment import visible_equipment
@@ -221,9 +229,8 @@ def handle(event, binding, stored_keys):
         job = available(user).filter(pk=uuid.UUID(text.split(':')[1])).first()
         if not job:
             raise PermissionDenied
-        from .leadership import link as ddk_link
         queue(event, job_title(job), [button('Фото хода работ',f'progress:select:{job.pk}'),button('Работа выполнена', f'begin:{job.pk}:repaired'),
-                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired'),ddk_link('Изменить метод после ДДК','repair_ddk',[job.pk])], binding=binding, job=job)
+                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired'),button('Изменить метод после ДДК',f'ddk:select:{job.pk}')], binding=binding, job=job)
         return
     if text.startswith('begin:'):
         _, pk, action = text.split(':')
@@ -246,6 +253,9 @@ def handle(event, binding, stored_keys):
         draft = Draft.objects.select_for_update().filter(binding=binding, state__in=['editing', 'photos', 'confirm']).order_by('-created_at').first()
     if not draft:
         queue(event, 'Для выбора задания нажмите «Мои работы».', [button('Мои работы', '/работы')], binding=binding)
+        return
+    if draft.action=='ddk':
+        queue(event,'Продолжите изменение метода после ДДК или отмените его командой /отмена.',[button('Вернуться к ДДК',f'ddk:resume:{draft.pk}')],binding=binding)
         return
     if not reportable_jobs(user).filter(pk=draft.job_id).exists():
         raise PermissionDenied

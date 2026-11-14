@@ -50,6 +50,8 @@ def handle(event,binding):
     buttons=[]
     if category=='menu':
         body='Меню механика. Выберите действие.'
+        from repairs.access import can_prepare
+        if can_prepare(user):buttons.append(button('Метод после ДДК','ddk:list:0'))
         for title,code in [('Техника','equipment'),('Техника в ремонте','repair'),('Заявки на ремонт','issues'),('Запчасти для ТО','parts')]:
             buttons.append(button(title,f'mechanic:{code}:0'))
         if permitted(user,'equipment.manage'):buttons.append(link('Добавить технику','equipment_new'))

@@ -115,6 +115,7 @@ ARMADA_MAX_WEBHOOK_SECRET = read_secret('ARMADA_MAX_WEBHOOK_SECRET')
 ARMADA_MAX_BOT_NAME = os.environ.get('ARMADA_MAX_BOT_NAME', '')
 ARMADA_MAX_PUBLIC_ORIGIN = os.environ.get('ARMADA_MAX_PUBLIC_ORIGIN', 'https://app.armada-sibir.ru')
 ARMADA_MAX_PHOTO_HOSTS = tuple(v.strip().lower() for v in os.environ.get('ARMADA_MAX_PHOTO_HOSTS', '').split(',') if v.strip())
+ARMADA_MAX_FILE_HOSTS = tuple(v.strip().lower() for v in os.environ.get('ARMADA_MAX_FILE_HOSTS', ','.join(ARMADA_MAX_PHOTO_HOSTS)).split(',') if v.strip())
 if ARMADA_MAX_ENABLED:
     import re
     origin = urlsplit(ARMADA_MAX_PUBLIC_ORIGIN)

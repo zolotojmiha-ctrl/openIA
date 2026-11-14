@@ -24,10 +24,14 @@ def process(key):
             # All employee work uses the same user -> binding -> event lock order.
             original = Inbox.objects.get(pk=key)
             active = Binding.objects.filter(max_user=original.max_user, chat=original.chat, active=True).first()
+            binding=None
             if active:
-                User.objects.select_for_update().get(pk=active.user_id)
-            binding = Binding.objects.select_for_update().select_related('user').filter(
-                max_user=original.max_user, chat=original.chat, active=True).first()
+                # Serialize actions without blocking foreign-key checks on the
+                # actor from a concurrent LC repair update. Lock this exact
+                # binding after its user, never a newly appeared replacement.
+                User.objects.select_for_update(no_key=True).get(pk=active.user_id)
+                binding = Binding.objects.select_for_update(no_key=True,of=('self',)).select_related('user').filter(
+                    pk=active.pk,max_user=original.max_user,chat=original.chat,active=True).first()
             event = Inbox.objects.select_for_update().get(pk=key)
             if event.state != 'pending':
                 return
@@ -63,6 +67,9 @@ def process(key):
                 buttons = [dialog.button('Вернуться к фотоотчёту','/фото') if draft.action=='progress' else dialog.button('Исправить черновик',f'edit:{draft.pk}')] if draft else []
                 if not valid:
                     text = 'Привязка не выполнена или доступ изменился. Проверьте профиль в ЛК.'
+                if draft and draft.action=='ddk':
+                    if not isinstance(exc,ValidationError):text='Действие ДДК недоступно или устарело. Откройте актуальный список: /ддк. При изменении прав обратитесь к руководителю.'
+                    buttons=[dialog.button('Вернуться к ДДК',f'ddk:resume:{draft.pk}'),dialog.button('Исправить ответы',f'ddk:edit:{draft.pk}'),dialog.button('Отменить','/отмена')]
                 dialog.queue(event, text[:3500], buttons, binding=valid, job=draft.job if draft else None, suffix='error')
             event.state = 'done'
             event.payload = {}  # Minimise retention of message text and signed CDN URLs.
@@ -86,6 +93,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('ddk_draft'):
+        from .ddk import delivery_allowed as ddk_allowed
+        return ddk_allowed(binding,row.scope)
     if row.scope.get('rental_event') or row.scope.get('rental_overdue'):
         from .rental_notices import delivery_allowed as rental_notice_allowed
         return rental_notice_allowed(binding.user,row.scope)

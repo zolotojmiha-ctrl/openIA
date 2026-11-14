@@ -38,7 +38,7 @@ class MaxConcurrency(TransactionTestCase):
 
     def test_two_confirmations_create_one_report(self):
         draft = dialog.start(self.binding, self.job, 'repaired')
-        draft.raw.update(performed_date=str(timezone.localdate()), note='ТЕСТ параллельный отчёт', coordinates='55, 73')
+        draft.raw.update(performed_date=str(timezone.localdate()), note='ТЕСТ параллельный отчёт', coordinates='55, 73', actual_coating_length_m='1.5')
         draft.state = 'confirm'; draft.step = len(draft.fields); draft.save()
         keys = []
         for _ in range(2):

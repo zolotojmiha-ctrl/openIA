@@ -77,7 +77,7 @@ def handle(event,binding,stored_keys):
                 draft.expires=timezone.now()+timedelta(hours=24);draft.save(update_fields=['expires']);prompt(event,binding,draft);return True
             if draft.photos.exists():raise ValidationError('Есть несохранённые фото. Вернитесь /фото и сохраните или отмените их.')
         other=Draft.objects.filter(binding=binding,state__in=['editing','photos','confirm']).exclude(action='progress').first()
-        if other:raise ValidationError('Сначала завершите или отмените начатый итоговый отчёт командой /отмена.')
+        if other:raise ValidationError('Сначала завершите или отмените начатое действие командой /отмена.')
         Draft.objects.filter(binding=binding,action='progress',state__in=['editing','photos']).update(state='cancelled')
         draft=Draft.objects.create(binding=binding,job=job,action='progress',state='photos',fields=[],raw={
             'token':str(uuid.uuid4()),'expected_version':job.version,'performed_date':timezone.localdate().isoformat(),'stages':[],'note':''},expires=timezone.now()+timedelta(hours=24))

@@ -185,7 +185,8 @@ def handle(event,binding):
             for section_id in jobs.values_list('section_id',flat=True).distinct()[:8]:
                 row=jobs.filter(section_id=section_id);sample=row.first()
                 body+='\n'+sample.section.name+f': на проверке {row.filter(state="reported").count()}, подтверждено {row.filter(state="confirmed").count()}'
-        buttons=[button('Выбрать контракт','scope:contracts:0'),button('Выбрать участок','scope:sections:0')]+[button(label,f'leader:{key}:0') for label,key in menu]
+        from repairs.access import can_prepare
+        buttons=[button('Выбрать контракт','scope:contracts:0'),button('Выбрать участок','scope:sections:0')]+([button('Метод после ДДК','ddk:list:0')] if can_prepare(user) else [])+[button(label,f'leader:{key}:0') for label,key in menu]
     elif category=='shortage':
         from projects.repair_materials import all_demand
         allowed=set(jobs.values_list('pk',flat=True));lines=[];unknown=0

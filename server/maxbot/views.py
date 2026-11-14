@@ -102,7 +102,15 @@ def normalize(data):
             if not isinstance(text, str) or len(text) > 4000 or not isinstance(photos, list) or len(photos) > 20:
                 raise ValueError
             # Do not persist tokens from arbitrary attachments, forwards or user profiles.
-            photos = [{'type': a.get('type'), 'url': a.get('payload', {}).get('url')} for a in photos]
+            attachments=[]
+            for item in photos:
+                attachment={'type':item.get('type'),'url':item.get('payload',{}).get('url')}
+                if attachment['type']=='file':
+                    name=item.get('filename')
+                    if not isinstance(name,str) or not name.strip() or len(name)>512:raise ValueError
+                    attachment['name']=name
+                attachments.append(attachment)
+            photos=attachments
             payload = {'kind': kind, 'text': text, 'photos': photos}
         else:
             callback = data['callback']

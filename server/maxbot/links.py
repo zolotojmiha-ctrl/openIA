@@ -14,7 +14,9 @@ def digest(code):
 
 
 def supported(user):
-    return user.is_leader or user.role in ('foreman','pto','mechanic','lessor')
+    if user.is_leader or user.role in ('foreman','pto','mechanic','lessor'):return True
+    from repairs.access import can_prepare
+    return user.is_active and user.role not in ('customer','subcontractor') and can_prepare(user)
 
 
 def needs_onboarding(user):
@@ -85,14 +87,16 @@ def approve(user, key):
     leader = user.is_leader or user.role=='pto'
     mechanic = user.role=='mechanic' and not leader
     lessor = user.role=='lessor' and not leader
+    planner = not (leader or mechanic or lessor) and user.role!='foreman'
     Outbox.objects.create(key='binding:' + str(binding.pk), binding=binding,
         max_user=binding.max_user, chat=binding.chat,
         body={'text': ('MAX подключён. Откройте меню руководителя.' if leader else
                        'MAX подключён. Откройте меню механика.' if mechanic else
                        'MAX подключён. Доступен табель предоставленной вам техники.' if lessor else
+                       'MAX подключён. Доступно изменение метода ремонта после ДДК.' if planner else
                        'MAX подключён к вашему личному кабинету. Выберите назначенную вам работу.'),
               'attachments': [{'type': 'inline_keyboard', 'payload': {'buttons': [[
-                  button('Меню руководителя' if leader else 'Меню механика' if mechanic else 'Моя техника' if lessor else 'Мои работы', '/menu' if leader or mechanic or lessor else '/работы')]]}}]},
+                  button('Меню руководителя' if leader else 'Меню механика' if mechanic else 'Моя техника' if lessor else 'Метод после ДДК' if planner else 'Мои работы', 'ddk:list:0' if planner else '/menu' if leader or mechanic or lessor else '/работы')]]}}]},
         scope={'leader': True} if leader else {'mechanic': True} if mechanic else {'lessor':True} if lessor else {},
         available_at=timezone.now(), expires=timezone.now() + timedelta(minutes=30))
     return binding
