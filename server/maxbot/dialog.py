@@ -40,6 +40,19 @@ def job_title(job):
     return f'{place}\n{defects or "Ремонт"}\n{job.get_method_display()} · {job.length_m or "—"} м'
 
 
+def job_button_title(job):
+    """MAX renders one button line: put the work identity before the location."""
+    defects = sorted(job.active_defects, key=lambda d: (d.kilometre, d.number, str(d.pk)))
+    if defects:
+        first = defects[0]
+        identity = f'км {first.km} · №{first.number}'
+        if len(defects) > 1:
+            identity += f' (+{len(defects) - 1})'
+    else:
+        identity = f'Ремонт {str(job.pk)[:8]}'
+    return ' '.join(f'{identity} · {job.get_method_display()} · {job.section.project_object.name}'.split())[:100]
+
+
 def form_for(draft, user, files=None):
     return ReportForm(draft.raw, files, job=draft.job, action=draft.action, user=user)
 

@@ -57,7 +57,7 @@ def preview(event,binding,batch):
         button('Отменить перенос','/отмена')],batch=batch,mode='preview')
 
 def list_rows(event,binding,mode,page=0):
-    from .dialog import button,job_title
+    from .dialog import button,job_button_title
     if not eligible(binding.user):raise PermissionDenied
     if mode not in ('archive','completed') or not 0<=page<=10000:raise ValidationError('Неверная страница.')
     query=binding.menu_scope.get('archive_query','')
@@ -69,7 +69,7 @@ def list_rows(event,binding,mode,page=0):
         except ValidationError:pass
         rows=rows.filter(condition).distinct()
     entries=list(rows.order_by('section__project_object__name','pk')[page*6:page*6+7])
-    buttons=[button(job_title(j)[:100],f'archive:job:{j.pk}') for j in entries[:6]]
+    buttons=[button(job_button_title(j),f'archive:job:{j.pk}') for j in entries[:6]]
     if len(entries)>6:buttons.append(button('Далее',f'archive:page:{mode}:{page+1}'))
     if page:buttons.append(button('Назад',f'archive:page:{mode}:{page-1}'))
     buttons += [button('Найти по км, № или секции',f'archive:search:{mode}'),button('Сбросить поиск',f'archive:clear:{mode}')]

@@ -3,11 +3,17 @@ import uuid,json,hashlib
 from datetime import timedelta
 from django.core.exceptions import PermissionDenied,ValidationError,ObjectDoesNotExist
 from django.utils import timezone
+from django.db.models import Min,Q
 from repairs import layouts as service
 from repairs.models import PipeLayout,Defect
 from repairs.access import can_prepare,visible_sections,visible_jobs
 from .models import Draft
 from .transport import download_file
+
+
+def current_jobs(user):
+    rows=visible_jobs(user).exclude(contract__status='archived').exclude(state__in=['confirmed','reported','unrepairable'])
+    return rows.none() if user.role in ('customer','lessor') and not user.is_leader else rows
 
 
 def snapshot(user,job):
@@ -66,7 +72,7 @@ def preview(event,binding,row):
         [button('Первые секции',f'layout:sample:{row.pk}'),button('Использовать раскладку',f'layout:apply:{row.pk}'),button('Отменить','/отмена')],section=str(row.section_id),layout=str(row.pk),preview=True)
 
 def handle(event,binding,stored_keys):
-    from .dialog import button,job_title
+    from .dialog import button,job_title,job_button_title
     text=event.payload.get('text','').strip();files=event.payload.get('photos',[]);active=binding.menu_scope.get('pipe_layout_upload')
     requested=text.startswith('layout:') or text in ('/раскладка','/расстояния')
     if not active and not requested:return False
@@ -140,26 +146,35 @@ def handle(event,binding,stored_keys):
             body='Первые секции источника:'
             for r in row.data['rows'][:5]:body+=f'\n№ {r[0]} · начало {r[1] or "не указано"} м · длина {r[2] or "не указана"} м · следующая {r[3] or "не указана"}'
             queue(event,binding,body,[button('Использовать раскладку',f'layout:apply:{row.pk}'),button('Отменить','/отмена')],section=str(row.section_id),layout=str(row.pk),preview=True);return True
-        if text=='/расстояния' or action=='jobs':
-            page=int(parts[2]) if action else 0
+        if text=='/расстояния' or action=='worksections' or action=='jobs' and len(parts)==3:
+            page=int(parts[2]) if action=='worksections' else 0
             if not 0<=page<=10000:raise ValueError
-            jobs=list(visible_jobs(binding.user).exclude(contract__status='archived').exclude(state__in=['confirmed','reported','unrepairable']).order_by('section__project_object__name','pk')[page*6:page*6+7])
-            buttons=[button(job_title(j)[:100],f'layout:job:{j.pk}:0') for j in jobs[:6]]
-            if len(jobs)>6:buttons.append(button('Далее',f'layout:jobs:{page+1}'))
-            if page:buttons.append(button('Назад',f'layout:jobs:{page-1}'))
-            # Lists use ordinary read ACL via the same signature guard per job on open.
+            sections=list(visible_sections(binding.user).filter(pk__in=current_jobs(binding.user).values('section_id')).select_related('project_object').order_by('project_object__name','pipeline','pk')[page*6:page*6+7])
+            buttons=[button(' '.join(f'{s.project_object.name} · {s.pipeline}'.split()),f'layout:jobs:{s.pk}:0') for s in sections[:6]]
+            if len(sections)>6:buttons.append(button('Далее',f'layout:worksections:{page+1}'))
+            if page:buttons.append(button('Назад',f'layout:worksections:{page-1}'))
             from .dialog import queue as emit
-            emit(event,'Выберите работу: расстояния между началами соседних секций.' if jobs else 'Нет доступных текущих работ.',buttons,binding=binding,scope={'layout_jobs':[str(j.pk) for j in jobs[:6]]});return True
+            emit(event,'Выберите участок с текущими работами. Затем выберите работу для просмотра расстояний между началами секций.' if sections else 'Нет доступных текущих работ.',buttons,binding=binding,scope={'layout_work_sections':[str(s.pk) for s in sections[:6]]});return True
+        if action=='jobs':
+            section=visible_sections(binding.user).get(pk=uuid.UUID(parts[2]));page=int(parts[3])
+            if not 0<=page<=10000:raise ValueError
+            jobs=list(current_jobs(binding.user).filter(section=section).annotate(button_km=Min('defects__kilometre',filter=Q(defects__archived_at__isnull=True))).order_by('button_km','pk')[page*6:page*6+7])
+            buttons=[button(job_button_title(j),f'layout:job:{j.pk}:0') for j in jobs[:6]]
+            if len(jobs)>6:buttons.append(button('Далее',f'layout:jobs:{section.pk}:{page+1}'))
+            if page:buttons.append(button('Назад',f'layout:jobs:{section.pk}:{page-1}'))
+            buttons.append(button('Другой участок','/расстояния'))
+            from .dialog import queue as emit
+            emit(event,section.project_object.name+'\n'+('Выберите работу: расстояния между началами соседних секций.' if jobs else 'Нет доступных текущих работ на этом участке.'),buttons,binding=binding,scope={'layout_jobs':[str(j.pk) for j in jobs[:6]],'layout_selected_section':str(section.pk)});return True
         if action=='job':
             job=visible_jobs(binding.user).filter(pk=uuid.UUID(parts[2])).first()
             if not job:raise PermissionDenied
             page=int(parts[3]) if len(parts)>3 else 0
             if not 0<=page<=10000:raise ValueError
             pairs,signature=snapshot(binding.user,job)
-            body=job.section.project_object.name+'\nРасстояния вдоль трубы между началами секций. Дорожный маршрут уточняется отдельно.'
+            body=job_title(job)+'\nРасстояния вдоль трубы между началами секций. Дорожный маршрут уточняется отдельно.'
             for p in pairs[page*3:page*3+3]:body+='\n\n'+pair_text(p)+('\nРаскладка: '+p['layout'].filename if p['layout'] else '')
             if not pairs:body+='\nНет доступных соседних дефектов.'
-            buttons=[button('Другие работы','/расстояния')]
+            buttons=[button('Другие работы участка',f'layout:jobs:{job.section_id}:0'),button('Другой участок','/расстояния')]
             if (page+1)*3<len(pairs):buttons.insert(0,button('Далее',f'layout:job:{job.pk}:{page+1}'))
             if page:buttons.insert(0,button('Назад',f'layout:job:{job.pk}:{page-1}'))
             queue(event,binding,body,buttons,reader_job=str(job.pk),signature=signature);return True

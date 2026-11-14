@@ -63,6 +63,15 @@ class NativeArchiveTests(TestCase):
         event=self.lead(f'archive:job:{job.pk}');row=self.reply(event)
         self.assertIn('не указана',row.body['text']);self.assertIn('П1',row.body['text'])
         self.assertNotIn('begin:',str(row.body));self.assertTrue(worker.delivery_allowed(row))
+
+    def test_archive_choices_show_work_identity_on_one_button_line(self):
+        batch,_=self.prepare();self.lead(f'archive:apply:{batch.pk}:{batch.payload["digest"]}')
+        event=self.lead('/архив')
+        buttons=[b for row in self.reply(event).body['attachments'][0]['payload']['buttons'] for b in row if b['payload'].startswith('archive:job:')]
+        self.assertEqual(len(buttons),2)
+        self.assertEqual(len({b['text'] for b in buttons}),2)
+        for b in buttons:
+            self.assertTrue(b['text'].startswith('км '));self.assertIn('№',b['text']);self.assertNotIn('\n',b['text']);self.assertLessEqual(len(b['text']),100)
     def test_cross_binding_cannot_confirm_foreign_preview(self):
         batch,_=self.prepare()
         self.event(f'archive:apply:{batch.pk}:{batch.payload["digest"]}')
