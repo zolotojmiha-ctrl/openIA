@@ -29,7 +29,7 @@ class SiteFormsTests(TestCase):
     def payload(self,kind='candidate',client=None,**changes):
         client=client or self.client
         token=client.get(reverse('site_form_token'),{'kind':kind}).json()
-        common={'phone':'+7 (900) 000-00-01','consent':'on','token':token['token']}
+        common={'phone':'+7 (900) 000-00-01','consent':'on','consent_version':site_forms.CONSENT_VERSION,'token':token['token']}
         if kind=='candidate':common.update(name='ТЕСТ Кандидат',email='candidate@example.invalid',city='ТЕСТ Город',profession='Монтажник',experience='Опыт 5 лет',travel='Готов(а)',about='')
         elif kind in ('couplings','centralizers'):common.update(name='ТЕСТ Заказчик',email='customer@example.invalid',company='ТЕСТ',type='П2' if kind=='couplings' else 'Наружный звеньевой центратор',dn='720',quantity='2',region='ТЕСТ',details='ТЕСТ')
         else:common['equipment']='Экскаватор'
@@ -70,6 +70,61 @@ class SiteFormsTests(TestCase):
     def test_consent_is_required_and_not_preselected(self):
         response=self.send(consent='');self.assertEqual(response.status_code,400);self.assertFalse(SiteRequest.objects.exists())
         self.assertIn('consent',response.json()['errors'])
+
+    def test_old_page_and_old_token_cannot_record_new_consent(self):
+        from django.core import signing
+        import uuid
+        url=reverse('site_form_submit',args=['rental'])
+        data=self.payload('rental')
+        for version in ('','2026-10-30'):
+            with self.subTest(version=version):
+                response=self.client.post(url,data|{'consent_version':version})
+                self.assertEqual(response.status_code,400)
+                self.assertIn('consent',response.json()['errors'])
+        for signed in ({'id':str(uuid.uuid4()),'kind':'rental'},
+                       {'id':str(uuid.uuid4()),'kind':'rental','consent_version':'2026-10-30'}):
+            self.assertEqual(self.client.post(url,data|{'token':signing.dumps(signed,salt=site_forms.SALT)}).status_code,400)
+        self.assertFalse(SiteRequest.objects.exists())
+        self.assertEqual(self.client.post(url,data).status_code,200)
+        row=SiteRequest.objects.get();SiteRequest.objects.filter(pk=row.pk).update(consent_version='2026-10-30')
+        self.client.get(reverse('public_privacy'));self.client.get(reverse('public_consent'))
+        row.refresh_from_db();self.assertEqual(row.consent_version,'2026-10-30')
+
+    def test_policy_and_separate_consent_are_public_without_javascript(self):
+        from html.parser import HTMLParser
+        from pathlib import Path
+        from django.conf import settings
+        policy=self.client.get(reverse('public_privacy'))
+        self.assertContains(policy,'Парковая, стр. 12')
+        self.assertContains(policy,'180 дней')
+        self.assertContains(policy,'Beget')
+        self.assertContains(policy,'Роскомнадзор')
+        self.assertNotContains(policy,'даю ООО')
+        for kind,specific,excluded in [('candidate','Анкета кандидата:','Запрос по аренде:'),
+                                      ('rental','Запрос по аренде:','Анкета кандидата:'),
+                                      ('couplings','Запрос по муфтам или центраторам:','Анкета кандидата:'),
+                                      ('centralizers','Запрос по муфтам или центраторам:','Запрос по аренде:')]:
+            response=self.client.get(reverse('public_consent'),{'form':kind})
+            self.assertContains(response,specific);self.assertNotContains(response,excluded)
+            self.assertContains(response,site_forms.CONSENT_VERSION)
+        self.assertEqual(self.client.get(reverse('public_consent'),{'form':'unknown'}).status_code,404)
+        class Forms(HTMLParser):
+            def __init__(self):super().__init__();self.current=None;self.forms={}
+            def handle_starttag(self,tag,attrs):
+                a=dict(attrs)
+                if tag=='form' and a.get('data-site-form'):
+                    self.current=a['data-site-form'];self.forms[self.current]=[]
+                if self.current:self.forms[self.current].append((tag,a))
+            def handle_endtag(self,tag):
+                if tag=='form':self.current=None
+        parsed=Forms();parsed.feed((settings.BASE_DIR/'index.html').read_text())
+        self.assertEqual(len(parsed.forms),4)
+        for kind,entries in parsed.forms.items():
+            fields=[a for t,a in entries if t=='input' and a.get('name')=='consent']
+            self.assertEqual(len(fields),1);self.assertNotIn('checked',fields[0]);self.assertIn('required',fields[0])
+            self.assertIn(('input',{'type':'hidden','name':'consent_version','value':site_forms.CONSENT_VERSION}),entries)
+            self.assertTrue(any(t=='a' and a.get('href')=='/consent/?form='+kind for t,a in entries))
+            self.assertTrue(any(t=='a' and a.get('href')=='/privacy/' for t,a in entries))
 
     def test_required_fields_phone_and_choice_errors_do_not_save(self):
         for changes in [{'name':''},{'phone':'123'},{'email':'not-an-address'},{'experience':''},{'travel':'forged'}]:

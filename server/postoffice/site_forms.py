@@ -27,7 +27,7 @@ from .access import boxes
 from .models import SiteRequest, SiteRequestAttempt, Mailbox
 
 RECIPIENT='info@armada-sibir.ru'
-CONSENT_VERSION='2026-10-30'
+CONSENT_VERSION='2026-11-14'
 SALT='armada-public-request-v1'
 MAX_RESUME=5*1024*1024
 KINDS=dict(SiteRequest.KINDS)
@@ -120,10 +120,24 @@ def client_key(request):
 
 @never_cache
 @require_GET
+def privacy(request):
+    return render(request,'postoffice/privacy.html')
+
+
+@never_cache
+@require_GET
+def consent(request):
+    kind=request.GET.get('form','')
+    if kind and kind not in KINDS:return HttpResponse(status=404)
+    return render(request,'postoffice/consent.html',{'kind':kind,'consent_version':CONSENT_VERSION})
+
+
+@never_cache
+@require_GET
 def token(request):
     kind=request.GET.get('kind','')
     if kind not in KINDS:return JsonResponse({'ok':False},status=404)
-    return JsonResponse({'csrf':get_token(request),'token':signing.dumps({'id':str(uuid.uuid4()),'kind':kind},salt=SALT)})
+    return JsonResponse({'csrf':get_token(request),'token':signing.dumps({'id':str(uuid.uuid4()),'kind':kind,'consent_version':CONSENT_VERSION},salt=SALT)})
 
 
 def failure(text,status=400,field='__all__'):
@@ -141,6 +155,8 @@ def submit(request,kind):
         if signed.get('kind')!=kind:raise ValueError
         request_id=uuid.UUID(signed['id'])
     except (signing.BadSignature,ValueError,KeyError,TypeError):return failure('Срок формы истёк. Обновите страницу и повторите отправку.')
+    if signed.get('consent_version')!=CONSENT_VERSION or request.POST.get('consent_version')!=CONSENT_VERSION:
+        return failure('Обновилась редакция согласия. Обновите страницу, ознакомьтесь с согласием и повторите отправку.',field='consent')
     if request.POST.get('website','').strip():return failure('Не удалось принять форму. Обновите страницу и повторите отправку.')
     form=IntakeForm(request.POST,request.FILES,kind=kind)
     if not form.is_valid():

@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}{% endblock %} — Армада-Сибирь</title>
+<link rel="icon" type="image/png" href="/static/brand/favicon-32.png">
+<style>body{margin:0;background:#f6f6f9;color:#202331;font:17px/1.65 system-ui,sans-serif}main{max-width:850px;margin:32px auto;padding:28px;background:white;border-radius:16px}h1{font-size:clamp(26px,5vw,38px);line-height:1.2}h2{font-size:22px;margin-top:30px}a{color:#52448e;text-underline-offset:3px}p,li{overflow-wrap:anywhere}.edition{color:#626573}nav{display:flex;gap:20px;flex-wrap:wrap}@media(max-width:600px){main{margin:0;padding:20px;border-radius:0}}</style>
+</head><body><main><nav aria-label="Документы компании"><a href="/">На сайт компании</a><a href="{% url 'public_privacy' %}">Политика обработки данных</a><a href="{% url 'public_consent' %}">Согласие на обработку данных</a></nav>
+{% block content %}{% endblock %}
+</main></body></html>

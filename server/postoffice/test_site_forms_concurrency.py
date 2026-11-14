@@ -12,7 +12,7 @@ from django.urls import reverse
 from accounts.models import User
 from .crypto import seal
 from .models import SiteRequest, SiteRequestAttempt, Mailbox
-from .site_forms import SALT, client_key
+from .site_forms import SALT, CONSENT_VERSION, client_key
 from . import site_delivery
 
 
@@ -20,8 +20,8 @@ from . import site_delivery
 @override_settings(ARMADA_MAIL_KEY=Fernet.generate_key().decode(),SECURE_PROXY_SSL_HEADER=None)
 class SiteFormsConcurrency(TransactionTestCase):
     def payload(self,token=None):
-        return {'phone':'+79000000001','equipment':'ТЕСТ','consent':'on',
-                'token':token or signing.dumps({'id':str(uuid.uuid4()),'kind':'rental'},salt=SALT)}
+        return {'phone':'+79000000001','equipment':'ТЕСТ','consent':'on','consent_version':CONSENT_VERSION,
+                'token':token or signing.dumps({'id':str(uuid.uuid4()),'kind':'rental','consent_version':CONSENT_VERSION},salt=SALT)}
 
     def parallel(self,values,callback):
         barrier=threading.Barrier(len(values))

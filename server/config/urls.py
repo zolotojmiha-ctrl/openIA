@@ -24,6 +24,8 @@ from repairs import import_views as repair_import
 from repairs import archive_views,layout_views
 from repairs import review_views as repair_review
 urlpatterns=[
+ path('privacy/',site_forms.privacy,name='public_privacy'),
+ path('consent/',site_forms.consent,name='public_consent'),
  path('forms/token/',site_forms.token,name='site_form_token'),
  path('forms/<str:kind>/',site_forms.submit,name='site_form_submit'),
  path('cabinet/site-requests/',site_forms.listing,name='site_requests'),

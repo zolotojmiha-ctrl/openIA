@@ -29,7 +29,10 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
   assert.equal(await page.locator('#'+id).isVisible(),true);
  }
  await page.goto(base+'/#rental-callback');await page.locator('#rental-phone').fill('+7 (900) 000-00-03');
- await page.locator('#rental-callback').getByRole('link',{name:'Политика обработки данных'}).click();await page.goBack();
+ const [policyTab]=await Promise.all([page.waitForEvent('popup'),page.locator('#rental-callback').getByRole('link',{name:'Политика обработки данных',exact:true}).click()]);
+ await policyTab.waitForLoadState();await policyTab.getByRole('heading',{name:'Политика обработки персональных данных посетителей сайта',exact:true}).waitFor();await policyTab.close();
+ const [consentTab]=await Promise.all([page.waitForEvent('popup'),page.locator('#rental-callback').getByRole('link',{name:'Согласие на обработку данных',exact:true}).click()]);
+ await consentTab.waitForLoadState();assert.ok((await consentTab.locator('main').innerText()).includes('Запрос по аренде:'));assert.equal((await consentTab.locator('main').innerText()).includes('Анкета кандидата:'),false);await consentTab.close();
  await page.waitForFunction(()=>!document.querySelector('[data-page="/rental"]').hidden);
  assert.equal(await page.locator('#rental-phone').inputValue(),'+7 (900) 000-00-03');
  await page.goto(base+'/#careers');
@@ -70,6 +73,9 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
  }
  await page.goto(base+'/#privacy');await fit('privacy');
  assert.equal((await page.locator('[data-page="/privacy"]').innerText()).includes('Проект'),false);
+ await page.goto(base+'/privacy/');await fit('policy-document');
+ await page.goto(base+'/consent/?form=candidate');await fit('consent-document');
+ assert.ok((await page.locator('main').innerText()).includes('Анкета кандидата:'));
  await page.goto(base+'/cabinet/login/');await page.locator('[name=phone]').fill('+70000000401');await page.locator('[name=password]').fill('123456');await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');
  await page.goto(base+'/cabinet/mail/');await page.getByRole('link',{name:'Заявки с сайта · Новых: 4',exact:true}).click();
  await page.getByRole('link',{name:'Анкета кандидата',exact:true}).click();
