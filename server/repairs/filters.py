@@ -27,7 +27,8 @@ def filtered_jobs(user,params,apply_state=True):
         except (ValidationError,InvalidOperation):pass
         qs=qs.filter(search).distinct()
     year=str(params.get('year',''))
-    if year.isdigit() and 1900<=int(year)<=2200:qs=qs.filter(planned_date__year=int(year))
+    if year.isdigit() and 1900<=int(year)<=2200:
+        qs=qs.filter(Q(planned_date__year=int(year))|Q(source__completed_register_import=True,source__period=year))
     if apply_state:
         state=params.get('state','')
         if state=='open':qs=qs.filter(state__in=['planned','progress','partial']).exclude(contract__status='archived')

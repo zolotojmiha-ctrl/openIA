@@ -65,6 +65,13 @@ class CompletedImportTests(TestCase):
         service.apply(self.leader,batch.pk,batch.payload['digest'])
         self.assertEqual(list(Job.objects.order_by('pk').values()),before)
         self.assertEqual(Report.objects.count(),0)
+    def test_2026_filter_includes_imports_without_inventing_plan_or_actual_dates(self):
+        from .filters import filtered_jobs
+        batch=self.prepare();service.apply(self.leader,batch.pk,batch.payload['digest'])
+        found=filtered_jobs(self.leader,{'contract':str(self.contract.pk),'year':'2026'}).filter(source__completed_register_import=True)
+        self.assertEqual(found.count(),2)
+        self.assertFalse(found.exclude(planned_date=None).exists())
+        self.assertEqual(filtered_jobs(self.leader,{'year':'2025'}).filter(source__completed_register_import=True).count(),0)
     def test_changed_coordinate_or_section_is_not_duplicate_insert(self):
         job=self.existing(self.plan['jobs'][0],'confirmed');d=job.defects.get();d.kilometre+=1;d.save()
         batch=self.prepare();self.assertEqual(service.totals(batch)['hold'],1)
