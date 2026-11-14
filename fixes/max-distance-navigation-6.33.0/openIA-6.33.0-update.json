@@ -1,0 +1,39 @@
+{
+  "version": "6.33.0",
+  "source_commit": "dbd6d8f85d4c7dbb4df674608a3c5fd4b687f616",
+  "archive": "openIA-6.33.0-update.zip",
+  "archive_sha256": "38d78465a9da7db51f9c5afe3ef856999ef90a249c73c147f745a619435a9f4a",
+  "archive_files": 891,
+  "excluded_service_entries": 233,
+  "installer": "install-6.33.0.sh",
+  "installer_sha256": "0bcab524987d46c203cddac62e873a1b5a33f2ffe03c99f0b801575740b066ee",
+  "status": "locally-verified",
+  "ready_for_install": true,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": true,
+  "checksums": "SHA256SUMS-6.33.0",
+  "signature": "SHA256SUMS-6.33.0.sig",
+  "variant": "max-distance-navigation-fix",
+  "baseline_version": "6.33.0",
+  "validation": {
+    "postgresql_chromium_tests": 207,
+    "passed": 206,
+    "skipped": 1,
+    "image_files_match": 742,
+    "new_migrations": false,
+    "installer_template_changed": false,
+    "production_installed": false,
+    "live_max_sent": false,
+    "runtime_changes": [
+      "server/maxbot/dialog.py",
+      "server/maxbot/layouts.py",
+      "server/maxbot/archive.py",
+      "server/maxbot/worker.py"
+    ]
+  },
+  "signing_public_key_sha256": "e2f6b26419ccb10faa61baf1cfb5a0ea53f499da8803f23f0dd0df3f420aa3e4"
+}

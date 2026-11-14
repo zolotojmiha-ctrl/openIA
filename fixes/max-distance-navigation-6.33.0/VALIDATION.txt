@@ -1,0 +1,53 @@
+{
+  "source_commit": "dbd6d8f85d4c7dbb4df674608a3c5fd4b687f616",
+  "archive_sha256": "38d78465a9da7db51f9c5afe3ef856999ef90a249c73c147f745a619435a9f4a",
+  "installer_sha256": "0bcab524987d46c203cddac62e873a1b5a33f2ffe03c99f0b801575740b066ee",
+  "validation": {
+    "postgresql_chromium_tests": 207,
+    "passed": 206,
+    "skipped": 1,
+    "image_files_match": 742,
+    "new_migrations": false,
+    "installer_template_changed": false,
+    "production_installed": false,
+    "live_max_sent": false,
+    "runtime_changes": [
+      "server/maxbot/dialog.py",
+      "server/maxbot/layouts.py",
+      "server/maxbot/archive.py",
+      "server/maxbot/worker.py"
+    ]
+  },
+  "limits": [
+    "A focused regression run, not a repeat of all application tests.",
+    "Installer template is unchanged from the verified 6.33.0 upgrade/backup/restore run.",
+    "Live MAX delivery and production VPS not checked."
+  ]
+}
+
+Creating test database for alias 'default'...
+......../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+.....................................................................s............................/workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+............................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+........................................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+....../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+................./workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+.../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-distance-navigation-fix/runtime/static/
+  mw_instance = middleware(adapted_handler)
+...
+----------------------------------------------------------------------
+Ran 207 tests in 80.410s
+
+OK (skipped=1)
+Destroying test database for alias 'default'...
+Found 207 test(s).
+System check identified no issues (0 silenced).
+
+PASS image matches archive: 742
+System check identified no issues (0 silenced).
