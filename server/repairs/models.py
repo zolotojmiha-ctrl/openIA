@@ -179,3 +179,21 @@ class ImportBatch(ArchiveProtectedModel):
     payload=models.JSONField()
     applied_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
+
+class PipeLayout(models.Model):
+    """Versioned reference geometry, separate from repair/stock transactions."""
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    section=models.ForeignKey(Section,on_delete=models.PROTECT,related_name='pipe_layouts')
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    filename=models.CharField(max_length=200)
+    storage_key=models.CharField(max_length=40)
+    sha256=models.CharField(max_length=64)
+    sheet=models.CharField(max_length=150)
+    data=models.JSONField()
+    state=models.CharField(max_length=20,default='preview',choices=[('preview','Предпросмотр'),('active','Действует'),('superseded','Прежняя версия'),('cancelled','Отменён')])
+    basis_id=models.UUIDField(null=True,blank=True)
+    session_version=models.PositiveIntegerField()
+    created_at=models.DateTimeField(auto_now_add=True)
+    applied_at=models.DateTimeField(null=True,blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['section'],condition=models.Q(state='active'),name='repair_one_active_pipe_layout')]

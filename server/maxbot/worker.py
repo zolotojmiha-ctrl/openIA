@@ -93,6 +93,13 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('layout_jobs') is not None:
+        from repairs.access import visible_jobs
+        ids=row.scope['layout_jobs']
+        return set(ids)=={str(pk) for pk in visible_jobs(binding.user).filter(pk__in=ids).values_list('pk',flat=True)}
+    if row.scope.get('pipe_layout'):
+        from .layouts import delivery_allowed as layout_allowed
+        return layout_allowed(binding,row.scope)
     if row.scope.get('archive'):
         from .archive import delivery_allowed as archive_allowed
         return archive_allowed(binding,row.scope)

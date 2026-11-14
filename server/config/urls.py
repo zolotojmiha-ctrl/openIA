@@ -21,7 +21,7 @@ from repairs import views as repairs
 from repairs import stock_assignment,plan_views,completion_views,ddk
 from repairs import defect_actions
 from repairs import import_views as repair_import
-from repairs import archive_views
+from repairs import archive_views,layout_views
 from repairs import review_views as repair_review
 urlpatterns=[
  path('forms/token/',site_forms.token,name='site_form_token'),
@@ -178,6 +178,10 @@ urlpatterns=[
  path('cabinet/repairs/sections/new/',repairs.section_new,name='repair_section_new'),
  path('cabinet/repairs/sections/<uuid:section_id>/new/',repairs.job_edit,name='repair_new_section_job'),
  path('cabinet/repairs/new/',repairs.job_edit,name='repair_new'),
+ path('cabinet/repairs/layouts/',layout_views.sections,name='repair_layouts'),
+ path('cabinet/repairs/layout/<uuid:section_id>/',layout_views.upload,name='repair_layout_upload'),
+ path('cabinet/repairs/layout/review/<uuid:pk>/',layout_views.review,name='repair_layout_review'),
+ path('cabinet/repairs/layout/cancel/<uuid:pk>/',layout_views.cancel,name='repair_layout_cancel'),
  path('cabinet/repairs/archive/import/<uuid:contract_id>/',archive_views.upload,name='repair_archive_upload'),
  path('cabinet/repairs/archive/review/<uuid:pk>/',archive_views.review,name='repair_archive_review'),
  path('cabinet/repairs/archive/cancel/<uuid:pk>/',archive_views.cancel,name='repair_archive_cancel'),

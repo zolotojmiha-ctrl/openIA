@@ -57,6 +57,10 @@ def register_context(request,scope=None):
         for d in sorted(defects,key=lambda d:(d.kilometre,d.number,d.pipe_section)):
             number+=1;rows.append({'number':number,'defect':d})
         if rows:groups.append({'job':job,'rows':rows,'rowspan':len(rows),'can_report':job.pk in reportable})
+    from .layouts import neighbours
+    section_distances=neighbours(request.user,[row['defect'] for group in groups for row in group['rows']]) if not archived else {}
+    for group in groups:
+        for row in group['rows']:row['distances']=section_distances.get(row['defect'].pk,[])
     from .stock_assignment import summaries
     stock_summaries=summaries(request.user,[group['job'] for group in groups])
     problem_reports={}
@@ -236,6 +240,7 @@ def detail(request,pk):
     job=get_object_or_404(visible_jobs(request.user,include_archived=can_prepare(request.user)),pk=pk)
     reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
     from .historical import result as historical_result
+    from .layouts import neighbours
     result=historical_result(job,reports.filter(kind__in=['partial','complete','correction']).first())
     history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
     progress_records=reports.filter(context__progress__isnull=False).order_by('-performed_date','-created_at','-pk')
@@ -249,7 +254,7 @@ def detail(request,pk):
     back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
     problem_report=job.reports.filter(kind='problem').first()
     from projects.material_views import job_panel
-    return render(request,'repairs/detail.html',{'progress_page':progress_page,'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    return render(request,'repairs/detail.html',{'progress_page':progress_page,'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'section_distances':neighbours(request.user,job.active_defects),'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):

@@ -169,6 +169,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import layouts
+    if layouts.handle(event,binding,stored_keys):return
     from . import archive
     if archive.handle(event,binding,stored_keys):return
     from . import ddk
@@ -188,7 +190,7 @@ def handle(event, binding, stored_keys):
         return
     if text in ('/menu','/меню'):
         queue(event,'Меню мастера. Выберите действие.',
-              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Метод после ДДК','ddk:list:0'),button('Архив ремонтов','/архив'),button('Устранённые','/устранённые'),button('Сообщить о неисправности техники','/техника')],binding=binding)
+              [button('Фото хода работ','/фото'),button('Мои работы','/работы'),button('Метод после ДДК','ddk:list:0'),button('Архив ремонтов','/архив'),button('Устранённые','/устранённые'),button('Расстояния','/расстояния'),button('Сообщить о неисправности техники','/техника')],binding=binding)
         return
     if text=='/техника':
         from projects.equipment import visible_equipment
@@ -232,7 +234,7 @@ def handle(event, binding, stored_keys):
         if not job:
             raise PermissionDenied
         queue(event, job_title(job), [button('Фото хода работ',f'progress:select:{job.pk}'),button('Работа выполнена', f'begin:{job.pk}:repaired'),
-                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired'),button('Изменить метод после ДДК',f'ddk:select:{job.pk}')], binding=binding, job=job)
+                button('Не выполнена / препятствие', f'begin:{job.pk}:unrepaired'),button('Изменить метод после ДДК',f'ddk:select:{job.pk}'),button('Расстояния до соседних секций',f'layout:job:{job.pk}:0')], binding=binding, job=job)
         return
     if text.startswith('begin:'):
         _, pk, action = text.split(':')

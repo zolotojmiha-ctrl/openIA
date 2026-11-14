@@ -39,5 +39,5 @@ class MasterMenuTests(TestCase):
             event=self.event(command)
             row=Outbox.objects.get(key=f'in:{event.pk}:reply')
             buttons=row.body['attachments'][0]['payload']['buttons']
-            self.assertEqual([b[0]['payload'] for b in buttons],['/фото','/работы','ddk:list:0','/архив','/устранённые','/техника'])
+            self.assertEqual([b[0]['payload'] for b in buttons],['/фото','/работы','ddk:list:0','/архив','/устранённые','/расстояния','/техника'])
             self.assertFalse(Draft.objects.exists())

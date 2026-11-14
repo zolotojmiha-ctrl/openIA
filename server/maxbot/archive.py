@@ -109,7 +109,7 @@ def handle(event,binding,stored_keys):
             emit(event,binding,'Выберите архивный договор в статусе «Подготовка».' if rows else 'Архивного договора в статусе «Подготовка» нет.',buttons);return True
         if action=='upload':
             if not service.allowed(binding.user):raise PermissionDenied
-            if active:raise ValidationError('Сначала завершите или отмените начатый перенос.')
+            if active or binding.menu_scope.get('pipe_layout_upload'):raise ValidationError('Сначала завершите или отмените начатый перенос.')
             if Draft.objects.filter(binding=binding,state__in=['editing','photos','confirm']).exists():raise ValidationError('Сначала завершите или отмените начатое действие.')
             contract=visible_contracts(binding.user).get(pk=uuid.UUID(parts[2]),number=service.TITLE,status='planned')
             state(binding,{'contract':str(contract.pk),'expires':(timezone.now()+timedelta(hours=24)).isoformat()})
