@@ -1,0 +1,30 @@
+{
+  "version": "6.33.0",
+  "source_commit": "c05e1bc73fa036501607773f6e69d86f6a1fe51f",
+  "archive": "openIA-6.33.0-update.zip",
+  "archive_sha256": "eb7de6d8c87dca491e6f669c736568753f6f74860b5c16a26c1452531debd8b6",
+  "archive_files": 896,
+  "excluded_service_entries": 233,
+  "installer": "install-6.33.0.sh",
+  "installer_sha256": "6ee8c9256e7425229883d17ee8b2f6a916a43fe4e6806f5fbf0a4a4d6a70c64c",
+  "status": "locally-verified",
+  "ready_for_install": true,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": true,
+  "checksums": "SHA256SUMS-6.33.0",
+  "signature": "SHA256SUMS-6.33.0.sig",
+  "variant": "site-captions-fix",
+  "baseline_version": "6.33.0",
+  "validation": {
+    "exact_two_caption_removals": true,
+    "all_other_application_files_unchanged_from_verified_policy_fix": true,
+    "new_migrations": false,
+    "production_installed": false,
+    "fresh_test_suite_run": false
+  },
+  "signing_public_key_sha256": "e2f6b26419ccb10faa61baf1cfb5a0ea53f499da8803f23f0dd0df3f420aa3e4"
+}
