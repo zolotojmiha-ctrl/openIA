@@ -23,7 +23,7 @@ compose=(docker compose -f "$app_root/deploy/beget/compose.yml")
 version_code='import ast,pathlib; tree=ast.parse(pathlib.Path("/app/server/accounts/context.py").read_text()); versions=[v.value for n in ast.walk(tree) if isinstance(n,ast.Dict) for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value=="release_version" and isinstance(v,ast.Constant)]; assert len(versions)==1; print(versions[0])'
 installed=$("${compose[@]}" exec -T web python -c "$version_code")
 case "$installed" in
-  6.25.0|6.25.1|6.26.0|6.27.0|6.28.0|6.29.0|6.30.0|6.31.0|__VERSION__) ;;
+  6.25.0|6.25.1|6.26.0|6.27.0|6.28.0|6.29.0|6.30.0|6.31.0|6.32.0|__VERSION__) ;;
   *) printf 'Версия работающего приложения не поддержана или не определена. Сначала проверьте восстановленную установку.\n' >&2; exit 1;;
 esac
 for target in "$app_root" /tmp; do
