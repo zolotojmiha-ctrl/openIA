@@ -20,7 +20,7 @@ class MaxPrototypeTests(TestCase):
         request=self.bot.request_link(code,101,201)
         self.bot.approve_link(self.worker,request)
     def values(self,**extra):
-        return {'performed_date':str(timezone.localdate()),'outcome':'complete','method':'grind','note':'ТЕСТ Результат',**extra}
+        return {'performed_date':str(timezone.localdate()),'outcome':'complete','method':'grind','actual_coating_length_m':'2.4','note':'ТЕСТ Результат',**extra}
     def prepare(self,**kwargs):
         return self.bot.prepare(101,201,self.job.pk,'result',self.values(),**kwargs)
     def test_link_requires_approval_and_code_cannot_be_replayed(self):

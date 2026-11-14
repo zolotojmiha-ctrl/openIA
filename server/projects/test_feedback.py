@@ -44,15 +44,15 @@ class FeedbackTests(TestCase):
         response=self.client.get(reverse('equipment_assign',args=[item.pk]),{'crew':assignment.pk})
         self.assertEqual(response.context['form'].initial['crew_assignment'],assignment.pk)
         self.assertEqual(response.context['form'].initial['contract'],self.contract.pk)
-    def test_equipment_crew_scope_dates_export_and_close_guard(self):
+    def test_equipment_crew_scope_dates_export_and_independent_closure(self):
         crew=self.crew();a=self.assignment(crew);item=self.machine()
         with self.assertRaises(ValidationError):fleet.assign(self.leader,item.pk,1,self.obj2,self.contract,self.today,crew_assignment=a)
         row=fleet.assign(self.leader,item.pk,1,self.obj,self.contract,self.today,crew_assignment=a)
         self.assertEqual(row.crew_assignment,a)
         exported=equipment_excel.export_rows(self.leader,'assignments');self.assertEqual(exported[0][8],str(a.pk))
-        with self.assertRaises(ValidationError):close_assignment(self.tech,a.pk,a.version,self.today)
-        fleet.end_assignment(self.leader,row.pk,row.version,self.today)
         close_assignment(self.tech,a.pk,a.version,self.today)
+        row.refresh_from_db();self.assertIsNone(row.end_date)
+        fleet.end_assignment(self.leader,row.pk,row.version,self.today)
         a.refresh_from_db();self.assertEqual(a.end_date,self.today)
     def test_equipment_label_is_editable_and_back_link_exists(self):
         self.client.force_login(self.leader)
