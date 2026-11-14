@@ -1,0 +1,60 @@
+{
+  "source": "af7b747d05a1ac82afd82d24a281bf8311428bf6",
+  "validation": {
+    "postgresql_chromium_regression_tests": 222,
+    "regression_passed": 221,
+    "skipped": 1,
+    "final_contract_guard_tests": 14,
+    "final_contract_guard_all_passed": true,
+    "image_files_match": 744,
+    "new_migrations": false,
+    "installer_template_changed": false,
+    "production_installed": false,
+    "live_max_sent": false,
+    "cumulative_navigation_and_rnu_labels_included": true
+  },
+  "limits": [
+    "Focused regression profile, not a repeat of all application tests.",
+    "The 222 PostgreSQL tests preceded the final explicit empty-contract guard; 14 navigation/scope tests verify that final guard.",
+    "Original photo viewing retains the existing protected cabinet link; no MAX media-upload mechanism added.",
+    "Installer unchanged from the verified 6.33.0 backup/restore flow. No live MAX/production VPS checks."
+  ]
+}
+Creating test database for alias 'default'...
+......../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+.......................................................................s.................................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+............................../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+................................................/workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+....../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+................./workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+.../workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/pg-runtime/static/
+  mw_instance = middleware(adapted_handler)
+...
+----------------------------------------------------------------------
+Ran 222 tests in 87.756s
+
+OK (skipped=1)
+Destroying test database for alias 'default'...
+Found 222 test(s).
+System check identified no issues (0 silenced).
+
+Creating test database for alias 'default'...
+........./workspace/openIA/.venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /workspace/armada-max-workflows-fix/guard-runtime/static/
+  mw_instance = middleware(adapted_handler)
+.....
+----------------------------------------------------------------------
+Ran 14 tests in 2.050s
+
+OK
+Destroying test database for alias 'default'...
+Found 14 test(s).
+System check identified no issues (0 silenced).
+
+PASS image matches archive: 744
+System check identified no issues (0 silenced).
