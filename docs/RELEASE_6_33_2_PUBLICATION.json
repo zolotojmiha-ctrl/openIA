@@ -1,0 +1,10 @@
+{
+  "publication_commit": "7c2b54c4049fdcd277c017095bc01df84114974e",
+  "source_commit": "f2ab77b474bd9db819cd88bf85af141fd1726d76",
+  "outer_sha256": "9d7cf39bbf2aa29cfd05e4fd66380da2dd2b9b8334211818030ea264479ea750",
+  "downloaded_and_verified": true,
+  "outer_signature": "OK",
+  "inner_signature": "OK",
+  "all_signed_checksums": "OK",
+  "production_installed": false
+}
