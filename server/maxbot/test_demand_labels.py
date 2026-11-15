@@ -25,13 +25,11 @@ class DemandLabelTests(TestCase):
             section=SimpleNamespace(project_object=SimpleNamespace(name='ОИ Омск - Татарская'),name='ОИ Омск — Татарская',pipeline='ОИ',rnu=full)
             self.assertEqual(section_button_title(section),'ОИ Омск - Татарская · '+short)
             self.assertEqual(section.rnu,full)
-    def test_format_migration_baselines_without_fake_change_and_grouped_dn_notice(self):
+    def test_legacy_watch_remains_history_without_aggregate_notice(self):
         watch=DemandWatch.objects.create(binding=self.binding,digest='old',version=1,format_version=1)
-        rows=[{'job':str(n),'contract':'ТЕСТ','contract_id':'A','object':'ТЕСТ участок','object_id':'O','section':'ТЕСТ участок','section_id':'S','diameter':720,'method':'p1','length':2000,'wall':'8','quantity':n} for n in (1,2)]
-        with patch('maxbot.demand_watch.snapshot',return_value=('a'*64,rows)):demand_watch.queue_changes()
-        self.assertFalse(Outbox.objects.exists());watch.refresh_from_db();self.assertEqual(watch.format_version,2)
-        with patch('maxbot.demand_watch.snapshot',return_value=('b'*64,rows)):demand_watch.queue_changes()
-        text=Outbox.objects.get().body['text'];self.assertEqual(text.count('ТЕСТ участок'),1);self.assertIn('DN 700',text);self.assertIn('3 шт.',text)
+        demand_watch.queue_changes()
+        self.assertFalse(Outbox.objects.exists())
+        watch.refresh_from_db();self.assertEqual(watch.digest,'old')
     def test_rename_is_not_a_material_change_in_snapshot(self):
         job=self.make_job()
         records=[{'job':job,'couplings':[{'method':'p1','length':2000,'wall':8,'missing':1}]}]

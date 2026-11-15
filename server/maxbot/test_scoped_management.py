@@ -87,14 +87,13 @@ class ScopedManagementTests(TestCase):
         self.client.force_login(self.worker)
         self.assertContains(self.client.get(reverse('equipment_detail',args=[machine.pk])),'ТЕСТ Не заводится')
 
-    def test_shortage_watch_deduplicates_and_changes_are_observed(self):
+    def test_shortage_watch_no_longer_emits_aggregate_alerts(self):
         from . import demand_watch
         self.request('/меню')
-        with patch('maxbot.demand_watch.snapshot',return_value=('a'*64,[{'contract':'ТЕСТ','object':'ТЕСТ','section':'ТЕСТ','method':'p1','length':1000,'wall':'8','quantity':2}])):
+        with patch('maxbot.demand_watch.snapshot') as snapshot:
             demand_watch.queue_changes();demand_watch.queue_changes()
-        self.assertEqual(Outbox.objects.filter(key__startswith='shortage:').count(),1)
-        with patch('maxbot.demand_watch.snapshot',return_value=('b'*64,[])):demand_watch.queue_changes()
-        self.assertEqual(Outbox.objects.filter(key__startswith='shortage:').count(),2)
+        snapshot.assert_not_called()
+        self.assertFalse(Outbox.objects.filter(key__startswith='shortage:').exists())
 
     def test_pto_reads_unassigned_work_in_scope_without_gaining_reporting_right(self):
         from repairs.access import visible_jobs

@@ -93,6 +93,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if row.scope.get('coupling_stock'):
+        from .coupling_notices import delivery_allowed as stock_notice_allowed
+        return stock_notice_allowed(binding.user, row.scope['coupling_stock'])
     if row.scope.get('work_navigation') is not None:
         from .work_navigation import delivery_allowed as navigation_allowed
         return navigation_allowed(binding,row.scope['work_navigation'])

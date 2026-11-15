@@ -113,11 +113,7 @@ def delivery_allowed(user,scope):
     if not supported(user):return False
     if scope.get('access_signature')!=None and scope['access_signature']!=access_signature(user):return False
     if scope.get('demand_digest'):
-        if not permitted(user,'stock.manage'):return False
-        from .demand_watch import snapshot
-        try:current_digest=snapshot(user)[0]
-        except ValidationError:return False
-        if current_digest!=scope['demand_digest']:return False
+        return False  # Old aggregate alerts must never be delivered after upgrading.
     if scope.get('leader_event'):
         event=AuditEvent.objects.filter(pk=scope['leader_event']).first()
         return bool(event and subject(user,event))
