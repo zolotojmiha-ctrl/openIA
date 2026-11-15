@@ -1,0 +1,6 @@
+ARMADA 6.33.1
+Source: a31400fad1fa63476f978a042cf046a83c600daa
+Cloud validation: 60 installer tests; 33 application tests; actual Docker/Compose/PostgreSQL restore and installation.
+Owner returned public signatures after local real-backup restoration. Both signatures and fixed source hashes independently verified.
+Fresh pre-installation backup is created by installer under writer hold. No production deployment performed by Codex.
+Outer SHA256: 9c079db192d44fd11603cdc1fe849c0047df1f15c6d92224154f824a92bc4012

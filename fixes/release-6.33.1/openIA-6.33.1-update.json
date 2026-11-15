@@ -1,0 +1,31 @@
+{
+  "version": "6.33.1",
+  "source_commit": "a31400fad1fa63476f978a042cf046a83c600daa",
+  "archive": "openIA-6.33.1-update.zip",
+  "archive_sha256": "dbc5145d24e0c8cdbeac8430e46af1afd56e63dc3b0b5e4059cb81fe12c795b2",
+  "archive_files": 912,
+  "excluded_service_entries": 262,
+  "installer": "install-6.33.1.sh",
+  "installer_sha256": "a213b425e06dc753b2e548bca516080e4b3df686c874db70c11669cdf8bca1e8",
+  "known_release_commits": {
+    "c3429b05a2acd949e7c32e9c6b4370f7a5219ac1": "6.33.0",
+    "6ea8a6325ae8893b7dab28c45f13a29e0469f311": "6.33.0"
+  },
+  "status": "candidate",
+  "ready_for_install": true,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": true,
+  "checksums": "SHA256SUMS-6.33.1",
+  "signature": "SHA256SUMS-6.33.1.sig",
+  "signing_public_key_sha256": "e2f6b26419ccb10faa61baf1cfb5a0ea53f499da8803f23f0dd0df3f420aa3e4",
+  "owner_restore_confirmation": {
+    "restored": true,
+    "backup_sha256": "62a78fc956b0b8b43952c8bc2376641199386b04a0e847f26e05ebdceaf2e300",
+    "verified_at": "2026-11-15T11:56:08+00:00",
+    "kind": "owner_attestation_not_automatic_restore"
+  }
+}
