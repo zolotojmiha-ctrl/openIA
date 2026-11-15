@@ -11,18 +11,25 @@ def digest(path):
     return h.hexdigest()
 
 
+def copies(directory):
+    return sorted((p for p in directory.iterdir() if PATTERN.fullmatch(p.name) and p.is_file() and not p.is_symlink()),key=lambda p:p.stat().st_mtime,reverse=True)
+
+
+def has_receipt(p):
+    """A receipt counts only for THIS copy: same file name and same SHA-256 of its current bytes."""
+    receipt=Path(str(p)+'.verified.json')
+    if receipt.is_symlink() or not receipt.is_file():return False
+    try:
+        data=json.loads(receipt.read_text())
+        return data.get('restored') is True and data.get('archive')==p.name and data.get('sha256')==digest(p)
+    except (ValueError,OSError,AttributeError):return False
+
+
 def prune(directory,keep=7,days=30,apply=False,now=None):
     if keep<1 or days<1:raise ValueError('Keep and days must be positive')
     directory=directory.resolve();os.chmod(directory,0o700)
-    files=sorted((p for p in directory.iterdir() if PATTERN.fullmatch(p.name) and p.is_file() and not p.is_symlink()),key=lambda p:p.stat().st_mtime,reverse=True)
-    verified=[]
-    for p in files:
-        receipt=Path(str(p)+'.verified.json')
-        if receipt.is_symlink() or not receipt.is_file():continue
-        try:
-            data=json.loads(receipt.read_text())
-            if data.get('restored') is True and data.get('sha256')==digest(p):verified.append(p)
-        except (ValueError,OSError):continue
+    files=copies(directory)
+    verified=[p for p in files if has_receipt(p)]
     if not verified:return []
     last=verified[0];cutoff=(now or datetime.datetime.now().timestamp())-days*86400
     candidates=[p for p in files[keep:] if p!=last and p.stat().st_mtime<min(cutoff,last.stat().st_mtime)]

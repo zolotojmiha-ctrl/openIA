@@ -74,7 +74,7 @@ def verify(archive,receipt,private=None,image='postgres:17-bookworm'):
             if actual!=counts:raise ValueError('Restored row counts differ')
         finally:
             subprocess.run(cli+['rm','--force','--volumes',name],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
-        result={'restored':True,'sha256':sha(archive),'verified_at':int(time.time()),'tables':len(counts),'files':sum(map(len,expected.values()))}
+        result={'restored':True,'archive':Path(archive).name,'sha256':sha(archive),'verified_at':int(time.time()),'tables':len(counts),'files':sum(map(len,expected.values()))}
         # No key, row details, paths from documents or production credentials.
         fd=os.open(receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'w') as f:json.dump(result,f);f.flush();os.fsync(f.fileno())

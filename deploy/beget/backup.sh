@@ -2,26 +2,39 @@
 # Run as root from the checked-out project. No secrets appear in arguments or logs.
 set -euo pipefail
 umask 077
+export PYTHONDONTWRITEBYTECODE=1
 tool_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
 hold_writers=0
 compose_file="$(dirname -- "$0")/compose.yml"
 state_file=
 lock_fd=
+preflight=0
 while (( $# )); do
   case "$1" in
     --hold-writers) hold_writers=1; shift;;
     --compose-file) compose_file=$2; shift 2;;
     --state-file) state_file=$2; shift 2;;
     --lock-fd) lock_fd=$2; shift 2;;
+    --preflight) preflight=1; shift;;
     *) printf 'Unknown backup option.\n' >&2; exit 2;;
   esac
 done
 backup_python=${ARMADA_BACKUP_PYTHON:-python3}
+encrypted=0
 if [[ -n "${ARMADA_BACKUP_PUBLIC_KEY:-}" ]]; then
-  [[ -f "$ARMADA_BACKUP_PUBLIC_KEY" && ! -L "$ARMADA_BACKUP_PUBLIC_KEY" ]] || exit 2
-  "$backup_python" -c 'import cryptography' >/dev/null
+  encrypted=1
+  # A configured key means encryption is mandatory: no plaintext fallback exists below.
+  if [[ ! -f "$ARMADA_BACKUP_PUBLIC_KEY" || -L "$ARMADA_BACKUP_PUBLIC_KEY" ]]; then
+    printf 'ОТКАЗ: ARMADA_BACKUP_PUBLIC_KEY указывает не на обычный файл. Незашифрованная копия НЕ создаётся.\n' >&2; exit 2
+  fi
+  if ! "$backup_python" -c 'import cryptography' >/dev/null 2>&1; then
+    printf 'ОТКАЗ: в выбранном Python (%s) нет модуля cryptography, шифрование невозможно. Установите cryptography для этого интерпретатора или укажите другой в ARMADA_BACKUP_PYTHON. Незашифрованная копия НЕ создаётся.\n' "$(command -v -- "$backup_python" || printf '%s' "$backup_python")" >&2; exit 2
+  fi
+else
+  printf '*** ВНИМАНИЕ: ARMADA_BACKUP_PUBLIC_KEY не задан. Копия будет НЕЗАШИФРОВАННОЙ: в ней база, документы и закрытые настройки (.env). Не загружайте её во внешнее хранилище. Задайте ключ шифрования копий. ***\n' >&2
 fi
 [[ ${ARMADA_BACKUP_KEEP:-7} =~ ^[1-9][0-9]*$ && ${ARMADA_BACKUP_DAYS:-30} =~ ^[1-9][0-9]*$ ]] || exit 2
+if (( preflight )); then exit 0; fi
 compose_file=$(realpath -- "$compose_file")
 cd -- "$(dirname -- "$compose_file")"
 if (( hold_writers )) && [[ -z "$state_file" ]]; then printf 'Held backup requires writer state file.\n' >&2; exit 2; fi
@@ -76,8 +89,13 @@ if [[ -f .env ]]; then cp .env "$staging/"; fi
 (cd "$staging"; sha256sum database.dump config.tar documents.tar row-counts.json content-sha256.json > SHA256SUMS)
 archive="$backup_root/armada-$archive_stamp-$(python3 -c 'import secrets; print(secrets.token_hex(4))').tar.gz"
 tar -C "$staging" -czf "$archive.partial" .
-if [[ -n "${ARMADA_BACKUP_PUBLIC_KEY:-}" ]]; then
-  "$backup_python" "$tool_dir/../../server/projects/disk_crypto.py" --source "$archive.partial" --public-key "$ARMADA_BACKUP_PUBLIC_KEY" --output "$archive.encrypted"
+if (( encrypted )); then
+  # On any encryption failure remove the plaintext archive: no fallback to an unencrypted copy.
+  if ! "$backup_python" "$tool_dir/../../server/projects/disk_crypto.py" --source "$archive.partial" --public-key "$ARMADA_BACKUP_PUBLIC_KEY" --output "$archive.encrypted"; then
+    rm -f -- "$archive.partial" "$archive.encrypted" "$archive.encrypted.partial" "$archive.encrypted.key-id"
+    printf 'ОТКАЗ: шифрование копии не удалось. Незашифрованная копия удалена и НЕ сохранена.\n' >&2
+    exit 1
+  fi
   rm -- "$archive.partial"
   archive="$archive.encrypted"
 else
@@ -86,4 +104,5 @@ fi
 resume
 trap 'rm -rf -- "$staging"' EXIT
 python3 "$tool_dir/backup_retention.py" --directory "$backup_root" --keep "${ARMADA_BACKUP_KEEP:-7}" --days "${ARMADA_BACKUP_DAYS:-30}" --apply || printf 'Очистка копий не завершена; новая копия сохранена.\n' >&2
+python3 "$tool_dir/backup_status.py" --directory "$backup_root" --archive "$archive" --encrypted "$encrypted" --keep "${ARMADA_BACKUP_KEEP:-7}" || printf 'Статус копий не записан; копия сохранена.\n' >&2
 printf 'Backup saved: %s\n' "$archive"
