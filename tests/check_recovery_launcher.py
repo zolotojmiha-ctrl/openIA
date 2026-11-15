@@ -40,7 +40,8 @@ print(os.environ['TEST_ARCHIVE'] if '.encrypted' in sys.argv[-1] else os.environ
    assert r.returncode==0,(r.stdout,r.stderr)
    run=next(c for c in calls if 'run' in c)
    assert run[run.index('--network')+1]=='none' and '--read-only' in run
-   for label in ('dst=/inputs/backup.encrypted,readonly','dst=/inputs/recovery.pem,readonly'):assert any(label in arg for arg in run)
+   for label in ('dst=/inputs/'+archive.name+',readonly','dst=/inputs/recovery.pem,readonly'):assert any(label in arg for arg in run)
+   assert run[run.index('--archive')+1]=='/inputs/'+archive.name
    assert '--private-key' in run and '--receipt' in run
    assert archive.read_bytes()==b'SYNTHETIC ARCHIVE' and key.read_bytes()==b'SYNTHETIC KEY'
   print('PASS launcher:',case)

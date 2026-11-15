@@ -30,6 +30,9 @@ archive_bytes=$(wc -c < "$archive" | tr -d ' ')
 (( archive_bytes / 1048576 <= max_archive_mib )) || { echo "ОТКАЗ: размер копии $((archive_bytes / 1048576)) МиБ больше расчётного предела $max_archive_mib МиБ для временного хранилища проверки (/tmp 2 ГиБ). Лимиты не ослаблены; сообщите разработчику размер, остальное не раскрывая." >&2; exit 1; }
 actual_hash=$(shasum -a 256 "$archive" | cut -d ' ' -f 1)
 [[ "$actual_hash" == "$expected_hash" ]] || { echo 'SHA-256 скачанной копии не совпал с ЛК. Проверка остановлена.' >&2; exit 1; }
+# Preserve the copy name in the receipt; a fixed mount alias would make every
+# receipt refer to backup.encrypted instead of the copy actually verified.
+archive_name=$(basename -- "$archive")
 private_key=$(osascript -e 'POSIX path of (choose file with prompt "Выберите скачанный в ЛК КЛЮЧ ВОССТАНОВЛЕНИЯ (не SSH-ключ и не ключ подписи)")')
 [[ -f "$private_key" && "$private_key" != "$project_dir"/* && "$private_key" != *,* ]] || { echo 'Ключ должен быть отдельным файлом вне каталога исходников; путь без запятых.' >&2; exit 1; }
 receipt_dir="$HOME/Documents/ArmadaRecoveryReceipts"
@@ -47,10 +50,10 @@ set +e
     --memory 512m --tmpfs /tmp:rw,size=2g,mode=1777 \
     --env DOCKER_DEFAULT_PLATFORM=linux/amd64 \
     --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock,readonly \
-    --mount "type=bind,src=$archive,dst=/inputs/backup.encrypted,readonly" \
+    --mount "type=bind,src=$archive,dst=/inputs/$archive_name,readonly" \
     --mount "type=bind,src=$private_key,dst=/inputs/recovery.pem,readonly" \
     --mount "type=bind,src=$receipt_dir,dst=/receipts" \
-    "$image" --archive /inputs/backup.encrypted --private-key /inputs/recovery.pem \
+    "$image" --archive "/inputs/$archive_name" --private-key /inputs/recovery.pem \
     --receipt "/receipts/$receipt_name" --postgres-image "$postgres"
 check_status=$?
 set -e
