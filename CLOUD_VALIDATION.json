@@ -1,0 +1,59 @@
+{
+  "version": "6.33.2",
+  "source_commit": "f2ab77b474bd9db819cd88bf85af141fd1726d76",
+  "status": "tested_unsigned_candidate",
+  "archive_sha256": "22254ec7ad7610e0fef9dd18dbda5d12deff973521c76c36eef87dc5a232f856",
+  "installer_sha256": "7487f021507864157de07233c67b8b7a444933c9518d114318b9baf9597179de",
+  "metadata_sha256": "2345d04fa01846554f33180cf2c93d493d8d45b5f0428875ab240e710d9f459d",
+  "application_tests": {
+    "backend": "PostgreSQL 17",
+    "executions": 235,
+    "result": "OK",
+    "duration_seconds": 132.628,
+    "skipped": 0,
+    "includes_browser_and_concurrency": true
+  },
+  "installer_tests": {
+    "executions": 60,
+    "result": "OK",
+    "duration_seconds": 610.643
+  },
+  "installer_footer_recheck": {
+    "executions": 4,
+    "result": "OK",
+    "duration_seconds": 41.687
+  },
+  "owner_signing_tests": {
+    "executions": 5,
+    "result": "OK",
+    "duration_seconds": 0.89
+  },
+  "packaging_tests": {
+    "executions": 2,
+    "result": "OK"
+  },
+  "real_cloud_installation": {
+    "from_version": "6.33.1",
+    "to_version": "6.33.2",
+    "exact_final_archive": true,
+    "result": "OK",
+    "database_preserved": true,
+    "nested_document_preserved": true,
+    "environment_and_configuration_preserved": true,
+    "previously_active_synthetic_maxworker_resumed": true,
+    "old_unlinked_installation_reconciled_once": true,
+    "original_report_and_review_state_preserved": true
+  },
+  "fresh_installer_backup": {
+    "encrypted": true,
+    "isolated_postgresql_restore": "OK"
+  },
+  "packaged_server_files_verified": 765,
+  "schema_migrations": "none",
+  "production_accessed": false,
+  "production_installed": false,
+  "live_max_application_checked": false,
+  "employee_messages_sent": false,
+  "owner_private_key_received": false,
+  "signing": "requires owner-local private key; only public signatures return to cloud"
+}

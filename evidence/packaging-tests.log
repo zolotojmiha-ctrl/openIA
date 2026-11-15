@@ -1,0 +1,49 @@
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.007s
+
+OK
+{
+  "version": "6.33.1",
+  "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "archive": "openIA-6.33.1-update.zip",
+  "archive_sha256": "ec07ce610e2d6f3f8b5065a35a0264c37c116153ad47b429960fa4f190813fd6",
+  "archive_files": 6,
+  "excluded_service_entries": 2,
+  "installer": "install-6.33.1.sh",
+  "installer_sha256": "8941d3feadb76db0bb9e85d7e5368d57ff030f6898bea8a25aaa69da0de43846",
+  "known_release_commits": {
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "6.33.0"
+  },
+  "status": "candidate",
+  "ready_for_install": false,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": false,
+  "checksums": "SHA256SUMS-6.33.1",
+  "signature": "SHA256SUMS-6.33.1.sig"
+}
+{
+  "version": "6.33.0",
+  "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "archive": "openIA-6.33.0-update.zip",
+  "archive_sha256": "3b8625feeb413a1100880485faab8d366a9575d3e44a0e192458c34b01328a49",
+  "archive_files": 7,
+  "excluded_service_entries": 6,
+  "installer": "install-6.33.0.sh",
+  "installer_sha256": "8c00dd2a3673c2b5f8241e37eb423ef8d9011c73b66260ebb8e2e519fba2573f",
+  "known_release_commits": {},
+  "status": "candidate",
+  "ready_for_install": false,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": false,
+  "checksums": "SHA256SUMS-6.33.0",
+  "signature": "SHA256SUMS-6.33.0.sig"
+}

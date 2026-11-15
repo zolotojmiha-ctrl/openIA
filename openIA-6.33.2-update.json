@@ -1,0 +1,24 @@
+{
+  "version": "6.33.2",
+  "source_commit": "f2ab77b474bd9db819cd88bf85af141fd1726d76",
+  "archive": "openIA-6.33.2-update.zip",
+  "archive_sha256": "22254ec7ad7610e0fef9dd18dbda5d12deff973521c76c36eef87dc5a232f856",
+  "archive_files": 935,
+  "excluded_service_entries": 265,
+  "installer": "install-6.33.2.sh",
+  "installer_sha256": "7487f021507864157de07233c67b8b7a444933c9518d114318b9baf9597179de",
+  "known_release_commits": {
+    "a31400fad1fa63476f978a042cf046a83c600daa": "6.33.1",
+    "6ea8a6325ae8893b7dab28c45f13a29e0469f311": "6.33.0"
+  },
+  "status": "candidate",
+  "ready_for_install": false,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": false,
+  "checksums": "SHA256SUMS-6.33.2",
+  "signature": "SHA256SUMS-6.33.2.sig"
+}

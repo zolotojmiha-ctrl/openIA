@@ -1,0 +1,19 @@
+Creating test database for alias 'default'...
+................./workspace/armada-dev-venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /tmp/armada-coupling-pg/static/
+  mw_instance = middleware(adapted_handler)
+.........................../workspace/armada-dev-venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /tmp/armada-coupling-pg/static/
+  mw_instance = middleware(adapted_handler)
+............................../workspace/armada-dev-venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /tmp/armada-coupling-pg/static/
+  mw_instance = middleware(adapted_handler)
+........................................................................................................................................................../workspace/armada-dev-venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /tmp/armada-coupling-pg/static/
+  mw_instance = middleware(adapted_handler)
+./workspace/armada-dev-venv/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /tmp/armada-coupling-pg/static/
+  mw_instance = middleware(adapted_handler)
+......
+----------------------------------------------------------------------
+Ran 235 tests in 132.628s
+
+OK
+Destroying test database for alias 'default'...
+Found 235 test(s).
+System check identified no issues (0 silenced).

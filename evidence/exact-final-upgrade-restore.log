@@ -1,0 +1,124 @@
+Подписанный манифест создан. Публичный ключ передать независимым доверенным способом.
+Verified OK
+openIA-6.33.2-update.zip: OK
+install-6.33.2.sh: OK
+openIA-6.33.2-update.json: OK
+ Container armada6332proof-maxworker-1  Running
+WARNING: Running in rootless-mode without cgroups. Systemd is required to enable cgroups in rootless-mode.
+No errors detected in compressed data of /tmp/armada-update-6.33.2.U32OBY/update.zip.
+Оцениваем пиковый расход места (до остановки служб и изменения дерева).
+  том /, /workspace, /home/dockerd/.local/share/docker: нужно не менее 1200 МиБ, доступно 33131 МиБ (временный каталог установки; каталог резервных копий; каталог приложения и recovery; хранилище Docker)
+Собираем 6.33.2 до остановки работающего приложения.
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.00kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337
+#2 DONE 0.1s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 136B done
+#3 DONE 0.0s
+
+#4 [stage-0 1/3] FROM docker.io/library/python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 53.91MB 0.8s done
+#5 DONE 0.8s
+
+#6 [stage-0 2/3] WORKDIR /app
+#6 CACHED
+
+#7 [stage-0 3/3] RUN --mount=type=bind,source=.,target=/source,ro     pip install --no-cache-dir --no-index --find-links=/source/deploy/synology/wheels --require-hashes -r /source/deploy/synology/wheels/requirements.lock     && useradd --uid 10001 --create-home armada     && mkdir -p /app/deploy/synology     && cp -a /source/server /source/portal /source/index.html /app/     && cp -a /source/deploy/synology/start.sh /source/deploy/synology/init_secrets.py /app/deploy/synology/     && cp -a /source/server/static /app/static     && chown -R 10001:10001 /app
+#7 5.088 Looking in links: /source/deploy/synology/wheels
+#7 5.095 Processing /source/deploy/synology/wheels/argon2_cffi-25.1.0-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 2))
+#7 5.100 Processing /source/deploy/synology/wheels/argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 3))
+#7 5.103 Processing /source/deploy/synology/wheels/asgiref-3.12.1-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 4))
+#7 5.106 Processing /source/deploy/synology/wheels/cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 5))
+#7 5.109 Processing /source/deploy/synology/wheels/django-5.2.18-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 6))
+#7 5.152 Processing /source/deploy/synology/wheels/gunicorn-23.0.0-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 7))
+#7 5.155 Processing /source/deploy/synology/wheels/packaging-26.3-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 8))
+#7 5.158 Processing /source/deploy/synology/wheels/psycopg-3.3.6-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 9))
+#7 5.166 Processing /source/deploy/synology/wheels/psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 10))
+#7 5.183 Processing /source/deploy/synology/wheels/pycparser-3.11-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 11))
+#7 5.186 Processing /source/deploy/synology/wheels/sqlparse-0.6.0-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 12))
+#7 5.189 Processing /source/deploy/synology/wheels/typing_extensions-4.16.0-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 13))
+#7 5.191 Processing /source/deploy/synology/wheels/whitenoise-6.12.0-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 14))
+#7 5.193 Processing /source/deploy/synology/wheels/pillow-13.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 15))
+#7 5.214 Processing /source/deploy/synology/wheels/pypdf-6.21.2-py3-none-any.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 16))
+#7 5.221 Processing /source/deploy/synology/wheels/cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 18))
+#7 5.237 Processing /source/deploy/synology/wheels/highspy-1.16.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 20))
+#7 5.248 Processing /source/deploy/synology/wheels/numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (from -r /source/deploy/synology/wheels/requirements.lock (line 22))
+#7 5.348 Installing collected packages: whitenoise, typing-extensions, sqlparse, pypdf, pycparser, psycopg-binary, pillow, packaging, numpy, asgiref, psycopg, highspy, gunicorn, django, cffi, cryptography, argon2-cffi-bindings, argon2-cffi
+#7 14.11 Successfully installed argon2-cffi-25.1.0 argon2-cffi-bindings-26.1.0 asgiref-3.12.1 cffi-2.1.1 cryptography-50.0.2 django-5.2.18 gunicorn-23.0.0 highspy-1.16.0 numpy-2.5.4 packaging-26.3 pillow-13.0.0 psycopg-3.3.6 psycopg-binary-3.3.6 pycparser-3.11 pypdf-6.21.2 sqlparse-0.6.0 typing-extensions-4.16.0 whitenoise-6.12.0
+#7 14.11 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#7 DONE 14.4s
+
+#8 exporting to image
+#8 exporting layers
+#8 exporting layers 2.1s done
+#8 writing image sha256:62d9b7084ff79f20801b509cbccd2b2deae28f8b0f3dd4f343541d211eca834e done
+#8 naming to docker.io/library/armada-web:6.33.2 done
+#8 DONE 2.1s
+Создаём копию без промежуточного возобновления записи.
+Operations to perform:
+  Apply all migrations: accounts, auth, contenttypes, documents, finance, maxbot, postoffice, projects, repairs, sessions
+Running migrations:
+  No migrations to apply.
+System check identified no issues (0 silenced).
+ Container armada6332proof-web-1  Recreate
+ Container armada6332proof-web-1  Recreated
+ Container armada6332proof-mailworker-1  Recreate
+ Container armada6332proof-mailworker-1  Recreated
+ Container armada6332proof-web-1  Starting
+ Container armada6332proof-web-1  Started
+ Container armada6332proof-web-1  Waiting
+ Container armada6332proof-web-1  Healthy
+ Container armada6332proof-mailworker-1  Starting
+ Container armada6332proof-mailworker-1  Started
+ Container armada6332proof-proxy-1  Recreate
+ Container armada6332proof-proxy-1  Recreated
+ Container armada6332proof-proxy-1  Starting
+ Container armada6332proof-proxy-1  Started
+System check identified no issues (0 silenced).
+ Container armada6332proof-init-1  Recreate
+ Container armada6332proof-init-1  Recreated
+ Container armada6332proof-db-1  Running
+ Container armada6332proof-web-1  Running
+ Container armada6332proof-maxworker-1  Recreate
+ Container armada6332proof-maxworker-1  Recreated
+ Container armada6332proof-init-1  Starting
+ Container armada6332proof-init-1  Started
+ Container armada6332proof-init-1  Waiting
+ Container armada6332proof-init-1  Exited
+ Container armada6332proof-db-1  Waiting
+ Container armada6332proof-db-1  Healthy
+ Container armada6332proof-web-1  Waiting
+ Container armada6332proof-web-1  Healthy
+ Container armada6332proof-maxworker-1  Starting
+ Container armada6332proof-maxworker-1  Started
+
+Обновление 6.33.2 установлено. Данные и настройки сохранены.
+Каталог recovery: /workspace/armada-6332-stand/.armada-recovery-6.33.2.5DxFJ5
+ВНИМАНИЕ: он содержит закрытые настройки (.env) и копию прежнего дерева. Не публиковать и не загружать в облако. Автоматически не удаляется; порядок ручной очистки: RELEASE_6_33_2.md.
+Ранее работавший MAX-worker возобновлён.
+/workspace/armada-6332-stand/armada/deploy/beget/.env: OK
+PASS database sentinel, nested document and configuration preserved
+142 objects imported automatically (use -v 2 for details).
+
+PASS actual 6.33.1 -> 6.33.2: old unlinked installation reconciled once, original report and review state unchanged
+Изолированное восстановление базы и файлов подтверждено.
+PASS fresh installer encrypted backup restored on isolated PostgreSQL
+ Container armada6332proof-proxy-1  Stopping
+ Container armada6332proof-mailworker-1  Stopping
+ Container armada6332proof-maxworker-1  Stopping
+ Container armada6332proof-proxy-1  Stopped
+ Container armada6332proof-maxworker-1  Stopped
+ Container armada6332proof-mailworker-1  Stopped
+ Container armada6332proof-web-1  Stopping
+ Container armada6332proof-web-1  Stopped
+ Container armada6332proof-db-1  Stopping
+ Container armada6332proof-db-1  Stopped

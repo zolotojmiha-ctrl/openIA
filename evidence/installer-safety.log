@@ -1,0 +1,70 @@
+test_archive_failure_removes_unpublished_plaintext (__main__.BackupDefaultsTests.test_archive_failure_removes_unpublished_plaintext) ... ok
+test_archive_signal_removes_unpublished_plaintext (__main__.BackupDefaultsTests.test_archive_signal_removes_unpublished_plaintext) ... ok
+test_encrypted_backup_succeeds_and_status_is_machine_readable (__main__.BackupDefaultsTests.test_encrypted_backup_succeeds_and_status_is_machine_readable) ... ok
+test_encryption_failure_never_falls_back_to_plaintext (__main__.BackupDefaultsTests.test_encryption_failure_never_falls_back_to_plaintext) ... /repo/tests/test_release_safety.py:340: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/armada-safety-z5y731vf/.armada-recovery-6.33.1.fIOzBY/backup.log' mode='r' encoding='UTF-8'>
+  t.assertNotEqual(r.returncode,0);t.assertIn('шифрование копии не удалось',r.stderr+open(list(root.glob('.armada-recovery-*'))[0]/'backup.log').read())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_missing_cryptography_names_selected_python (__main__.BackupDefaultsTests.test_missing_cryptography_names_selected_python) ... ok
+test_plain_backup_status_warns (__main__.BackupDefaultsTests.test_plain_backup_status_warns) ... ok
+test_unencrypted_requires_explicit_flag (__main__.BackupDefaultsTests.test_unencrypted_requires_explicit_flag) ... ok
+test_after_migrations_failure_leaves_writers_stopped (__main__.InstallerTests.test_after_migrations_failure_leaves_writers_stopped) ... ok
+test_backup_failure_restarts_original_services (__main__.InstallerTests.test_backup_failure_restarts_original_services) ... ok
+test_before_migrations_rolls_back_exact_images (__main__.InstallerTests.test_before_migrations_rolls_back_exact_images) ... ok
+test_build_failure_does_not_stop_old_version (__main__.InstallerTests.test_build_failure_does_not_stop_old_version) ... ok
+test_direct_armada_installation_directory (__main__.InstallerTests.test_direct_armada_installation_directory) ... ok
+test_health_failure_leaves_writers_stopped (__main__.InstallerTests.test_health_failure_leaves_writers_stopped) ... ok
+test_legacy_compose_without_max_service (__main__.InstallerTests.test_legacy_compose_without_max_service) ... ok
+test_max_restart_failure_stops_all_writers (__main__.InstallerTests.test_max_restart_failure_stops_all_writers) ... ok
+test_migration_failure_leaves_writers_stopped (__main__.InstallerTests.test_migration_failure_leaves_writers_stopped) ... ok
+test_rejects_active_disk_worker (__main__.InstallerTests.test_rejects_active_disk_worker) ... ok
+test_rejects_duplicate_archive_member (__main__.InstallerTests.test_rejects_duplicate_archive_member) ... /usr/local/lib/python3.12/zipfile/__init__.py:1650: UserWarning: Duplicate name: 'openIA-feature-accounts-foundation/index.html'
+  return self._open_to_write(zinfo, force_zip64=force_zip64)
+ok
+test_rejects_invalid_signature (__main__.InstallerTests.test_rejects_invalid_signature) ... ok
+test_rejects_low_space (__main__.InstallerTests.test_rejects_low_space) ... ok
+test_rejects_missing_independent_trust_key (__main__.InstallerTests.test_rejects_missing_independent_trust_key) ... ok
+test_rejects_modified_signed_manifest (__main__.InstallerTests.test_rejects_modified_signed_manifest) ... ok
+test_rejects_parallel_backup (__main__.InstallerTests.test_rejects_parallel_backup) ... ok
+test_rejects_parallel_update (__main__.InstallerTests.test_rejects_parallel_update) ... ok
+test_rejects_signed_but_not_validated_release (__main__.InstallerTests.test_rejects_signed_but_not_validated_release) ... ok
+test_rejects_symlink (__main__.InstallerTests.test_rejects_symlink) ... ok
+test_rejects_tampered_archive (__main__.InstallerTests.test_rejects_tampered_archive) ... ok
+test_rejects_traversal (__main__.InstallerTests.test_rejects_traversal) ... ok
+test_rejects_unexpected_installation_directory (__main__.InstallerTests.test_rejects_unexpected_installation_directory) ... ok
+test_rejects_unsupported_running_version (__main__.InstallerTests.test_rejects_unsupported_running_version) ... ok
+test_rejects_wrong_version (__main__.InstallerTests.test_rejects_wrong_version) ... ok
+test_relative_installer_invocation (__main__.InstallerTests.test_relative_installer_invocation) ... ok
+test_relative_invocation_for_direct_armada_directory (__main__.InstallerTests.test_relative_invocation_for_direct_armada_directory) ... ok
+test_success_with_previously_active_max (__main__.InstallerTests.test_success_with_previously_active_max) ... ok
+test_success_without_max (__main__.InstallerTests.test_success_without_max) ... ok
+test_allowed_local_file_is_kept_only_in_recovery (__main__.LocalFileTests.test_allowed_local_file_is_kept_only_in_recovery) ... ok
+test_custom_script_refused (__main__.LocalFileTests.test_custom_script_refused) ... ok
+test_dotenv_symlink_is_a_hard_error (__main__.LocalFileTests.test_dotenv_symlink_is_a_hard_error) ... ok
+test_extra_symlink_refused (__main__.LocalFileTests.test_extra_symlink_refused) ... ok
+test_no_extra_files_and_reinstall (__main__.LocalFileTests.test_no_extra_files_and_reinstall) ... ok
+test_override_file_refused_without_flag (__main__.LocalFileTests.test_override_file_refused_without_flag) ... ok
+test_failure_after_migrations_check (__main__.PhaseAndRecoveryTests.test_failure_after_migrations_check) ... ok
+test_failure_during_migrations (__main__.PhaseAndRecoveryTests.test_failure_during_migrations) ... ok
+test_health_failure_phase (__main__.PhaseAndRecoveryTests.test_health_failure_phase) ... ok
+test_phase_order_and_recovery_safety_after_success (__main__.PhaseAndRecoveryTests.test_phase_order_and_recovery_safety_after_success) ... ok
+test_recovery_inventory_never_deletes_and_keeps_last_complete (__main__.PhaseAndRecoveryTests.test_recovery_inventory_never_deletes_and_keeps_last_complete) ... ok
+test_schema_check_failure (__main__.PhaseAndRecoveryTests.test_schema_check_failure) ... ok
+test_unsafe_recovery_parent_refused_without_side_effects (__main__.PhaseAndRecoveryTests.test_unsafe_recovery_parent_refused_without_side_effects) ... ok
+test_version_failure (__main__.PhaseAndRecoveryTests.test_version_failure) ... ok
+test_app_and_recovery_volume_short (__main__.SpaceTests.test_app_and_recovery_volume_short) ... ok
+test_backup_volume_short (__main__.SpaceTests.test_backup_volume_short) ... ok
+test_bind_mount_aliases_sum_costs_on_same_device (__main__.SpaceTests.test_bind_mount_aliases_sum_costs_on_same_device) ... ok
+test_docker_volume_short (__main__.SpaceTests.test_docker_volume_short) ... ok
+test_measurement_error_refuses (__main__.SpaceTests.test_measurement_error_refuses) ... ok
+test_shared_filesystem_sums_costs (__main__.SpaceTests.test_shared_filesystem_sums_costs) ... ok
+test_sufficient_space_and_separate_volumes_pass (__main__.SpaceTests.test_sufficient_space_and_separate_volumes_pass) ... ok
+test_temp_volume_short (__main__.SpaceTests.test_temp_volume_short) ... ok
+test_fingerprint_command_matches_independent_computation (__main__.TrustTests.test_fingerprint_command_matches_independent_computation) ... ok
+test_modified_installer_with_still_valid_manifest_is_refused_in_isolation (__main__.TrustTests.test_modified_installer_with_still_valid_manifest_is_refused_in_isolation) ... ok
+test_valid_signature_does_not_make_modified_installer_trusted (__main__.TrustTests.test_valid_signature_does_not_make_modified_installer_trusted) ... ok
+
+----------------------------------------------------------------------
+Ran 60 tests in 610.643s
+
+OK

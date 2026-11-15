@@ -1,0 +1,9 @@
+test_success_without_max (__main__.InstallerTests.test_success_without_max) ... ok
+test_success_with_previously_active_max (__main__.InstallerTests.test_success_with_previously_active_max) ... ok
+test_phase_order_and_recovery_safety_after_success (__main__.PhaseAndRecoveryTests.test_phase_order_and_recovery_safety_after_success) ... ok
+test_valid_signature_does_not_make_modified_installer_trusted (__main__.TrustTests.test_valid_signature_does_not_make_modified_installer_trusted) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 41.687s
+
+OK
