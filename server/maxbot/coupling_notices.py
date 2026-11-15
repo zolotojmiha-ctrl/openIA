@@ -48,7 +48,7 @@ def item_text(row, report):
 
 
 def queue_event(event):
-    if not settings.ARMADA_MAX_ENABLED or event.action != 'repair_reported':
+    if not settings.ARMADA_MAX_ENABLED or event.action not in ('repair_reported','repair_stock_reconciled'):
         return
     report_id = event.details.get('report_id')
     if not report_id:
@@ -68,15 +68,21 @@ def queue_event(event):
             context = title(binding.user, report.job)
             if len(context) > 2200:
                 context = context[:2199] + '…'
-            text = heading + '\n' + context + '\n\n' + item_text(row, report)
+            bindings=report.context.get('stock_bindings',[])+event.details.get('bindings',[])
+            old_id=next((b.get('previous_job') for b in bindings if b.get('item')==str(row.item_id) and b.get('previous_job') not in ('',str(report.job_id))),None)
+            donor=visible_jobs(binding.user).filter(pk=old_id).first() if old_id else None
+            transfer=('\n\nРезерв снят с другой работы. Для неё требуется замена муфты.' if old_id else '')
+            if donor:transfer+='\n'+title(binding.user,donor)[:600]
+            text = heading + '\n' + context[:1800] + '\n\n' + item_text(row, report)+transfer
             Outbox.objects.get_or_create(key=f'coupling-stock:{row.pk}:{binding.pk}', defaults={
                 'binding': binding, 'job': report.job, 'max_user': binding.max_user, 'chat': binding.chat,
                 'body': {'text': text, 'attachments': [{'type': 'inline_keyboard', 'payload': {
                     'buttons': [[link('Открыть отчёт в ЛК', 'repair_detail', [report.job_id])]]}}]},
-                'scope': {'coupling_stock': {'report': str(report.pk), 'movement': str(row.pk)}},
+                'scope': {'coupling_stock': {'report': str(report.pk), 'movement': str(row.pk),**({'donor':str(donor.pk)} if donor else {})}},
                 'available_at': timezone.now(), 'expires': timezone.now() + timedelta(days=1)})
 
 
 def delivery_allowed(user, scope):
+    if scope.get('donor') and not visible_jobs(user).filter(pk=scope['donor']).exists():return False
     result = data(user, scope['report'])
     return bool(result and any(str(row.pk) == scope['movement'] for row in result[1]))

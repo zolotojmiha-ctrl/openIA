@@ -1,3 +1,4 @@
+from .coupling_fields import WholeWallField
 from decimal import Decimal
 from django import forms
 from django.contrib import messages
@@ -12,7 +13,7 @@ class ConstructionForm(forms.Form):
     expected_version=forms.IntegerField(widget=forms.HiddenInput)
     method=forms.ChoiceField(label='Тип конструкции',choices=METHODS)
     length_m=forms.DecimalField(label='Требуемая длина, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),required=False)
-    wall_mm=forms.DecimalField(label='Толщина стенки, мм',min_value=1,max_digits=4,decimal_places=0,required=False)
+    wall_mm=WholeWallField(label='Толщина стенки, мм',min_value=1,max_digits=4,decimal_places=0,required=False)
     composition=forms.CharField(label='Состав, м (только для нескольких муфт)',max_length=200,required=False)
     reason=forms.CharField(label='Основание изменения',max_length=1000,widget=forms.Textarea(attrs={'rows':2,'placeholder':'Например: после обследования нужна конструкция 1500 мм'}))
     def __init__(self,*args,**kwargs):

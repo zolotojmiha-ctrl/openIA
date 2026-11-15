@@ -115,7 +115,7 @@ def validate(draft, user):
     return form
 
 
-def prompt(event, binding, draft):
+def prompt(event, binding, draft, choice_page=0):
     form = form_for(draft, binding.user)
     if draft.step >= len(draft.fields):
         draft.state = 'photos'
@@ -138,7 +138,14 @@ def prompt(event, binding, draft):
     elif name == 'manual_serials':
         label = 'Введите заводской номер ремонтной конструкции'
     choices = list(field.choices) if hasattr(field, 'choices') else []
-    buttons = [button(str(label), f'answer:{draft.pk}:{draft.step}:{value}') for value, label in choices if value != '']
+    shown=choices
+    if name.startswith('stock_source_'):
+        if not 0 <= choice_page <= max(0,(len(choices)-1)//8):raise ValidationError('Неверная страница источников.')
+        shown=choices[choice_page*8:choice_page*8+8]
+    buttons = [button(str(label), f'answer:{draft.pk}:{draft.step}:{value}') for value, label in shown if value != '']
+    if name.startswith('stock_source_'):
+        if choice_page:buttons.append(button('Предыдущие источники',f'sourcepage:{draft.pk}:{draft.step}:{choice_page-1}'))
+        if (choice_page+1)*8<len(choices):buttons.append(button('Следующие источники',f'sourcepage:{draft.pk}:{draft.step}:{choice_page+1}'))
     initial = draft.raw.get(name, form.initial.get(name, field.initial))
     if initial is not None and not choices and str(initial):
         initial_label = report_date(initial).strftime('%d.%m.%y') if isinstance(field, forms.DateField) else initial
@@ -166,6 +173,20 @@ def summarize(event, binding, draft):
         if hasattr(field, 'choices'):
             value = dict(field.choices).get(value, value)
         lines.append(f'{field.label}: {value or "—"}')
+    installation=form.cleaned_data.get('installation',{})
+    if installation.get('override'):
+        lines.append('При полном завершении неиспользованные закрепления этой работы будут освобождены. При частичном выполнении они сохраняются.')
+    if installation.get('kind')=='manual':
+        from repairs.installation_stock import choose
+        from decimal import Decimal
+        used={}
+        for piece in installation['pieces']:
+            row=choose(draft.job,installation['method'],piece['length_mm'],Decimal(installation['wall_mm']),piece['serial'],piece.get('source'),used)
+            used[(row.item_id,row.warehouse_id)]=used.get((row.item_id,row.warehouse_id),0)+1
+            lines.append(f'Списание: №{piece["serial"]} · {piece["length_mm"]} × {installation["wall_mm"]} мм · {row.warehouse.name}')
+            donor=row.item.reserved_job
+            if donor and donor.pk!=draft.job_id:
+                lines.append('Перераспределение с км '+', '.join(d.km for d in donor.active_defects)+'. Прежней работе потребуется замена.')
     lines.append(f'Фотографий: {draft.photos.count()}')
     # Never silently truncate the preview of a report the employee confirms.
     text = '\n'.join(lines)
@@ -183,6 +204,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import stock_reconciliation
+    if stock_reconciliation.handle(event,binding):return
     from . import completed_import
     if completed_import.handle(event,binding,stored_keys):return
     from . import layouts
@@ -270,10 +293,15 @@ def handle(event, binding, stored_keys):
         return
     parts = text.split(':')
     action = parts[0]
-    if action in ('review', 'confirm', 'edit', 'answer', 'default', 'skip'):
+    if action in ('review', 'confirm', 'edit', 'answer', 'default', 'skip', 'sourcepage'):
         draft = Draft.objects.select_for_update().filter(pk=uuid.UUID(parts[1]), binding=binding).first()
     else:
         draft = Draft.objects.select_for_update().filter(binding=binding, state__in=['editing', 'photos', 'confirm']).order_by('-created_at').first()
+    if draft and action=='sourcepage':
+        if (draft.state!='editing' or draft.expires<=timezone.now() or int(parts[2])!=draft.step or
+                draft.step>=len(draft.fields) or not draft.fields[draft.step].startswith('stock_source_') or
+                not available(user).filter(pk=draft.job_id).exists()):raise ValidationError('Этот выбор источника устарел.')
+        prompt(event,binding,draft,choice_page=int(parts[3]));return
     if not draft:
         queue(event, 'Для выбора задания нажмите «Мои работы».', [button('Мои работы', '/работы')], binding=binding)
         return
@@ -358,7 +386,7 @@ def handle(event, binding, stored_keys):
             raise ValidationError('Уточните выбранную причину невыполнения работы.')
         field.clean(value)
         draft.raw[field_name] = value
-        if field_name == 'problem':
+        if field_name in ('problem','length_m','composition','wall_mm','manual_serials','installation_override'):
             draft.fields = fields_for(form_for(draft, user))
             if 'note' not in draft.fields:
                 draft.raw.pop('note', None)

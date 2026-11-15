@@ -100,6 +100,12 @@ class AuditEvent(models.Model):
     details=models.JSONField(default=dict)
     created_at=models.DateTimeField(auto_now_add=True)
 
+    def get_action_display(self):
+        names={'stock_installation_bound':'Муфта связана с фактическим монтажом',
+               'stock_placeholder_merged':'Складская запись объединена с фактическим изделием',
+               'repair_stock_reconciled':'Проведено недостающее списание по ремонту'}
+        return names.get(self.action,dict(self.ACTIONS).get(self.action,self.action))
+
 class LoginAttempt(models.Model):
     key=models.CharField(max_length=64,unique=True)
     count=models.PositiveIntegerField(default=0)

@@ -69,7 +69,8 @@ class CouplingNoticeTests(TestCase):
     def test_legacy_report_does_not_claim_stock_consumption(self):
         coupling = Coupling.objects.create(project_object=self.obj, method='p2', length_mm=1000,
                                           wall_mm=8, serial='ТЕСТ БЕЗ СКЛАДА')
-        self.report(self.make_job(), [coupling])
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):self.report(self.make_job(), [coupling])
         self.assertFalse(self.notices().exists())
 
     def test_unchanged_correction_keeps_original_consumption_without_repeat(self):

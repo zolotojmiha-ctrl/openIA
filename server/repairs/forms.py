@@ -1,3 +1,4 @@
+from .coupling_fields import WholeWallField
 from projects.diameters import DiameterField,preserve_legacy
 import re
 import uuid
@@ -204,6 +205,9 @@ class ReportForm(forms.Form):
             if issued is None:issued=prepared_couplings(job)
             if self.previous_report and self.previous_report.context.get('installation',{}).get('kind')=='reserved':
                 issued=list(Coupling.objects.filter(pk__in=self.previous_report.context['installation']['serials']))
+            if issued:
+                self.fields['installation_override']=forms.ChoiceField(label='Что фактически установлено?',required=False,initial=self.initial.get('installation_override','no'),choices=[('no','Установлены закреплённые муфты'),('yes','Фактически установлен другой состав')])
+                if self.data.get('installation_override',self.initial.get('installation_override'))=='yes':issued=[]
             self.prepared_stock_couplings=issued
             if issued:
                 for name in ('length_m','composition','method','couplings'):self.fields.pop(name,None)
@@ -213,10 +217,35 @@ class ReportForm(forms.Form):
                     self.stock_serial_fields.append(self[name])
             else:
                 self.fields['length_m']=forms.DecimalField(label='Фактическая длина ремонтной конструкции, м',max_digits=9,decimal_places=3,min_value=Decimal('.001'),initial=job.length_m)
+                self.fields['wall_mm']=WholeWallField(label='Фактическая толщина стенки муфты, мм',min_value=1,max_digits=4,decimal_places=0,initial=job.wall_mm,required=self.simple or self.data.get('method',job.method) in ('p1','p2','p3','p4','p5u'))
                 self.fields['composition']=forms.CharField(label='Состав из нескольких муфт, м',required=False,max_length=200,initial=job.composition,help_text='Для одной муфты оставьте пустым. Для нескольких: 1.5+1.5; заводские номера укажите в том же порядке.')
                 self.fields['manual_serials']=forms.CharField(label='Заводские номера установленных муфт',required=self.simple,max_length=3030,widget=forms.Textarea(attrs={'rows':2}),help_text='Для одной муфты — один номер. Для нескольких — каждый номер с новой строки, в порядке состава.')
                 installed=list(Coupling.objects.filter(installation__job=job))
                 if installed:self.initial['manual_serials']='\n'.join(p.serial for p in installed)
+                self.initial['wall_mm']=job.wall_mm
+                from .installation_stock import candidates,source_key
+                from .construction import planned_parts
+                try:
+                    _, parts=planned_parts(self.data.get('length_m',job.length_m),self.data.get('composition',job.composition),job.method)
+                    wall=Decimal(str(self.data.get('wall_mm') or job.wall_mm or 0))
+                    if len(parts)>30:parts=[]
+                except (ValidationError,InvalidOperation,TypeError,ValueError):parts=[];wall=0
+                self.stock_source_fields=[]
+                typed_serials=[value.strip() for value in re.split(r'[\n;]+',self.data.get('manual_serials','')) if value.strip()]
+                for index,part in enumerate(parts):
+                    choices=[('auto','Автоматически: свой резерв или свободная муфта')]
+                    seen=set()
+                    for row in candidates(job,job.method,int(part*1000),wall,typed_serials[index] if index<len(typed_serials) else ''):
+                        item=row.item
+                        if (item.pk,row.warehouse_id) in seen:continue
+                        seen.add((item.pk,row.warehouse_id))
+                        donor=item.reserved_job
+                        kms=', '.join(d.km for d in donor.active_defects) if donor else ''
+                        state=f'Снять резерв с км {kms}' if donor and donor.pk!=job.pk else 'Свободная муфта / свой резерв'
+                        choices.append((source_key(item.pk,row.warehouse_id),f'{state} · {item.sku} · {row.warehouse.name}'))
+                    name=f'stock_source_{index}'
+                    self.fields[name]=forms.ChoiceField(label=f'Источник муфты {index+1}',choices=choices,required=False,initial='auto',help_text='Если свободных муфт нет, укажите резерв, использованный для этого монтажа. Прежняя работа потеряет обеспечение.')
+                    self.stock_source_fields.append(self[name])
 
     def clean_coordinates(self):
         text=self.cleaned_data['coordinates'].strip()
@@ -289,7 +318,7 @@ class ReportForm(forms.Form):
                             if len(parts)!=len(serials) or len(parts)>30 or len(set(serials))!=len(serials) or any(len(serial)>100 for serial in serials):raise ValueError
                         except (ValueError,InvalidOperation):self.add_error('manual_serials','Укажите по одному номеру для каждой муфты. Длины в составе должны давать фактическую длину конструкции.')
                         else:
-                            c['installation']={'kind':'manual','pieces':[{'serial':serial,'length_mm':int(part*1000)} for serial,part in zip(serials,parts)]}
+                            c['installation']={'kind':'manual',**({'override':True} if c.get('installation_override')=='yes' else {}),'method':c.get('method') or self.job.method,'wall_mm':str(c.get('wall_mm') or ''),'pieces':[{'serial':serial,'length_mm':int(part*1000),**({'source':c[f'stock_source_{index}']} if c.get(f'stock_source_{index}') not in (None,'','auto') else {})} for index,(serial,part) in enumerate(zip(serials,parts))]}
                             if self.simple:c['couplings']=[]
         if self.simple and self.action=='problem' and c.get('problem') in ('material_other','other','existing_coupling','oversize_p1') and not c.get('note','').strip():
             self.add_error('note',{'existing_coupling':'Опишите найденную муфту: тип, состояние и другие известные сведения.','oversize_p1':'Опишите обнаруженную муфту и требуемую П1 увеличенного диаметра; укажите размер, если известен.'}.get(c.get('problem'),'Поясните, какого материала не хватает или укажите другую причину.'))

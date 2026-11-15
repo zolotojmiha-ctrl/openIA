@@ -234,5 +234,6 @@ def handle(event,binding):
                 body+='\n\nКонтракт: '+contract_name(user,row.contract)+'\n'+row.project_object.name+f'\n{row.name}: {row.quantity} {row.unit}'
                 buttons.append(link(f'{index}. Открыть заявку','material_edit',[row.contract_id,row.project_object_id,row.pk]))
         if len(entries)>5:buttons.append(button('Далее',f'leader:{category}:{page+1}'))
+    if category=='reports' and user.is_leader:buttons.append(button('Сверить расход муфт','/сверка_муфт'))
     if category!='menu':buttons.append(button('Меню','/меню'))
     queue(event,body,buttons,binding=binding,scope={'leader':True,'selection':selection,'access_signature':access_signature(user)})

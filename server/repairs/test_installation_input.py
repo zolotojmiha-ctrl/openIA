@@ -1,3 +1,5 @@
+from .installation_stock import source_key
+from projects.models import StockBalance
 import uuid
 import os,json,subprocess
 from decimal import Decimal
@@ -26,7 +28,7 @@ class InstallationInputTests(TestCase):
     def payload(self,**changes):
         return {'token':str(uuid.uuid4()),'expected_version':self.job.version,
                 'performed_date':str(self.today),'coordinates':'55°20\'22.2"N 77°49\'47.4"E',
-                'actual_coating_length_m':'2.4','length_m':'1.5','composition':'','manual_serials':'МОНТАЖ-1',**changes}
+                'actual_coating_length_m':'2.4','wall_mm':'10','length_m':'1.5','composition':'','manual_serials':'МОНТАЖ-1',**changes}
 
     def reserve(self):
         warehouse=self.wh()
@@ -35,7 +37,14 @@ class InstallationInputTests(TestCase):
         item=StockItem.objects.get()
         return warehouse,planning.reserve(self.leader,item.pk,item.version,self.job.pk)
 
+    def stock_for_manual(self,method='p2',lengths=(1500,)):
+        warehouse=self.wh()
+        for length in lengths:
+            planning.receive(self.leader,self.data(kind='coupling',unit='pcs',method=method,diameter_mm=self.section.diameter_mm,length_mm=length,wall_mm=10),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
+        return warehouse
+
     def test_manual_actual_length_serial_and_retry(self):
+        self.stock_for_manual()
         payload=self.payload()
         for _ in range(2):
             response=self.client.post(self.url,payload)
@@ -45,7 +54,31 @@ class InstallationInputTests(TestCase):
         self.assertEqual(report.latitude,Decimal('55.339500'))
         self.assertEqual(report.longitude,Decimal('77.829833'))
         self.job.refresh_from_db();self.assertEqual(self.job.length_m,1)
-        self.assertFalse(StockItem.objects.exists())
+        self.assertEqual(StockItem.objects.get().coupling_id,coupling.pk)
+        self.assertEqual(StockItem.objects.get().serial,'МОНТАЖ-1')
+
+    def test_source_lookup_uses_actual_dimensions_and_is_read_only(self):
+        self.stock_for_manual()
+        item=StockItem.objects.get()
+        before=Report.objects.count()
+        response=self.client.post(reverse('repair_stock_sources',args=[self.job.pk]),{'length_m':'1.5','wall_mm':'10','composition':''})
+        self.assertEqual(response.status_code,200)
+        self.assertIn(source_key(item.pk,StockBalance.objects.get(item=item).warehouse_id),response.json()['html'])
+        response=self.client.post(reverse('repair_stock_sources',args=[self.job.pk]),{'length_m':'1.5','wall_mm':'8','composition':''})
+        self.assertNotIn(source_key(item.pk,StockBalance.objects.get(item=item).warehouse_id),response.json()['html'])
+        item.refresh_from_db();self.assertFalse(item.serial);self.assertEqual(Report.objects.count(),before)
+
+    def test_actual_override_form_selects_free_item_and_releases_own_reserve(self):
+        warehouse,reserved=self.reserve()
+        planning.receive(self.leader,self.data(kind='coupling',unit='pcs',method='p2',diameter_mm=self.section.diameter_mm,length_mm=1500,wall_mm=8),warehouse,1,self.today,'ТЕСТ',uuid.uuid4())
+        free=StockItem.objects.get(wall_mm=8)
+        form=self.client.get(self.url+'?actual=1').context['form']
+        self.assertIn('wall_mm',form.fields)
+        response=self.client.post(self.url,self.payload(installation_override='yes',wall_mm='8',stock_prepared=form.initial['stock_prepared']))
+        self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
+        reserved.refresh_from_db();free.refresh_from_db()
+        self.assertIsNone(reserved.reserved_job_id)
+        self.assertEqual(free.serial,'МОНТАЖ-1')
 
     def test_manual_requires_serial(self):
         response=self.client.post(self.url,self.payload(manual_serials=''))
@@ -54,6 +87,7 @@ class InstallationInputTests(TestCase):
 
     def test_manual_multiple_parts_have_individual_serials(self):
         self.job.method='p1';self.job.save()
+        self.stock_for_manual(method='p1',lengths=(1000,500))
         response=self.client.post(self.url,self.payload(composition='1+0.5',manual_serials='ПЕРВАЯ\nВТОРАЯ'))
         self.assertEqual(response.status_code,302,response.context and response.context['form'].errors)
         self.assertEqual(set(Coupling.objects.values_list('serial','length_mm')),{('ПЕРВАЯ',1000),('ВТОРАЯ',500)})
@@ -76,12 +110,14 @@ class InstallationInputTests(TestCase):
         self.assertEqual(Report.objects.get().length_m,Decimal('1.5'))
 
     def test_success_returns_to_original_list_with_filters(self):
+        self.stock_for_manual()
         back=reverse('repairs')+'?year=2026&page=2&master='+str(self.worker.pk)
         response=self.client.post(self.url,self.payload(return_to=back),HTTP_ACCEPT='application/json')
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(response.json()['url'],back)
 
     def test_external_return_address_is_not_used(self):
+        self.stock_for_manual()
         response=self.client.post(self.url,self.payload(return_to='https://example.invalid/'),HTTP_ACCEPT='application/json')
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(response.json()['url'],reverse('work_place',args=[self.contract.pk,self.obj.pk]))
@@ -101,6 +137,7 @@ class InstallationInputTests(TestCase):
         self.assertNotIn(note,events(self.leader))
 
     def test_pending_rows_have_disabled_choices_then_submitted_result_can_be_selected(self):
+        self.stock_for_manual()
         self.client.force_login(self.leader)
         response=self.client.get(reverse('repairs'))
         self.assertContains(response,'результат ещё не передан на проверку')
@@ -124,6 +161,7 @@ class InstallationInputTests(TestCase):
         self.assertFalse(Report.objects.exists())
 
     def test_retry_with_another_factory_number_does_not_overwrite_received_result(self):
+        self.stock_for_manual()
         data=self.payload()
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         data['manual_serials']='ДРУГОЙ НОМЕР'
@@ -153,7 +191,8 @@ class InstallationInputBrowser(StaticLiveServerTestCase):
         warehouse=base.StockTests.wh(self,'Володя Барабинск')
         planning.receive(self.leader,base.StockTests.data(self,kind='coupling',unit='pcs',method='p2',length_mm=1500,wall_mm=10),warehouse,1,self.today,'Поставка',uuid.uuid4())
         item=StockItem.objects.get();item=planning.reserve(self.leader,item.pk,item.version,job.pk)
-        fixture={'reserved':str(job.pk),'manual':str(other.pk),'coupling':str(item.coupling_id)}
+        planning.receive(self.leader,base.StockTests.data(self,kind='coupling',unit='pcs',method='p2',diameter_mm=self.section.diameter_mm,length_mm=1500,wall_mm=10),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
+        fixture={'reserved':str(job.pk),'manual':str(other.pk),'coupling':str(item.coupling_id),'free':source_key(StockItem.objects.get(reserved_job__isnull=True).pk,warehouse.pk)}
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/installation-input-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_INSTALLATION':json.dumps(fixture)},capture_output=True,text=True,timeout=110)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         item.refresh_from_db();job.refresh_from_db()
@@ -168,6 +207,8 @@ class SubmissionFeedbackBrowser(StaticLiveServerTestCase):
         base.StockTests.setUpTestData.__func__(type(self))
         self.worker.set_password('123456');self.worker.save()
         job=base.StockTests.make_job(self)
+        warehouse=base.StockTests.wh(self)
+        planning.receive(self.leader,base.StockTests.data(self,kind='coupling',unit='pcs',method='p2',diameter_mm=self.section.diameter_mm,length_mm=1500,wall_mm=10),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/submission-feedback-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_REPORT_JOB':str(job.pk),'ARMADA_DRAFT_FAILURE':mode},capture_output=True,text=True,timeout=90)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         job.refresh_from_db();self.assertEqual(job.state,'reported');self.assertEqual(job.reports.count(),1)

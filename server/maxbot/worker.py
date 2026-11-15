@@ -67,6 +67,8 @@ def process(key):
                 buttons = [dialog.button('Вернуться к фотоотчёту','/фото') if draft.action=='progress' else dialog.button('Исправить черновик',f'edit:{draft.pk}')] if draft else []
                 if not valid:
                     text = 'Привязка не выполнена или доступ изменился. Проверьте профиль в ЛК.'
+                if draft and draft.action=='stockfix':
+                    buttons=[dialog.button('Начать сверку заново',f'stockfix:select:{draft.job_id}'),dialog.button('Отменить',f'stockfix:cancel:{draft.pk}')]
                 if draft and draft.action=='ddk':
                     if not isinstance(exc,ValidationError):text='Действие ДДК недоступно или устарело. Откройте актуальный список: /ддк. При изменении прав обратитесь к руководителю.'
                     buttons=[dialog.button('Вернуться к ДДК',f'ddk:resume:{draft.pk}'),dialog.button('Исправить ответы',f'ddk:edit:{draft.pk}'),dialog.button('Отменить','/отмена')]
@@ -93,6 +95,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if 'stockfix' in row.scope:
+        from .stock_reconciliation import delivery_allowed as stockfix_allowed
+        return stockfix_allowed(binding,row.scope['stockfix'])
     if row.scope.get('coupling_stock'):
         from .coupling_notices import delivery_allowed as stock_notice_allowed
         return stock_notice_allowed(binding.user, row.scope['coupling_stock'])

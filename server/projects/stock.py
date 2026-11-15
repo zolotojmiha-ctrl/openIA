@@ -233,7 +233,7 @@ def reconcile_installation(actor,job,report,selected):
         if row.item.coupling_id in selected_ids:kept.add(row.item.coupling_id);continue
         post_locked(actor,row.item,'reversal',row.quantity,None,row.source,timezone.localdate(),'Исправлен состав установленных муфт: '+str(report.pk),uuid.uuid5(report.token,'reverse:'+str(row.pk)),job,report,reverses=row,automatic=True)
     new_items=list(StockItem.objects.filter(coupling_id__in=selected_ids-kept))
-    reserved=[item for item in new_items if item.reserved_job_id==job.pk]
+    reserved=[item for item in new_items if item.reserved_job_id==job.pk and item.reservation_origin!='installation']
     if reserved:
         from . import stock_fit as fit
         remaining=fit.consume(job,[coupling for coupling in selected if coupling.pk in kept],check_diameter=False)
@@ -244,7 +244,7 @@ def reconcile_installation(actor,job,report,selected):
         if not balance:raise ValidationError('У выбранной муфты нет складского остатка. Проверьте поступление и выдачу бригаде.')
         wh=balance.warehouse
         if item.reserved_job_id and item.reserved_job_id!=job.pk:raise ValidationError('Муфта закреплена за другой работой.')
-        if item.reserved_job_id:
+        if item.reserved_job_id and item.reservation_origin!='installation':
             from .stock_planning import requirements
             from . import stock_fit as fit
             lengths=requirements(job)

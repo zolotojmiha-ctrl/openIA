@@ -96,15 +96,22 @@ class RepairsTests(TestCase):
         JobDefect.objects.create(job=cls.job,defect=cls.d1);JobDefect.objects.create(job=cls.job,defect=cls.d2)
         cls.hidden=Job.objects.create(section=cls.section2,assigned_to=cls.other,method='grind',created_by=cls.leader)
         d=Defect.objects.create(section=cls.section2,kilometre=999,number='999999');JobDefect.objects.create(job=cls.hidden,defect=d)
-        cls.c1=Coupling.objects.create(project_object=cls.obj,method='p1',length_mm=1500,serial='УЧ-001')
-        cls.c2=Coupling.objects.create(project_object=cls.obj,method='p1',length_mm=1500,serial='УЧ-002')
+        cls.c1=Coupling.objects.create(project_object=cls.obj,method='p1',length_mm=1500,wall_mm=10,serial='УЧ-001')
+        cls.c2=Coupling.objects.create(project_object=cls.obj,method='p1',length_mm=1500,wall_mm=10,serial='УЧ-002')
         cls.foreign=Coupling.objects.create(project_object=cls.obj2,method='p1',length_mm=1500,serial='ЧУЖАЯ-МУФТА')
+        from projects import stock,stock_planning
+        warehouse=stock.save_warehouse(cls.leader,None,None,{'name':'ТЕСТ склад','location':'ТЕСТ','project_object':cls.obj,'brigade_assignment':None,'archived':False})
+        for index,coupling in enumerate((cls.c1,cls.c2)):
+            item=stock.save_item(cls.leader,None,None,{'sku':'ТЕСТ-'+str(index),'name':'ТЕСТ муфта','kind':'coupling','unit':'pcs','method':'p1','diameter_mm':cls.section.diameter_mm,'length_mm':1500,'wall_mm':10,'coupling':coupling,'archived':False})
+            stock.move(cls.leader,item.pk,'receipt',1,None,warehouse.pk,timezone.localdate(),'ТЕСТ',uuid.uuid4())
+        stock_planning.receive(cls.leader,{'sku':'ТЕСТ СВОБОДНО','name':'ТЕСТ муфта','kind':'coupling','unit':'pcs','method':'p1','diameter_mm':cls.section.diameter_mm,'length_mm':1500,'wall_mm':10,'coupling':None,'archived':False},warehouse,6,timezone.localdate(),'ТЕСТ',uuid.uuid4())
+
     def setUp(self):
         self.root=tempfile.TemporaryDirectory();self.settings=override_settings(PRIVATE_DOCUMENT_ROOT=self.root.name);self.settings.enable()
         self.addCleanup(self.settings.disable);self.addCleanup(self.root.cleanup)
         self.client.force_login(self.worker)
     def payload(self,**changes):
-        data={'actual_coating_length_m':'2.4','token':str(uuid.uuid4()),'expected_version':1,'performed_date':timezone.localdate().isoformat(),'outcome':'complete','method':'p1','length_m':'3','composition':'1,5+1,5','couplings':[str(self.c1.pk),str(self.c2.pk)]}
+        data={'wall_mm':'10','actual_coating_length_m':'2.4','token':str(uuid.uuid4()),'expected_version':1,'performed_date':timezone.localdate().isoformat(),'outcome':'complete','method':'p1','length_m':'3','composition':'1,5+1,5','couplings':[str(self.c1.pk),str(self.c2.pk)]}
         data.update(changes);return data
     def send(self,action='result',data=None,job=None,**changes):
         return self.client.post(reverse('repair_report',args=[(job or self.job).pk,action]),data if data is not None else self.payload(**changes))
@@ -296,7 +303,7 @@ class RepairsTests(TestCase):
     def simple_payload(self, **changes):
         token=str(uuid.uuid4())
         parts=self.job.composition.split('+') if self.job.composition else [self.job.length_m]
-        data={'token':token,'actual_coating_length_m':'2.4','expected_version':self.job.version,'performed_date':timezone.localdate().isoformat(),'length_m':str(self.job.length_m or ''),'composition':self.job.composition,'manual_serials':'\n'.join('ФАКТ-'+token[:8]+'-'+str(n) for n in range(len(parts)))}
+        data={'wall_mm':'10','token':token,'actual_coating_length_m':'2.4','expected_version':self.job.version,'performed_date':timezone.localdate().isoformat(),'length_m':str(self.job.length_m or ''),'composition':self.job.composition,'manual_serials':'\n'.join('ФАКТ-'+token[:8]+'-'+str(n) for n in range(len(parts)))}
         data.update(changes)
         if 'latitude' in data and 'longitude' in data:
             data['coordinates']=str(data.pop('latitude'))+', '+str(data.pop('longitude'))
@@ -308,6 +315,9 @@ class RepairsTests(TestCase):
             self.assertContains(response,text)
         self.assertNotContains(response,'999999')
     def test_simple_result_requires_coordinates_uses_actual_length_and_keeps_method(self):
+        from projects import stock_planning
+        from projects.models import Warehouse
+        stock_planning.receive(self.leader,{'sku':'ТЕСТ','name':'ТЕСТ','kind':'coupling','unit':'pcs','method':'p1','diameter_mm':self.section.diameter_mm,'length_mm':2000,'wall_mm':10,'archived':False},Warehouse.objects.get(name='ТЕСТ склад'),2,timezone.localdate(),'ТЕСТ',uuid.uuid4())
         response=self.send('repaired',self.simple_payload())
         self.assertIn('coordinates',response.context['form'].errors)
         self.assertEqual(Report.objects.count(),0)
@@ -393,7 +403,10 @@ class RepairsTests(TestCase):
         self.assertEqual(jobs[0].wall_mm,Decimal('10'))
         self.client.force_login(self.worker)
         for job,coordinates in zip(jobs,['56.1, 73.1','57.2, 74.2']):
-            data=self.simple_payload(coordinates=coordinates);data.update(expected_version=job.version,length_m=str(job.length_m),composition=job.composition,manual_serials='ИМПОРТ-'+str(job.pk))
+            from projects import stock_planning
+            from projects.models import Warehouse
+            stock_planning.receive(self.leader,{'sku':'ТЕСТ','name':'ТЕСТ','kind':'coupling','unit':'pcs','method':job.method,'diameter_mm':job.section.diameter_mm,'length_mm':int(job.length_m*1000),'wall_mm':int(job.wall_mm),'archived':False},Warehouse.objects.get(name='ТЕСТ склад'),1,timezone.localdate(),'ТЕСТ',uuid.uuid4())
+            data=self.simple_payload(coordinates=coordinates);data.update(wall_mm=str(job.wall_mm),expected_version=job.version,length_m=str(job.length_m),composition=job.composition,manual_serials='ИМПОРТ-'+str(job.pk))
             self.assertEqual(self.send('repaired',data,job=job).status_code,302)
         self.assertEqual(jobs[0].reports.get().latitude,Decimal('56.1'))
         self.assertEqual(jobs[1].reports.get().latitude,Decimal('57.2'))

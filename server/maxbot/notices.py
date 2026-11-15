@@ -18,7 +18,7 @@ def leader_notice(sender, instance, created, **kwargs):
         from .rental_notices import queue_event
         queue_event(instance)
     if (not settings.ARMADA_MAX_ENABLED or not created or
-            instance.action not in ('repair_reported', 'equipment_updated', 'repair_prepared','equipment_issue')):
+            instance.action not in ('repair_reported', 'repair_stock_reconciled', 'equipment_updated', 'repair_prepared','equipment_issue')):
         return
     from .coupling_notices import queue_event
     queue_event(instance)

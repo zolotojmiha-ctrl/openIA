@@ -60,12 +60,14 @@ class MaxTests(TestCase):
 
     def fill(self, draft, values=None):
         values = values or {}
-        for name in draft.fields:
+        for _ in range(100):
+            if draft.state!='editing':break
+            name=draft.fields[draft.step]
             form = dialog.form_for(draft, self.worker)
             field = form.fields[name]
             value = values.get(name, {'performed_date': str(timezone.localdate()), 'coordinates': '55.123456, 73.123456',
                                       'note': 'ТЕСТ результат', 'problem': 'water', 'length_m': '1.5',
-                                      'actual_coating_length_m':'2.400', 'manual_serials': 'ТЕСТ-001'}.get(name, ''))
+                                      'wall_mm':str(self.job.wall_mm or 8),'stock_source_0':'auto','stock_source_1':'auto', 'actual_coating_length_m':'2.400', 'manual_serials': 'ТЕСТ-001'}.get(name, ''))
             self.event(str(value))
             draft.refresh_from_db()
         self.assertEqual(draft.state, 'photos')
@@ -414,6 +416,10 @@ class MaxTests(TestCase):
     def test_manual_p2_report_preserves_serials_and_actual_length(self):
         self.job.method = 'p2'; self.job.length_m = '1.000'; self.job.wall_mm = 8
         self.job.save()
+        from projects import stock_planning
+        warehouse=fixture.StockTests.wh(self,project_object=self.obj)
+        for length in (1000,1500,1500,2000):
+            stock_planning.receive(self.leader,fixture.StockTests.data(self,kind='coupling',unit='pcs',method=self.job.method,diameter_mm=self.section.diameter_mm,length_mm=length,wall_mm=int(self.job.wall_mm or 8)),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
         draft = self.fill(self.draft(), {'length_m': '1.500', 'composition': '', 'manual_serials': 'ТЕСТ-П2-1500'})
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
         self.assertEqual(Report.objects.count(), 1)
@@ -424,6 +430,10 @@ class MaxTests(TestCase):
     def test_manual_composite_p1_preserves_each_number_and_length(self):
         self.job.method = 'p1'; self.job.length_m = '2.500'; self.job.wall_mm = 8
         self.job.save()
+        from projects import stock_planning
+        warehouse=fixture.StockTests.wh(self,project_object=self.obj)
+        for length in (1000,1500,1500,2000):
+            stock_planning.receive(self.leader,fixture.StockTests.data(self,kind='coupling',unit='pcs',method=self.job.method,diameter_mm=self.section.diameter_mm,length_mm=length,wall_mm=int(self.job.wall_mm or 8)),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
         draft = self.fill(self.draft(), {'length_m': '2.500', 'composition': '1.0+1.5',
                                         'manual_serials': 'ТЕСТ-П1-001\nТЕСТ-П1-002'})
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
@@ -552,6 +562,9 @@ class MaxTests(TestCase):
     def test_p1_actual_coating_length_is_preserved(self):
         self.section.diameter_mm = 720; self.section.save()
         self.job.method = 'p1'; self.job.length_m = '1.000'; self.job.wall_mm = 8; self.job.save()
+        from projects import stock_planning
+        warehouse=fixture.StockTests.wh(self,project_object=self.obj)
+        stock_planning.receive(self.leader,fixture.StockTests.data(self,kind='coupling',unit='pcs',method='p1',diameter_mm=720,length_mm=1000,wall_mm=8),warehouse,1,self.today,'ТЕСТ поступление',uuid.uuid4())
         draft = self.draft()
         self.assertIn('actual_coating_length_m', draft.fields)
         self.assertNotIn('actual_cleaning_length_m', draft.fields)

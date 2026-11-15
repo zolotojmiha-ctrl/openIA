@@ -267,7 +267,7 @@ def report(request,pk,action):
         progress_contract=contract_card(job.contract,request.user)['title'] if job.contract_id else 'Без контракта'
         from .progress import ProgressForm
         form=ProgressForm(request.POST or None,request.FILES or None,job=job,user=request.user)
-    else:form=ReportForm(request.POST or None,request.FILES or None,job=job,action=action,user=request.user)
+    else:form=ReportForm(request.POST or None,request.FILES or None,job=job,action=action,user=request.user,initial={'installation_override':'yes'} if request.GET.get('actual')=='1' else {})
     status=200
     if request.method=='POST' and form.is_valid():
         try:

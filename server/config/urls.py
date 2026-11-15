@@ -1,3 +1,4 @@
+from repairs import stock_reconciliation_views
 from projects import stock_exchange
 from projects import stock_group_views
 from projects import stock_planning_views
@@ -176,6 +177,8 @@ urlpatterns=[
  path('cabinet/contract-changes/<uuid:pk>/',changes.detail,name='contract_change'),
  path('cabinet/repairs/',repairs.jobs,name='repairs'),
  path('cabinet/repairs/completed/',completion_views.completed,name='repair_completed'),
+ path('cabinet/repairs/<uuid:pk>/stock-sources/',stock_reconciliation_views.sources,name='repair_stock_sources'),
+ path('cabinet/repairs/<uuid:pk>/stock-reconcile/',stock_reconciliation_views.reconcile,name='repair_stock_reconcile'),
  path('cabinet/repairs/<uuid:pk>/ddk/',ddk.revise,name='repair_ddk'),
  path('cabinet/repairs/drafts/',repairs.local_drafts,name='repair_drafts'),
  path('cabinet/repairs/template.xlsx',repair_excel.template,name='repair_excel_template'),

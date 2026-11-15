@@ -67,10 +67,26 @@ def report_work(user,job_id,action,data):
             if action=='result' and 'installation' in data:
                 from .installation_input import apply as apply_installation
                 selected=apply_installation(current,job,data['installation'],selected)
+                from decimal import Decimal
+                if (any(c.method!=data.get('method') for c in selected) or
+                        sum(c.length_mm for c in selected)!=Decimal(str(data.get('length_m') or 0))*1000):
+                    raise ValidationError('Фактический тип или длина отчёта не совпадают с установленными муфтами.')
             if current.role=='subcontractor' and selected and not (action=='result' and data.get('installation',{}).get('kind')=='manual'):
                 from projects.stock import prepared_couplings
                 allowed={c.pk for c in prepared_couplings(job)}|set(CouplingUse.objects.filter(job=job).values_list('coupling_id',flat=True))
                 if any(c.pk not in allowed for c in selected):raise PermissionDenied
+            if action in ('result','correction') and 'installation' not in data:
+                from projects.models import StockItem
+                from .installation_stock import resolve
+                normalized=[]
+                for coupling in selected:
+                    linked=StockItem.objects.filter(coupling=coupling).first()
+                    if (not linked or linked.reserved_job_id not in (None,job.pk)) and not (current.is_leader and coupling.source.get('historical_installation')):
+                        coupling,binding=resolve(current,job,{'serial':coupling.serial,'length_mm':coupling.length_mm},coupling.method,coupling.wall_mm)
+                        coupling._stock_binding=binding
+                    normalized.append(coupling)
+                selected=normalized
+            stock_bindings=[c._stock_binding for c in selected if getattr(c,'_stock_binding',None)]
             old_ids=list(CouplingUse.objects.filter(job=job).values_list('coupling_id',flat=True)) if action in ('result','correction') else []
             locked=list(Coupling.objects.select_for_update().filter(pk__in=set([c.pk for c in selected]+old_ids)).order_by('pk'))
             couplings=[c for c in locked if c.pk in {s.pk for s in selected} and c.project_object_id==job.section.project_object_id]
@@ -86,7 +102,7 @@ def report_work(user,job_id,action,data):
                 method=data.get('method',''),length_m=data.get('length_m'),composition=data.get('composition',''),note=data.get('note',''),problem=data.get('problem',''),
                 latitude=data.get('latitude'),longitude=data.get('longitude'),outcome=data.get('outcome',''),
                 coupling_snapshot=[{'id':str(c.pk),'serial':c.serial,'method':c.get_method_display(),'length_mm':c.length_mm,'wall_mm':str(c.wall_mm or ''),'warehouse':c.warehouse} for c in couplings],
-                context={**({'progress':data['progress']} if data.get('progress') is not None else {}),'actual_coating_length_m':str(data['actual_coating_length_m']) if data.get('actual_coating_length_m') is not None else None,'actual_cleaning_length_m':str(data['actual_cleaning_length_m']) if data.get('actual_cleaning_length_m') is not None else None,**({'installation':data['installation']} if 'installation' in data else {}),'subcontract':{'order':str(job.subcontract_order_id),'company':str(job.subcontract_order.company_id),'name':job.subcontract_order.company.name} if job.subcontract_order_id else None,'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.active_defects],'crew':{'assignment':str(job.crew_assignment_id),'name':job.crew_assignment.brigade.name,'roster':job.crew_assignment.roster} if job.crew_assignment_id else None,'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
+                context={**({'stock_bindings':stock_bindings} if stock_bindings else {}),**({'progress':data['progress']} if data.get('progress') is not None else {}),'actual_coating_length_m':str(data['actual_coating_length_m']) if data.get('actual_coating_length_m') is not None else None,'actual_cleaning_length_m':str(data['actual_cleaning_length_m']) if data.get('actual_cleaning_length_m') is not None else None,**({'installation':data['installation']} if 'installation' in data else {}),'subcontract':{'order':str(job.subcontract_order_id),'company':str(job.subcontract_order.company_id),'name':job.subcontract_order.company.name} if job.subcontract_order_id else None,'defects':[{'number':d.number,'km':d.km,'section':d.pipe_section} for d in job.active_defects],'crew':{'assignment':str(job.crew_assignment_id),'name':job.crew_assignment.brigade.name,'roster':job.crew_assignment.roster} if job.crew_assignment_id else None,'planned_method':job.method,'planned_length':str(job.length_m or ''),'planned_composition':job.composition,'planned_wall_mm':str(job.wall_mm) if job.wall_mm is not None else None})
             for datafile in data.get('files',[]):
                 key=store_file(datafile);stored.append(key)
                 Attachment.objects.create(report=report,storage_key=key,**{k:datafile[k] for k in ['name','content_type','size','sha256']})
@@ -97,6 +113,15 @@ def report_work(user,job_id,action,data):
                 # Current installation can be corrected; old report snapshots remain immutable.
                 CouplingUse.objects.filter(job=job).exclude(coupling__in=couplings).delete()
                 for coupling in couplings:CouplingUse.objects.update_or_create(coupling=coupling,defaults={'job':job,'report':report})
+                if data.get('installation',{}).get('override') and data.get('outcome')=='complete':
+                    from projects.models import StockItem
+                    unused=list(StockItem.objects.filter(reserved_job=job).exclude(coupling_id__in=[c.pk for c in couplings]).filter(coupling__installation__isnull=True))
+                    for item in unused:
+                        item.reserved_job=None;item.reservation_origin='';item.version+=1;item.save(update_fields=['reserved_job','reservation_origin','version'])
+                        audit(current,'stock_reserved',item=str(item.pk),job='',previous_job=str(job.pk),kind='released_after_actual_installation',report_id=str(report.pk))
+                    if unused:
+                        report.context['released_stock_reservations']=[str(item.pk) for item in unused]
+                        report.save(update_fields=['context'])
                 from projects.repair_materials import reconcile as reconcile_materials
                 reconcile_materials(current,job,report,couplings)
                 job.state='reported' if data['outcome']=='complete' else 'partial'

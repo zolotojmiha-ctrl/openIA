@@ -32,23 +32,22 @@ def apply(actor,job,facts,selected):
             from django.db.models import F
             StockItem.objects.filter(coupling=c).update(serial=serial,version=F('version')+1)
         return list(by_id.values())
-    if facts.get('kind')!='manual' or prepared:raise ValidationError('На работу закреплены складские муфты. Используйте их размеры и заводские номера.')
+    if facts.get('kind')!='manual' or (prepared and facts.get('override') is not True):raise ValidationError('На работу закреплены складские муфты. Используйте их размеры и заводские номера.')
     pieces=facts.get('pieces',[])
     if not isinstance(pieces,list) or not 1<=len(pieces)<=30:raise ValidationError('Укажите от 1 до 30 установленных муфт.')
     if job.method=='p2' and len(pieces)>1:raise ValidationError('П2 нельзя стыковать: нужна одна цельная муфта.')
+    from .installation_stock import resolve
+    from .coupling_fields import WholeWallField
+    wall=WholeWallField(min_value=1,max_digits=4,decimal_places=0).clean(facts.get('wall_mm'))
+    method=facts.get('method') or job.method
+    if method!=job.method:raise ValidationError('Тип конструкции изменился. Сначала сохраните изменение по ДДК.')
+    if method not in ('p1','p2','p3','p4','p5u'):
+        raise ValidationError('Выберите фактический тип муфты.')
     result=[]
     for piece in pieces:
-        serial=str(piece.get('serial','')).strip();length=piece.get('length_mm')
-        if not serial or len(serial)>100 or not isinstance(length,int) or length<=0:raise ValidationError('Для каждой муфты нужны фактическая длина и заводской номер.')
-        c=Coupling.objects.filter(project_object=job.section.project_object,method=job.method,serial=serial).first()
-        if c:
-            if actor.role=='subcontractor' and not CouplingUse.objects.filter(coupling=c,job=job).exists():raise ValidationError('Этот заводской номер уже есть в реестре. Попросите ответственного закрепить муфту за этой работой.')
-            if c.length_mm!=length:raise ValidationError('Этот заводской номер уже относится к муфте другой длины. Проверьте сведения.')
-            if CouplingUse.objects.filter(coupling=c).exclude(job=job).exists():raise ValidationError('Муфта с этим заводским номером уже установлена на другой работе.')
-        else:
-            if StockItem.objects.filter(legal_entity=job.section.project_object.legal_entity,method=job.method,serial=serial,deleted_at__isnull=True).exists():raise ValidationError('Этот заводской номер уже числится на складе. Сначала закрепите складскую муфту за дефектом.')
-            c=Coupling(project_object=job.section.project_object,method=job.method,length_mm=length,wall_mm=job.wall_mm,serial=serial,source={'reported_without_stock':True})
-            c.full_clean();c.save()
-        if c.pk in {item.pk for item in result}:raise ValidationError('Заводские номера муфт не должны повторяться.')
-        result.append(c)
+        coupling,binding=resolve(actor,job,piece,method,wall)
+        if coupling.pk in {item.pk for item in result}:
+            raise ValidationError('Заводские номера муфт не должны повторяться.')
+        coupling._stock_binding=binding
+        result.append(coupling)
     return result

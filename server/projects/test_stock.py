@@ -111,8 +111,10 @@ class StockTests(TestCase):
         c,i=self.concrete();j=self.make_job()
         with self.assertRaises(ValidationError):self.report(j,[c])
         self.assertFalse(j.reports.exists());self.assertFalse(CouplingUse.objects.exists());j.refresh_from_db();self.assertEqual(j.state,'planned')
-    def test_legacy_couplings_do_not_invent_stock(self):
-        c=Coupling.objects.create(project_object=self.obj,method='p2',length_mm=1000,wall_mm=8,serial='LEGACY',warehouse='Старый склад');j=self.make_job();self.report(j,[c]);self.assertFalse(StockMovement.objects.exists());self.assertFalse(StockBalance.objects.exists())
+    def test_unlinked_coupling_cannot_claim_installation_without_stock(self):
+        c=Coupling.objects.create(project_object=self.obj,method='p2',length_mm=1000,wall_mm=8,serial='LEGACY',warehouse='Старый склад');j=self.make_job()
+        with self.assertRaises(ValidationError):self.report(j,[c])
+        self.assertFalse(StockMovement.objects.exists());self.assertFalse(StockBalance.objects.exists())
     def test_installed_couplings_cannot_be_moved_or_linked_as_new_stock(self):
         c,i=self.concrete();a=self.wh(project_object=self.obj);self.move(i,q=1,dst=a);j=self.make_job();self.report(j,[c]);b=self.wh('Б')
         with self.assertRaises(ValidationError):self.move(i,'transfer',1,a,b)

@@ -1,0 +1,13 @@
+{% extends "accounts/base.html" %}
+{% block content %}
+<h1>Сверка расхода муфт</h1>
+<p>Сохранённый монтаж остаётся в истории. Операция добавит только недостающее складское списание.</p>
+<p>{{ job.section }} · {{ job.contract }}</p>
+{{ form.non_field_errors }}
+{% if facts %}
+<h2>Проверьте перед подтверждением</h2>
+{% for row in facts.rows %}<p>№{{ row.serial }} · {{ row.method_label }} · {{ row.length_mm }} × {{ row.wall_mm }} мм · 1 шт.<br>Склад: {{ row.warehouse_name }}{% if row.previous_job and row.previous_job != facts.job %}<br>Резерв другой работы будет снят. По прежней работе потребуется замена.{% endif %}</p>{% endfor %}
+<form method="post">{% csrf_token %}<input type="hidden" name="stage" value="confirm"><input type="hidden" name="preview" value="{{ preview }}"><button class="button">Подтвердить списание</button></form>
+{% else %}<form method="post">{% csrf_token %}{{ form.as_p }}<button class="button">Проверить списание</button></form>{% endif %}
+<p><a href="{% url 'repair_detail' job.pk %}">Отмена — вернуться к ремонту</a></p>
+{% endblock %}
