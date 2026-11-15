@@ -12,5 +12,8 @@
   "data_and_settings_preserved_owner_confirmed": true,
   "previously_active_maxworker_resumed_owner_confirmed": true,
   "agent_direct_production_verification": false,
-  "legacy_stock_reconciliation_confirmed": false
+  "legacy_stock_reconciliation_confirmed": true,
+  "legacy_stock_reconciliation_evidence": "owner replied «Всё работает» after installation and reconciliation instructions",
+  "post_installation_operation_owner_confirmed": true,
+  "all_roles_and_features_independently_verified": false
 }
