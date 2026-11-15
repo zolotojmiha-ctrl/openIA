@@ -6,5 +6,11 @@
   "outer_signature": "OK",
   "inner_signature": "OK",
   "all_signed_checksums": "OK",
-  "production_installed": false
+  "production_installed": true,
+  "installation_evidence": "owner supplied successful installer completion output",
+  "installation_confirmed_date_omsk": "2026-11-16",
+  "data_and_settings_preserved_owner_confirmed": true,
+  "previously_active_maxworker_resumed_owner_confirmed": true,
+  "agent_direct_production_verification": false,
+  "legacy_stock_reconciliation_confirmed": false
 }
