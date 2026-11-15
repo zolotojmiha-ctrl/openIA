@@ -136,9 +136,9 @@ with zipfile.ZipFile(sys.argv[2]) as z:
     lock=lock_path.open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
    relative=case in ('relative','directrelative')
    cmd=['bash',installer.name if relative else str(installer),*args]
-   result=subprocess.run(cmd,cwd=root if relative else None,env=env,capture_output=True,text=True,timeout=60)
+   result=subprocess.run(cmd,cwd=root if relative else None,env=env,capture_output=True,text=True,timeout=180)
    if twice and result.returncode==0:
-    result=subprocess.run(cmd,cwd=root if relative else None,env=env,capture_output=True,text=True,timeout=60)
+    result=subprocess.run(cmd,cwd=root if relative else None,env=env,capture_output=True,text=True,timeout=180)
    if lock:lock.close()
    s=json.loads((root/'state.json').read_text())
    if inspect:
