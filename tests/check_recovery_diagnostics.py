@@ -8,6 +8,13 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class DiagnosticTests(unittest.TestCase):
     args=['--archive','/synthetic/archive.encrypted','--receipt','/synthetic/receipt.json']
+    def test_space_error_category_never_prints_private_filename(self):
+        import errno
+        output=io.StringIO()
+        with contextlib.redirect_stdout(output),patch.object(m.verify_backup,'verify',side_effect=OSError(errno.ENOSPC,'PRIVATE MESSAGE','PRIVATE PATH')):
+            self.assertEqual(m.main(self.args),1)
+        self.assertIn('errno=28',output.getvalue())
+        self.assertNotIn('PRIVATE',output.getvalue())
     def test_private_exception_message_is_not_printed(self):
         output=io.StringIO()
         with contextlib.redirect_stdout(output),patch.object(m.verify_backup,'verify',side_effect=ValueError('PRIVATE-KEY-BODY-SHOULD-NOT-APPEAR')):

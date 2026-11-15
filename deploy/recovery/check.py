@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the unchanged verifier with phase/error categories, never private output."""
 import argparse
+import errno
 from pathlib import Path
 import sys
 import traceback
@@ -55,6 +56,11 @@ def main(argv=None):
     except Exception as error:
         print('Проверка остановлена. Этап: '+state['stage'])
         print('Тип ошибки: '+type(error).__name__)
+        # Fixed labels only: exception messages and filenames can contain secrets.
+        if isinstance(error,OSError):
+            labels={errno.ENOSPC:'недостаточно временного места',errno.ENOMEM:'нехватка памяти',errno.EACCES:'отказ в доступе',errno.EROFS:'файловая система только для чтения'}
+            if error.errno in labels:
+                print('Категория: '+labels[error.errno]+' (errno='+str(error.errno)+')')
         if state['last_error']:
             print('Код Docker: '+str(state['last_error'][0])+'; '+state['last_error'][1])
         allowed={'verify_backup.py','backup_manifest.py','disk_crypto.py'}
