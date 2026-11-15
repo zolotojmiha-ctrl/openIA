@@ -6,6 +6,10 @@
   "inner_signature_verified": true,
   "inner_checksums_verified": true,
   "ready_for_install": true,
-  "production_installed": false,
-  "restoration_evidence": "Owner returned signed result after local real-backup verification; private data not received."
+  "production_installed": true,
+  "restoration_evidence": "Owner returned signed result after local real-backup verification; private data not received.",
+  "production_confirmation_source": "Owner-provided successful installer output",
+  "direct_production_verification": false,
+  "max_worker_resumed_reported": true,
+  "confirmation_recorded_at_omsk": "2026-11-15T18:11:53+06:00"
 }
