@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix='armada-backup-proof-') as td:
  try:
   run(['run','--detach','--pull','never','--name',name,'--network','none','--env','POSTGRES_HOST_AUTH_METHOD=trust','--tmpfs','/var/lib/postgresql/data:rw,size=512m','postgres:17-bookworm','-c','shared_buffers=32MB','-c','max_wal_size=64MB'])
   for _ in range(80):
-   try:run(['exec',name,'pg_isready','-U','postgres']);break
+   try:run(['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']);break
    except subprocess.CalledProcessError:time.sleep(.25)
   run(['exec',name,'psql','-U','postgres','-c',"CREATE TABLE synthetic(id integer PRIMARY KEY, label text); INSERT INTO synthetic VALUES (1,'TEST'),(2,'TEST');"])
   (stage/'database.dump').write_bytes(run(['exec',name,'pg_dump','-U','postgres','-Fc','--no-owner','--no-acl','postgres']))
@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='armada-backup-proof-') as td:
  finally:subprocess.run(cli+['rm','--force','--volumes',name],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  for file in ('config.tar','documents.tar'):
   with tarfile.open(stage/file,'w') as tar:
-   data=b'SYNTHETIC ONLY';i=tarfile.TarInfo('fixture');i.size=len(data);i.mode=0o600;i.uid=i.gid=10001;tar.addfile(i,io.BytesIO(data))
+   data=b'SYNTHETIC ONLY';i=tarfile.TarInfo('nested/fixture');i.size=len(data);i.mode=0o600;i.uid=i.gid=10001;tar.addfile(i,io.BytesIO(data))
  capture(stage)
  names=['database.dump','config.tar','documents.tar','row-counts.json','content-sha256.json']
  (stage/'SHA256SUMS').write_text(''.join(hashlib.sha256((stage/n).read_bytes()).hexdigest()+'  '+n+'\n' for n in names))

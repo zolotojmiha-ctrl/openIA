@@ -17,7 +17,7 @@ def verify(archive,receipt,private=None,image='postgres:17-bookworm'):
     env=os.environ.copy()
     for k in ('DOCKER_HOST','DOCKER_CONTEXT','DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'):env.pop(k,None)
     cli=['docker','--host=unix:///var/run/docker.sock']
-    name='armada-verify-'+uuid.uuid4().hex
+    container_name='armada-verify-'+uuid.uuid4().hex
     def run(args,**kw):
         r=subprocess.run(cli+args,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180,**kw)
         if r.returncode:raise RuntimeError('Isolated restore command failed; no private output shown')
@@ -62,18 +62,20 @@ def verify(archive,receipt,private=None,image='postgres:17-bookworm'):
             for name,info in expected[file].items():
                 if sha(target/name)!=info['sha256']:raise ValueError('Restored file mismatch')
         try:
-            run(['run','--detach','--pull','never','--name',name,'--network','none','--memory','512m','--env','POSTGRES_HOST_AUTH_METHOD=trust','--tmpfs','/var/lib/postgresql/data:rw,size=768m',image,'-c','shared_buffers=32MB','-c','max_wal_size=64MB'])
+            run(['run','--detach','--pull','never','--name',container_name,'--network','none','--memory','512m','--env','POSTGRES_HOST_AUTH_METHOD=trust','--tmpfs','/var/lib/postgresql/data:rw,size=768m',image,'-c','shared_buffers=32MB','-c','max_wal_size=64MB'])
             ready=False
             for _ in range(80):
-                try:run(['exec',name,'pg_isready','-U','postgres']);ready=True;break
+                # The entrypoint's temporary init server accepts Unix sockets too.
+                # TCP becomes ready only when the final server has started.
+                try:run(['exec',container_name,'pg_isready','-h','127.0.0.1','-U','postgres']);ready=True;break
                 except RuntimeError:time.sleep(.25)
             if not ready:raise RuntimeError('Isolated PostgreSQL did not start')
-            with (work/'database.dump').open('rb') as dump:run(['exec','-i',name,'pg_restore','--exit-on-error','--no-owner','--no-acl','-U','postgres','-d','postgres'],stdin=dump)
+            with (work/'database.dump').open('rb') as dump:run(['exec','-i',container_name,'pg_restore','--exit-on-error','--no-owner','--no-acl','-U','postgres','-d','postgres'],stdin=dump)
             sql=(Path(__file__).with_name('backup_counts.sql')).read_text()
-            actual=json.loads(run(['exec',name,'psql','-U','postgres','-d','postgres','-At','-c',sql]))
+            actual=json.loads(run(['exec',container_name,'psql','-U','postgres','-d','postgres','-At','-c',sql]))
             if actual!=counts:raise ValueError('Restored row counts differ')
         finally:
-            subprocess.run(cli+['rm','--force','--volumes',name],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+            subprocess.run(cli+['rm','--force','--volumes',container_name],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
         result={'restored':True,'archive':Path(archive).name,'sha256':sha(archive),'verified_at':int(time.time()),'tables':len(counts),'files':sum(map(len,expected.values()))}
         # No key, row details, paths from documents or production credentials.
         fd=os.open(receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
