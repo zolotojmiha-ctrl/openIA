@@ -272,13 +272,19 @@ for role,path,size in needs:
     if result.returncode or len(lines)<2:fail('Не удалось измерить свободное место: '+role+'.')
     fields=lines[1].split()
     if len(fields)<6 or not fields[3].isdigit():fail('Не удалось измерить свободное место: '+role+'.')
-    key=(fields[0],' '.join(fields[5:]))
-    entry=groups.setdefault(key,{'avail':int(fields[3])*1024,'need':0,'roles':[]})
+    # Bind mounts of the same device have different targets but share capacity.
+    # Repeated generic sources (e.g. overlay) are grouped conservatively too:
+    # overestimation is preferable to counting one pool of free bytes twice.
+    key=fields[0]
+    mount=' '.join(fields[5:])
+    entry=groups.setdefault(key,{'avail':int(fields[3])*1024,'need':0,'roles':[],'mounts':[]})
+    entry['avail']=min(entry['avail'],int(fields[3])*1024)
+    if mount not in entry['mounts']:entry['mounts'].append(mount)
     entry['need']+=size;entry['roles'].append(role)
 short=[]
-for (device,mount),entry in groups.items():
+for device,entry in groups.items():
     required=math.ceil(entry['need']*MARGIN_NUM/MARGIN_DEN)+RESERVE
-    line='  том %s: нужно не менее %d МиБ, доступно %d МиБ (%s)'%(mount,math.ceil(required/MIB),entry['avail']//MIB,'; '.join(entry['roles']))
+    line='  том %s: нужно не менее %d МиБ, доступно %d МиБ (%s)'%(', '.join(entry['mounts']),math.ceil(required/MIB),entry['avail']//MIB,'; '.join(entry['roles']))
     print(line)
     if entry['avail']<required:short.append(line)
 if short:

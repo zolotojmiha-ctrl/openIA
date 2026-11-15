@@ -66,8 +66,9 @@ save()
 DF=r'''#!/usr/local/bin/python3
 import json,os,sys
 path=sys.argv[-1];spec=json.loads(os.environ.get('DF_SPEC','{}'))
-mount,avail=spec.get(path,['/',999999999])
-print('Filesystem 1024-blocks Used Available Capacity Mounted on');print('fixture 1000 900 %d 90%% %s'%(avail,mount))
+entry=spec.get(path,['/',999999999]);mount,avail=entry[:2]
+device=entry[2] if len(entry)>2 else 'fixture'+mount.replace('/','_')
+print('Filesystem 1024-blocks Used Available Capacity Mounted on');print('%s 1000 900 %d 90%% %s'%(device,avail,mount))
 '''
 
 class InstallerTests(unittest.TestCase):
@@ -216,6 +217,9 @@ class SpaceTests(unittest.TestCase):
   # Each role fits alone (backup 1.5 GiB, app 0.7 GiB) but the shared volume must carry the sum.
   gib=1024*1024
   self.short('space_shared',lambda r:{str(r/'vol-b'):['/shared',int(1.6*gib)],str(r):['/shared',int(1.6*gib)]},env_extra=lambda r:{'DB_BYTES':str(400*1048576)},big_mib=150)
+ def test_bind_mount_aliases_sum_costs_on_same_device(self):
+  gib=1024*1024
+  self.short('space_bind_alias',lambda r:{str(r/'vol-b'):['/backup-bind',int(1.6*gib),'shared-device'],str(r):['/app-bind',int(1.6*gib),'shared-device']},env_extra=lambda r:{'DB_BYTES':str(400*1048576)},big_mib=150)
  def test_measurement_error_refuses(self):
   self.run_case('measurefail',True,inspect=lambda t,r,s,root,app,o:no_side_effects(t,r,s,app,o,'Не удалось измерить'))
  def test_sufficient_space_and_separate_volumes_pass(self):
