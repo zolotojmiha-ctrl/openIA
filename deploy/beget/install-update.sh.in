@@ -473,5 +473,7 @@ if (( max_was_running )); then
 fi
 completed=1
 set_phase complete || printf 'Не удалось записать фазу complete; установка при этом проверена.\n' >&2
-printf '\nОбновление __VERSION__ установлено. Данные и настройки сохранены.\nКаталог recovery: %s\nВНИМАНИЕ: он содержит закрытые настройки (.env) и копию прежнего дерева. Не публиковать и не загружать в облако. Автоматически не удаляется; порядок ручной очистки: RELEASE_6_33_1.md.\n' "$recovery"
+target_release_version=__VERSION__
+target_release_doc="RELEASE_${target_release_version//./_}.md"
+printf '\nОбновление __VERSION__ установлено. Данные и настройки сохранены.\nКаталог recovery: %s\nВНИМАНИЕ: он содержит закрытые настройки (.env) и копию прежнего дерева. Не публиковать и не загружать в облако. Автоматически не удаляется; порядок ручной очистки: %s.\n' "$recovery" "$target_release_doc"
 if (( max_was_running )); then printf 'Ранее работавший MAX-worker возобновлён.\n'; else printf 'MAX-worker не включался автоматически. Настройка и пилот — отдельный шаг.\n'; fi
