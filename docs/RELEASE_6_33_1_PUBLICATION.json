@@ -1,0 +1,11 @@
+{
+  "publication_commit": "8bf06b4ab09385da3f6d3c38b7393ea844510160",
+  "source_commit": "a31400fad1fa63476f978a042cf046a83c600daa",
+  "outer_sha256": "9c079db192d44fd11603cdc1fe849c0047df1f15c6d92224154f824a92bc4012",
+  "outer_signature_verified": true,
+  "inner_signature_verified": true,
+  "inner_checksums_verified": true,
+  "ready_for_install": true,
+  "production_installed": false,
+  "restoration_evidence": "Owner returned signed result after local real-backup verification; private data not received."
+}
