@@ -140,8 +140,9 @@ class ReleasePolicyTests(unittest.TestCase):
                 self.assertEqual(m.main(), 1)
         self.assertNotIn('PRIVATE_', output.getvalue())
 
-    def test_workflow_pins_actions_and_does_not_run_on_push(self):
-        text = (ROOT / 'workflows/release-6.33.1.yml').read_text()
+    def test_historical_workflow_pins_actions_and_is_disabled(self):
+        self.assertFalse((ROOT / 'workflows/release-6.33.1.yml').exists())
+        text = (ROOT / 'history/release-6.33.1.yml.disabled').read_text()
         self.assertIn('workflow_dispatch:', text)
         self.assertNotIn('pull_request:', text)
         self.assertNotIn('\n  push:', text)

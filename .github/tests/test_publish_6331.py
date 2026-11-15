@@ -6,7 +6,7 @@ import tempfile
 import textwrap
 import unittest
 
-WORKFLOW = Path(__file__).resolve().parents[1] / 'workflows/release-6.33.1.yml'
+WORKFLOW = Path(__file__).resolve().parents[1] / 'history/release-6.33.1.yml.disabled'
 FILES = ('openIA-6.33.1-update.zip', 'install-6.33.1.sh', 'openIA-6.33.1-update.json', 'SHA256SUMS-6.33.1', 'SHA256SUMS-6.33.1.sig')
 
 
