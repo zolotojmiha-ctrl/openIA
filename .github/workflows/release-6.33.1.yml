@@ -1,0 +1,207 @@
+name: Release ARMADA 6.33.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_confirmed:
+        description: 'Подтверждаю успешное восстановление реальной копии. Без отметки выполняется только проверка кандидата.'
+        type: boolean
+        required: true
+        default: false
+      backup_sha256:
+        description: 'SHA-256 успешно восстановленной реальной копии; сам архив не загружать'
+        type: string
+        required: false
+      restore_verified_at:
+        description: 'Время успешного восстановления с часовым поясом, ISO 8601'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: armada-release-6.33.1
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'zolotojmiha-ctrl/openIA' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      NO_PROXY: '127.0.0.1,localhost,::1'
+    steps:
+      - name: Trusted workflow policy
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Test trusted signing policy
+        run: |
+          python3 policy/.github/tests/test_release_6331.py
+          python3 policy/.github/tests/test_publish_6331.py
+      - name: Immutable reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: a31400fad1fa63476f978a042cf046a83c600daa
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Immutable unsigned cloud candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: b043f3b5f9fe8eade56d1492a03ed76747338c7e
+          path: candidate
+          persist-credentials: false
+      - name: Compare exact candidate bytes and reviewed source
+        run: python3 policy/.github/scripts/release_6331.py check --directory candidate --source-root source
+      - name: Build locked application and test dependencies
+        working-directory: source
+        run: |
+          set -euo pipefail
+          docker build -t armada-release-test:6331 -f deploy/synology/Dockerfile .
+          python3 -m venv "$RUNNER_TEMP/release-venv"
+          "$RUNNER_TEMP/release-venv/bin/pip" install --no-index --find-links=deploy/synology/wheels --require-hashes -r deploy/synology/wheels/requirements.lock
+          docker pull postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+          docker tag postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826 postgres:17-bookworm
+      - name: Installer failure injection, root container without network
+        run: |
+          docker run --rm --network none --user 0:0 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/source,dst=/repo,readonly" \
+            --entrypoint python armada-release-test:6331 /repo/tests/test_release_safety.py
+      - name: Policy, packaging, hotfix, diagnostics and actual PostgreSQL restore
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python="$RUNNER_TEMP/release-venv/bin/python"
+          for suite in test_backup_policy test_package_release test_hotfix_channel check_recovery_launcher check_recovery_diagnostics test_restore_isolation check_backup_restore; do
+            "$python" "tests/$suite.py"
+          done
+      - name: Upload exact checked candidate, no signing key in this job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unsigned-6.33.1
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            candidate/openIA-6.33.1-update.zip
+            candidate/install-6.33.1.sh
+            candidate/openIA-6.33.1-update.json
+      - name: Validation-only result
+        if: ${{ !inputs.restore_confirmed }}
+        run: |
+          echo 'Кандидат проверен. Подпись и публикация пропущены: восстановление реальной копии не подтверждено владельцем.' >> "$GITHUB_STEP_SUMMARY"
+
+  sign:
+    needs: validate
+    if: ${{ inputs.restore_confirmed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: armada-release
+    permissions:
+      contents: read
+      actions: read
+    env:
+      RESTORE_CONFIRMED: ${{ inputs.restore_confirmed }}
+      RESTORE_BACKUP_SHA256: ${{ inputs.backup_sha256 }}
+      RESTORE_VERIFIED_AT: ${{ inputs.restore_verified_at }}
+    steps:
+      - name: Trusted policy only; candidate code never executes with signing key
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Check owner attestation before loading the key
+        run: python3 policy/.github/scripts/release_6331.py attestation
+      - name: Checked candidate from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: unsigned-6.33.1
+          path: unsigned
+      - name: Sign exact approved candidate with the existing trusted identity
+        env:
+          ARMADA_RELEASE_SIGNING_KEY: ${{ secrets.ARMADA_RELEASE_SIGNING_KEY }}
+        run: |
+          if [[ -z "$ARMADA_RELEASE_SIGNING_KEY" ]]; then
+            echo 'Добавьте ARMADA_RELEASE_SIGNING_KEY в GitHub Environment armada-release.' >&2
+            exit 1
+          fi
+          python3 policy/.github/scripts/release_6331.py sign --directory unsigned --output signed
+      - name: Upload signed public artifacts only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signed-6.33.1
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            signed/openIA-6.33.1-update.zip
+            signed/install-6.33.1.sh
+            signed/openIA-6.33.1-update.json
+            signed/SHA256SUMS-6.33.1
+            signed/SHA256SUMS-6.33.1.sig
+            signed/verification-public.pem
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Trusted verification policy
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Signed artifacts from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: signed-6.33.1
+          path: signed
+      - name: Independently verify signature and all signed checksums
+        run: python3 policy/.github/scripts/release_6331.py check-signed --directory signed
+      - name: Existing download branch; preserve previous releases
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: downloads/nas-updates
+          path: downloads
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /openIA-6.33.1-update.zip
+            /install-6.33.1.sh
+            /openIA-6.33.1-update.json
+            /SHA256SUMS-6.33.1
+            /SHA256SUMS-6.33.1.sig
+      - name: Publish new version without overwriting historical files
+        run: |
+          set -euo pipefail
+          files=(openIA-6.33.1-update.zip install-6.33.1.sh openIA-6.33.1-update.json SHA256SUMS-6.33.1 SHA256SUMS-6.33.1.sig)
+          for file in "${files[@]}"; do
+            if git -C downloads cat-file -e "HEAD:$file" 2>/dev/null; then
+              echo 'Версия уже присутствует в downloads/nas-updates. Перезапись запрещена.' >&2
+              exit 1
+            fi
+            cp -- "signed/$file" "downloads/$file"
+          done
+          git -C downloads config user.name 'github-actions[bot]'
+          git -C downloads config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C downloads add --sparse -- "${files[@]}"
+          git -C downloads commit -m 'Publish signed ARMADA 6.33.1 from a31400fad1fa63476f978a042cf046a83c600daa'
+          git -C downloads push origin HEAD:refs/heads/downloads/nas-updates
+          commit=$(git -C downloads rev-parse HEAD)
+          {
+            echo '### Подписанный выпуск 6.33.1 опубликован'
+            echo "Публикация: \`$commit\`. Исходники: \`a31400fad1fa63476f978a042cf046a83c600daa\`."
+            echo "[Установщик](https://github.com/zolotojmiha-ctrl/openIA/raw/$commit/install-6.33.1.sh)"
+            echo "[ZIP](https://github.com/zolotojmiha-ctrl/openIA/raw/$commit/openIA-6.33.1-update.zip)"
+            echo "[Подписанная ведомость](https://github.com/zolotojmiha-ctrl/openIA/raw/$commit/SHA256SUMS-6.33.1)"
+            echo "[Подпись](https://github.com/zolotojmiha-ctrl/openIA/raw/$commit/SHA256SUMS-6.33.1.sig)"
+            echo 'Production VPS не затрагивался. Перед первым запуском независимо проверить подпись и суммы; установка выполняется владельцем отдельно.'
+          } >> "$GITHUB_STEP_SUMMARY"
