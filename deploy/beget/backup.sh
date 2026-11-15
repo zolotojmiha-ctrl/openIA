@@ -55,7 +55,18 @@ else
 fi
 archive_stamp=$(date -u +%Y%m%dT%H%M%SZ)
 staging=$(mktemp -d "$backup_root/.pending.XXXXXX")
-trap 'rm -rf -- "$staging"' EXIT
+archive=
+published=0
+cleanup_files() {
+  # Only this run's unpublished outputs. Never delete a completed backup.
+  if (( published == 0 )) && [[ -n "$archive" ]]; then
+    rm -f -- "$archive.partial" "$archive.encrypted" "$archive.encrypted.partial" "$archive.encrypted.key-id"
+  fi
+  rm -rf -- "$staging"
+}
+trap cleanup_files EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 compose=(docker compose -f "$compose_file")
 # Stop application writes, not PostgreSQL; pg_dump remains transactionally consistent.
 # Freeze every running writer, including the opt-in MAX worker. Resume only
@@ -76,7 +87,7 @@ if [[ -n "$state_file" ]]; then
   (set -o noclobber; printf '%s\n' "${writers[@]}" > "$state_file")
 fi
 resume() { if (( hold_writers == 0 && ${#writers[@]} )); then "${compose[@]}" --profile max start "${writers[@]}" >/dev/null; fi; }
-trap 'resume; rm -rf -- "$staging"' EXIT
+trap 'resume; cleanup_files' EXIT
 if (( ${#writers[@]} )); then "${compose[@]}" --profile max stop "${writers[@]}"; fi
 "${compose[@]}" exec -T db pg_dump -U armada_admin -d armada --no-owner --no-acl -Fc > "$staging/database.dump"
 "${compose[@]}" run --rm --no-deps --cap-add DAC_OVERRIDE --user 0:0 --entrypoint tar web -C /run/armada -cf - . > "$staging/config.tar"
@@ -101,8 +112,9 @@ if (( encrypted )); then
 else
   mv -- "$archive.partial" "$archive"
 fi
+published=1
 resume
-trap 'rm -rf -- "$staging"' EXIT
+trap cleanup_files EXIT
 python3 "$tool_dir/backup_retention.py" --directory "$backup_root" --keep "${ARMADA_BACKUP_KEEP:-7}" --days "${ARMADA_BACKUP_DAYS:-30}" --apply || printf 'Очистка копий не завершена; новая копия сохранена.\n' >&2
 python3 "$tool_dir/backup_status.py" --directory "$backup_root" --archive "$archive" --encrypted "$encrypted" --keep "${ARMADA_BACKUP_KEEP:-7}" || printf 'Статус копий не записан; копия сохранена.\n' >&2
 printf 'Backup saved: %s\n' "$archive"

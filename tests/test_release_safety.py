@@ -117,6 +117,8 @@ class InstallerTests(unittest.TestCase):
    (bin/'curl').write_text('#!/bin/sh\nexit 97\n')
    (bin/'sleep').write_text('#!/bin/sh\nexit 0\n')
    (bin/'df').write_text(DF)
+   if case in ('archivefail','archivesignal'):
+    (bin/'tar').write_text('#!/bin/sh\n/usr/bin/tar "$@"\n' + ('kill -TERM "$PPID"\n' if case=='archivesignal' else '') + 'exit 23\n')
    (bin/'unzip').write_text('''#!/usr/local/bin/python3
 import os,sys,zipfile
 with zipfile.ZipFile(sys.argv[2]) as z:
@@ -307,6 +309,18 @@ class PhaseAndRecoveryTests(unittest.TestCase):
 
 class BackupDefaultsTests(unittest.TestCase):
  run_case=InstallerTests.run_case
+ def test_archive_failure_removes_unpublished_plaintext(self):
+  self.check_archive_cleanup('archivefail')
+ def test_archive_signal_removes_unpublished_plaintext(self):
+  self.check_archive_cleanup('archivesignal')
+ def check_archive_cleanup(self,case):
+  def check(t,r,s,root,app,o):
+   t.assertNotEqual(r.returncode,0)
+   t.assertEqual(list((root/'backups').glob('armada-*')),[])
+   t.assertEqual(list((root/'backups').glob('.pending.*')),[])
+   t.assertEqual(set(s['running']),set(o))
+   t.assertEqual((app/'index.html').read_text(),'OLD')
+  self.run_case(case,True,inspect=check)
  def test_unencrypted_requires_explicit_flag(self):
   self.run_case('noflag',True,args=(),inspect=lambda t,r,s,root,app,o:(no_side_effects(t,r,s,app,o,'--allow-unencrypted-backup'),t.assertFalse((root/'backups').exists())))
  def test_missing_cryptography_names_selected_python(self):
