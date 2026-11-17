@@ -57,3 +57,14 @@ class PhotoManagementBotTests(TestCase):
         request=opener.open.call_args.args[0];self.assertFalse(request.has_header('Authorization'))
         with patch.object(transport,'api',return_value={'url':'https://evil.invalid/upload'}):
             with self.assertRaises(transport.DeliveryError):transport.prepare_photo_body(body)
+
+    def test_failed_preview_upload_delivers_readable_fallback_without_double_message(self):
+        from . import worker,transport
+        photo=self.saved();event=self.event(f'photos:select:{photo.pk}')
+        row=Outbox.objects.get(key=f'in:{event.pk}:reply')
+        Outbox.objects.exclude(pk=row.pk).update(state='cancelled')
+        with patch.object(transport,'prepare_photo_body',side_effect=transport.DeliveryError('failed')),patch.object(transport,'send') as send:
+            worker.deliver(row.pk)
+        row.refresh_from_db();self.assertEqual(row.state,'sent');send.assert_called_once()
+        body=send.call_args.args[1];self.assertNotIn('_repair_photo',body)
+        self.assertIn('Не удалось показать изображение',body['text']);self.assertIn('Повторить просмотр',str(body))

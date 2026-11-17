@@ -195,7 +195,21 @@ def deliver(pk):
         if not delivery_allowed(row) or not settings.ARMADA_MAX_ENABLED:
             state = 'cancelled'
         else:
-            prepared=transport.prepare_photo_body(row.body)
+            try:
+                prepared=transport.prepare_photo_body(row.body)
+            except transport.DeliveryError as error:
+                if error.state=='pending':raise
+                reference=row.body.get('_repair_photo')
+                if not reference:raise
+                # Uploading a preview has not sent a chat message. A bounded
+                # text fallback is safe here; a failed /messages call below
+                # retains the original conservative unknown-delivery policy.
+                prepared={key:value for key,value in row.body.items() if key!='_repair_photo'}
+                prepared['text']=('Не удалось показать изображение. Можно повторить просмотр или выбрать действие ниже.\n\n'+prepared.get('text',''))[:4000]
+                retry=dialog.button('Повторить просмотр',f"photos:select:{reference['id']}")
+                keyboards=[item for item in prepared.get('attachments',[]) if item.get('type')=='inline_keyboard']
+                if keyboards:keyboards[0]['payload']['buttons'].insert(0,[retry])
+                else:prepared['attachments']=[{'type':'inline_keyboard','payload':{'buttons':[[retry]]}}]
             if prepared!=row.body:
                 row.body=prepared;row.save(update_fields=['body'])
             if not delivery_allowed(row):state='cancelled'
