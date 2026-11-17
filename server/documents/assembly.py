@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Assemble scans/PDFs into immutable versions, retaining private originals."""
 import hashlib,io,json,re,uuid,warnings,threading
 from django import forms
@@ -171,7 +172,7 @@ def assemble(user,data,target_id=None,person_id=None):
             audit(actor,'document_assembled',entity_id=str(target.pk),kind='assembled',version=str(version.pk),pages=sum(counts),sources=len(ordered))
             return target
     except Exception:
-        for key in stored:private_path(key).unlink(missing_ok=True)
+        for key in stored:discard_file(key)
         raise
 
 @login_required

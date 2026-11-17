@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -28,7 +29,7 @@ class Command(BaseCommand):
                     if draft.state != 'submitted':
                         draft.state = 'cancelled'
                     draft.save(update_fields=['state', 'raw', 'fields'])
-                    transaction.on_commit(lambda keys=keys: [private_path(key).unlink(missing_ok=True) for key in keys])
+                    transaction.on_commit(lambda keys=keys: [discard_file(key) for key in keys])
             Inbox.objects.filter(created_at__lt=now-timedelta(days=7)).update(payload={})
             Outbox.objects.filter(expires__lt=now, state='pending').update(state='cancelled')
             Outbox.objects.filter(expires__lt=now-timedelta(days=7)).update(body={})

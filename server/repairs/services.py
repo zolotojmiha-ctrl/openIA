@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 import hashlib
 import json
 from django.core.exceptions import ValidationError,PermissionDenied
@@ -5,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from accounts.models import User
 from accounts.views import audit
-from documents.storage import store_file, private_path
+from documents.storage import store_photo_file as store_file, private_path
 from .access import visible_jobs, reportable_jobs
 from .models import Job, Report, Coupling, CouplingUse, Attachment
 
@@ -42,7 +43,12 @@ def report_work(user,job_id,action,data):
                 progress=normalize(data['progress']);check_images(data.get('files',[]))
                 if data['performed_date']>timezone.localdate():raise ValidationError('Дата работ не может быть в будущем.')
                 data=dict(data,progress=progress)
-            digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**({'progress':data['progress']} if data.get('progress') is not None else {}),**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},**({'actual_coating_length_m':format(data['actual_coating_length_m'].normalize(),'f')} if data.get('actual_coating_length_m') is not None else {}),**({'actual_cleaning_length_m':str(data['actual_cleaning_length_m'])} if data.get('actual_cleaning_length_m') is not None else {}),**({'installation':data['installation']} if 'installation' in data else {}),'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            reused=list(data.get('reuse_photos',[]))
+            if reused and action not in ('result','correction'):raise ValidationError('Повторное использование фото доступно для результата.')
+            ids=[getattr(photo,'pk',photo) for photo in reused]
+            reused=list(Attachment.objects.filter(pk__in=ids,report__job=job,content_type__in=('image/jpeg','image/png'),deleted_at__isnull=True).order_by('pk'))
+            if len(reused)!=len(ids):raise ValidationError('Выбранные фотографии недоступны. Проверьте галерею.')
+            digest=hashlib.sha256(json.dumps({'action':'unrepaired' if not_repaired else action,**({'progress':data['progress']} if data.get('progress') is not None else {}),**{key:str(data.get(key) or '') for key in ['performed_date','method','length_m','composition','note','problem','latitude','longitude','outcome']},**({'actual_coating_length_m':format(data['actual_coating_length_m'].normalize(),'f')} if data.get('actual_coating_length_m') is not None else {}),**({'actual_cleaning_length_m':str(data['actual_cleaning_length_m'])} if data.get('actual_cleaning_length_m') is not None else {}),**({'installation':data['installation']} if 'installation' in data else {}),'couplings':sorted(str(c.pk) for c in data.get('couplings',[])),**({'reused_photos':[str(photo.pk) for photo in reused]} if reused else {}),'files':[{k:f[k] for k in ['name','sha256']} for f in data.get('files',[])]},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
             previous=Report.objects.filter(token=data['token']).first()
             if previous:
                 if previous.job_id==job.pk and previous.author_id==user.pk:
@@ -106,6 +112,10 @@ def report_work(user,job_id,action,data):
             for datafile in data.get('files',[]):
                 key=store_file(datafile);stored.append(key)
                 Attachment.objects.create(report=report,storage_key=key,**{k:datafile[k] for k in ['name','content_type','size','sha256']})
+            if reused:
+                report.reused_photos.set(reused)
+                report.context['reused_photos']=[{'id':str(photo.pk),'sha256':photo.sha256,'name':photo.name} for photo in reused]
+                report.save(update_fields=['context'])
             if result or not_repaired:job.review_note=''
             if result:
                 from projects.stock import reconcile_installation
@@ -140,7 +150,7 @@ def report_work(user,job_id,action,data):
             audit(current,'repair_reported',entity_id=str(job.pk),report_id=str(report.pk),kind=kind)
             return report
     except Exception:
-        for key in stored:private_path(key).unlink(missing_ok=True)
+        for key in stored:discard_file(key)
         raise
 
 @transaction.atomic

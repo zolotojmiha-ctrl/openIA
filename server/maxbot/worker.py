@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Crash-safe intake, report transactions and conservative message delivery."""
 from datetime import timedelta
 from django.conf import settings
@@ -14,7 +15,7 @@ from .models import Binding, Inbox, Outbox, Draft
 
 def discard(keys):
     for key in keys:
-        private_path(key).unlink(missing_ok=True)
+        discard_file(key)
 
 
 def process(key):
@@ -67,6 +68,8 @@ def process(key):
                 buttons = [dialog.button('Вернуться к фотоотчёту','/фото') if draft.action=='progress' else dialog.button('Исправить черновик',f'edit:{draft.pk}')] if draft else []
                 if not valid:
                     text = 'Привязка не выполнена или доступ изменился. Проверьте профиль в ЛК.'
+                if draft and draft.action=='photoedit':
+                    buttons=[dialog.button('Фотографии работы',f'photos:list:{draft.job_id}:0'),dialog.button('Отменить','/отмена')]
                 if draft and draft.action=='stockfix':
                     buttons=[dialog.button('Начать сверку заново',f'stockfix:select:{draft.job_id}'),dialog.button('Отменить',f'stockfix:cancel:{draft.pk}')]
                 if draft and draft.action=='ddk':
@@ -95,6 +98,9 @@ def delivery_allowed(row):
     binding = Binding.objects.select_related('user').get(pk=row.binding_id)
     if not links.current(binding) or binding.max_user != row.max_user or binding.chat != row.chat:
         return False
+    if 'photo_manager' in row.scope:
+        from .photo_management import delivery_allowed as photos_allowed
+        return photos_allowed(binding,row.scope['photo_manager'])
     if 'stockfix' in row.scope:
         from .stock_reconciliation import delivery_allowed as stockfix_allowed
         return stockfix_allowed(binding,row.scope['stockfix'])
@@ -189,8 +195,13 @@ def deliver(pk):
         if not delivery_allowed(row) or not settings.ARMADA_MAX_ENABLED:
             state = 'cancelled'
         else:
-            transport.send(row.chat, row.body)
-            state = 'sent'
+            prepared=transport.prepare_photo_body(row.body)
+            if prepared!=row.body:
+                row.body=prepared;row.save(update_fields=['body'])
+            if not delivery_allowed(row):state='cancelled'
+            else:
+                transport.send(row.chat,row.body)
+                state='sent'
     except transport.DeliveryError as exc:
         state = exc.state
         if exc.retry_after is not None:

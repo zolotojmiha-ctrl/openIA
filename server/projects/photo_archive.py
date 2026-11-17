@@ -37,12 +37,15 @@ def remote_file(version):
 
 
 def step():
+    from repairs.photo_cleanup import step as reclaim
+    reclaimed=reclaim()
     config=DiskBackupSettings.objects.filter(pk=1,photos_enabled=True).first()
-    if not config:return False
-    from repairs.models import Attachment
+    if not config:return reclaimed
+    from repairs.models import Attachment,PhotoRevision
     archived=PhotoArchive.objects.values('storage_key')
-    item=Attachment.objects.filter(content_type__in=['image/jpeg','image/png']).exclude(storage_key__in=archived).order_by('pk').first()
-    copied=False
+    item=Attachment.objects.filter(deleted_at__isnull=True,content_type__in=['image/jpeg','image/png']).exclude(storage_key__in=archived).order_by('pk').first()
+    if not item:item=PhotoRevision.objects.exclude(storage_key='').filter(manifest__content_type__in=['image/jpeg','image/png']).exclude(storage_key__in=archived).order_by('pk').first()
+    copied=reclaimed
     if item:archive_one(item);copied=True
     if config.photos_remove_local:prune_one()
     return copied

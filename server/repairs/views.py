@@ -238,15 +238,26 @@ def job_edit(request,pk=None,section_id=None):
 @login_required
 def detail(request,pk):
     job=get_object_or_404(visible_jobs(request.user,include_archived=can_prepare(request.user)),pk=pk)
-    reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments')
+    reports=job.reports.select_related('author','confirmed_by').prefetch_related('attachments','reused_photos')
     from .historical import result as historical_result
     from .layouts import neighbours
     result=historical_result(job,reports.filter(kind__in=['partial','complete','correction']).first())
-    history_page=Paginator(reports,20).get_page(request.GET.get('history_page'))
+    history_number=request.GET.get('history_page')
+    focus=request.GET.get('report','')
+    if focus:
+        try: focused=reports.filter(pk=uuid.UUID(focus)).first()
+        except (ValueError,TypeError): focused=None
+        if not focused:raise Http404('Фотоотчёт не найден в этой работе.')
+        history_number=reports.filter(Q(created_at__gt=focused.created_at)|Q(created_at=focused.created_at,pk__gt=focused.pk)).count()//20+1
+    history_page=Paginator(reports,20).get_page(history_number)
+    from .photos import gallery,can_edit,can_delete,report_photo_count
+    photo_page=Paginator(gallery(job,focus or None),20).get_page(request.GET.get('photo_page'))
+    deleted_page=Paginator(Attachment.objects.filter(report__job=job,deleted_at__isnull=False).order_by('-deleted_at','pk'),20).get_page(request.GET.get('deleted_page'))
     progress_records=reports.filter(context__progress__isnull=False).order_by('-performed_date','-created_at','-pk')
     progress_page=Paginator(progress_records,10).get_page(request.GET.get('progress_page'))
     from .progress import STAGES
     for entry in progress_page:
+        entry.photo_count=report_photo_count(entry)
         entry.progress_labels=[dict(STAGES).get(key,key) for key in entry.context['progress'].get('stages',[])]
     from projects.subcontracts import orders as subcontract_orders
     subcontract_open=bool(job.subcontract_order_id and subcontract_orders(request.user,True).filter(pk=job.subcontract_order_id).exists())
@@ -254,7 +265,7 @@ def detail(request,pk):
     back=return_url(request,reverse('work_place',args=[job.contract_id,job.section.project_object_id]) if job.contract_id else reverse('repairs'))
     problem_report=job.reports.filter(kind='problem').first()
     from projects.material_views import job_panel
-    return render(request,'repairs/detail.html',{'progress_page':progress_page,'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'section_distances':neighbours(request.user,job.active_defects),'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
+    return render(request,'repairs/detail.html',{'deleted_page':deleted_page,'can_edit_photos':can_edit(request.user),'can_delete_photos':can_delete(request.user),'photo_page':photo_page,'focus_report':focus,'progress_page':progress_page,'material_panel':job_panel(request.user,job),'pending_problem':bool(job.problem and problem_report and not problem_report.confirmed_at),'back':back,'can_report_this_job':reportable_jobs(request.user).filter(pk=job.pk).exists(),'subcontract_open':subcontract_open,'job':job,'reports':history_page,'history_page':history_page,'result':result,'section_distances':neighbours(request.user,job.active_defects),'couplings':job.installed_couplings.select_related('coupling'),'acceptance_form':AcceptanceForm(initial={'expected_version':job.version,'date':timezone.localdate()})})
 
 @login_required
 def report(request,pk,action):
@@ -314,7 +325,7 @@ def accept(request,pk):
 
 @login_required
 def attachment(request,pk):
-    item=get_object_or_404(Attachment.objects.filter(report__job__in=visible_jobs(request.user)),pk=pk)
+    item=get_object_or_404(Attachment.objects.filter(report__job__in=visible_jobs(request.user),deleted_at__isnull=True),pk=pk)
     try:file=verified_file(item)
     except (OSError,ValueError):raise Http404('Файл недоступен.')
     inline=item.content_type in ('image/png','image/jpeg') and request.GET.get('preview')=='1'

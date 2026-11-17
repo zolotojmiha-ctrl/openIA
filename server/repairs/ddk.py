@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Explicit method revision after DDK. Not a completion or stock write-off."""
 import hashlib,json,uuid
 from django import forms
@@ -7,7 +8,7 @@ from django.shortcuts import render,redirect,get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
-from documents.storage import validate_upload,store_file,private_path
+from documents.storage import validate_upload,store_photo_file as store_file,private_path
 from accounts.models import User
 from .access import reportable_jobs,can_prepare,visible_jobs
 from .plan_views import ConstructionForm
@@ -68,7 +69,7 @@ def change(user,pk,data):
                 Attachment.objects.create(report=report,storage_key=key,**{k:upload[k] for k in ('name','content_type','size','sha256')})
             return report
     except Exception:
-        for key in stored:private_path(key).unlink(missing_ok=True)
+        for key in stored:discard_file(key)
         raise
 
 

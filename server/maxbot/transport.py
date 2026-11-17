@@ -53,6 +53,11 @@ def api(method, path, body=None):
     except HTTPError as exc:
         # A timeout/5xx may mean MAX accepted the message: never retry blindly.
         retry_after = None
+        if exc.code==400:
+            try:
+                rejected=json.loads(exc.read(8192))
+                if isinstance(rejected,dict) and rejected.get('code')=='attachment.not.ready':raise DeliveryError('pending',2)
+            except (OSError,ValueError,TypeError):pass
         if exc.code == 429:
             value = exc.headers.get('Retry-After', '') if exc.headers else ''
             try:
@@ -148,3 +153,47 @@ def download_photo(url):
     except (OSError, ValueError, SyntaxError, UnidentifiedImageError, Image.DecompressionBombWarning, Image.DecompressionBombError):
         raise ValidationError('Фото не удалось загрузить или проверить. Повторите отправку фотографии.') from None
     return SimpleUploadedFile('photo.' + suffix, content, content_type='image/' + ('png' if suffix == 'png' else 'jpeg'))
+
+
+def prepare_photo_body(body):
+    """Upload a bounded preview to MAX, never expose an authenticated LC URL."""
+    if '_repair_photo' not in body:return body
+    from repairs.models import Attachment
+    from documents.storage import verified_file
+    reference=body['_repair_photo']
+    photo=Attachment.objects.filter(pk=reference['id'],revision=reference['revision'],deleted_at__isnull=True).first()
+    if not photo:raise DeliveryError('cancelled')
+    try:
+        with verified_file(photo) as source, Image.open(source) as image:
+            if image.width*image.height>36000000:raise ValueError
+            image=ImageOps.exif_transpose(image).convert('RGB');image.thumbnail((1600,1600))
+            output=io.BytesIO();image.save(output,'JPEG',quality=82);content=output.getvalue()
+    except (OSError,ValueError,Image.DecompressionBombError):raise DeliveryError('failed') from None
+    if len(content)>5*1024*1024:raise DeliveryError('failed')
+    target=api('POST','/uploads?type=image')
+    url=target.get('url') if isinstance(target,dict) else None
+    try:
+        parsed=urlsplit(url)
+        host=parsed.hostname or ''
+        # Fixed provider domains only; the bearer API token is never forwarded.
+        if parsed.scheme!='https' or parsed.port not in (None,443) or parsed.username or parsed.password or parsed.fragment or not any(host==domain or host.endswith('.'+domain) for domain in ('max.ru','okcdn.ru','mycdn.me')):raise ValueError
+        addresses=socket.getaddrinfo(host,443,type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(row[4][0]).is_global for row in addresses):raise ValueError
+    except (ValueError,TypeError,OSError):raise DeliveryError('failed') from None
+    import uuid
+    boundary='armada'+uuid.uuid4().hex
+    data=(f'--{boundary}\r\nContent-Disposition: form-data; name="data"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode()+content+f'\r\n--{boundary}--\r\n'.encode())
+    request=Request(url,data=data,method='POST',headers={'Content-Type':'multipart/form-data; boundary='+boundary})
+    try:
+        with build_opener(NoRedirect(),HTTPSHandler(context=ssl.create_default_context())).open(request,timeout=20) as response:
+            raw=response.read(1024*1024+1)
+        if len(raw)>1024*1024:raise ValueError
+        result=json.loads(raw)
+        if not isinstance(result,dict):raise ValueError
+        if isinstance(result.get('photos'),dict) and result['photos']:payload={'photos':result['photos']}
+        elif isinstance(result.get('token'),str) and result['token']:payload={'token':result['token']}
+        else:raise ValueError
+    except (OSError,URLError,ValueError):raise DeliveryError('failed') from None
+    prepared={key:value for key,value in body.items() if key!='_repair_photo'}
+    prepared['attachments']=[{'type':'image','payload':payload},*prepared.get('attachments',[])]
+    return prepared

@@ -25,7 +25,9 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
         job=Job.objects.create(contract=contract,section=section,method='p1',length_m=3,wall_mm=Decimal('10'),source={'repair_code':'Р-01'},composition='1,5+1,5',assigned_to=worker,created_by=leader)
         for number in ['5001','5002']:
             d=Defect.objects.create(contract=contract,section=section,number=number,kilometre=Decimal('101.123'),pipe_section='1001');JobDefect.objects.create(job=job,defect=d)
-        for serial in ['УЧЕБНАЯ-001','УЧЕБНАЯ-002']:Coupling.objects.create(project_object=obj,method='p1',serial=serial,length_mm=1500,warehouse='Учебный склад')
+        for serial in ['УЧЕБНАЯ-001','УЧЕБНАЯ-002']:Coupling.objects.create(project_object=obj,method='p1',serial=serial,length_mm=1500,wall_mm=10,warehouse='Учебный склад')
+        from .test_stock_fixture import receive
+        receive(leader,job,1500,10,count=2)
         technician=User.objects.create_user('+70000000004',password,full_name='ТЕСТ Техник',role='as_built',must_change_password=False)
         ObjectAccess.objects.create(project_object=obj,user=technician,granted_by=leader)
         ContractAccess.objects.create(user=technician,contract=contract,granted_by=leader,show_number=True)
@@ -46,6 +48,8 @@ class RepairBrowserAcceptance(StaticLiveServerTestCase):
                 ['Р-02','202.235','1002','55004','П2','1.5','8',worker.phone],
                 ['Р-03','303.346','1003','55005','П3','2','10',worker.phone],
             ]))
+            from types import SimpleNamespace
+            receive(leader,SimpleNamespace(section=section,method='p2'),1500,8)
             env['ARMADA_SAMPLE_FILE']=str(sample)
             result=subprocess.run(['node',str(settings.BASE_DIR/'tests/repairs-excel-browser.cjs')],env=env,capture_output=True,text=True,timeout=120)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

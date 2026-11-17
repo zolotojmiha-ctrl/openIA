@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 from accounts import xlsx as human_xlsx
 import uuid,hashlib,json
 from django import forms
@@ -115,7 +116,7 @@ def save(user,pk,data,new_id=None,uploads=()):
                 make_version(doc,actor,file,key=key);row.documents.add(doc)
             audit(actor,'agreement_updated',agreement=str(row.pk),before=before,after={k:str(getattr(row,k)) for k in FIELDS},contracts=[str(c.pk) for c in contracts],objects=[str(o.pk) for o in objects],documents=[str(p) for p in row.documents.values_list('pk',flat=True)])
     except Exception:
-        for key in stored:private_path(key).unlink(missing_ok=True)
+        for key in stored:discard_file(key)
         raise
     return row
 

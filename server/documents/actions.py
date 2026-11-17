@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Context-aware document actions. Deletion removes stored bytes, not audit facts."""
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -81,7 +82,7 @@ def delete(request,pk):
                 # Archive guard rejects destruction of files linked to closed contracts.
                 doc.deleted_at=timezone.now();doc.archived=True;doc.revision+=1;doc.save()
                 def purge():
-                    for key in keys:private_path(key).unlink(missing_ok=True)
+                    for key in keys:discard_file(key)
                 transaction.on_commit(purge)
                 audit(request.user,'document_deleted',document=str(pk),kind='deleted',title=doc.title,versions=len(versions),links=links)
                 return redirect(back)

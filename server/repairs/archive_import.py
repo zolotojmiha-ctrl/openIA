@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Bounded, reviewed historical inserts into a separately pinned contract.
 
 No existing jobs, stock items, staff grants or assignments are updated. ImportBatch
@@ -167,7 +168,7 @@ def prepare(user,contract_id,upload,stored_keys=None):
                 filename=data['name'],storage_key=saved,size=data['size'],sha256=data['sha256'],sheet='Архив 2024–2025',payload=payload)
             return batch
     except Exception:
-        if saved:private_path(saved).unlink(missing_ok=True)
+        if saved:discard_file(saved)
         raise
 
 @transaction.atomic

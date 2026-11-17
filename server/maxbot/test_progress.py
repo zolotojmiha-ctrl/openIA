@@ -81,7 +81,7 @@ class ProgressBotTests(TestCase):
         self.event('worknav:sections:history:0',sender=301,chat=401)
         self.event(f'worknav:jobs:history:{self.section.pk}:0',sender=301,chat=401)
         event=self.event(f'worknav:history:{self.job.pk}:0',sender=301,chat=401);row=Outbox.objects.get(key=f'in:{event.pk}:reply')
-        self.assertIn('Фото за',row.body['text']);self.assertIn('#progress-timeline',str(row.body))
+        self.assertIn('Фото за',row.body['text']);self.assertIn('#repair-gallery',str(row.body))
 
 
     def test_reopening_bot_does_not_erase_unsaved_caption(self):

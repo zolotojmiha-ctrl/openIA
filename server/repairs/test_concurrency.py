@@ -22,8 +22,10 @@ class RepairConcurrencyTests(TransactionTestCase):
         obj=ProjectObject.objects.create(legal_entity=company,name='Учебный объект')
         for user in self.workers:ObjectAccess.objects.create(user=user,project_object=obj,granted_by=self.leaders[0])
         section=Section.objects.create(project_object=obj,rnu='ТЕСТ РНУ',pipeline='ТЕСТ труба',name='ТЕСТ участок')
-        self.jobs=[Job.objects.create(section=section,created_by=self.leaders[0],assigned_to=user,method='p1',length_m=1) for user in self.workers]
-        self.c=Coupling.objects.create(project_object=obj,method='p1',length_mm=1000,serial='ТЕСТ-ЕДИНСТВЕННАЯ')
+        self.jobs=[Job.objects.create(section=section,created_by=self.leaders[0],assigned_to=user,method='p1',length_m=1,wall_mm=10) for user in self.workers]
+        self.c=Coupling.objects.create(project_object=obj,method='p1',length_mm=1000,wall_mm=10,serial='ТЕСТ-ЕДИНСТВЕННАЯ')
+        from .test_stock_fixture import receive
+        receive(self.leaders[0],self.jobs[0],1000,10,coupling=self.c)
     def parallel(self,callbacks):
         barrier=threading.Barrier(2)
         def run(callback):

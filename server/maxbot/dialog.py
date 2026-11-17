@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Structured master conversation. Every report is validated by ReportForm again."""
 import re
 import uuid
@@ -9,7 +10,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
-from documents.storage import validate_upload, store_file, verified_file, private_path
+from documents.storage import validate_upload, store_photo_file as store_file, verified_file, private_path
 from repairs.access import reportable_jobs,can_report_scoped,visible_sections
 from repairs.forms import ReportForm
 from repairs.services import report_work
@@ -21,8 +22,9 @@ def button(text, payload):
     return {'type': 'callback', 'text': text[:100], 'payload': payload}
 
 
-def queue(event, text, buttons=(), *, binding=None, job=None, scope=None, suffix='reply'):
+def queue(event, text, buttons=(), *, binding=None, job=None, scope=None, suffix='reply', photo=None):
     body = {'text': text[:4000]}
+    if photo is not None:body['_repair_photo']={'id':str(photo.pk),'revision':photo.revision}
     if buttons:
         body['attachments'] = [{'type': 'inline_keyboard', 'payload': {'buttons': [[b] for b in buttons]}}]
     Outbox.objects.get_or_create(key=f'in:{event.pk}:{suffix}', defaults={
@@ -204,6 +206,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import photo_management
+    if photo_management.handle(event,binding,stored_keys):return
     from . import stock_reconciliation
     if stock_reconciliation.handle(event,binding):return
     from . import completed_import
@@ -319,6 +323,11 @@ def handle(event, binding, stored_keys):
         raise ValidationError('Работу уже изменили. Черновик сохранён, но отправить его нельзя. Проверьте карточку в ЛК.')
     expected=fields_for(form_for(draft,user))
     if expected != draft.fields:
+        if set(expected)-set(draft.fields)=={'reuse_photos'} and not set(draft.fields)-set(expected):
+            draft.fields=expected;draft.step=expected.index('reuse_photos');draft.state='editing'
+            draft.raw['reuse_snapshot']=form_for(draft,user).initial.get('reuse_snapshot','')
+            draft.save(update_fields=['fields','step','state','raw'])
+            prompt(event,binding,draft);return
         if set(expected)-set(draft.fields)=={'actual_coating_length_m'} and set(draft.fields)-set(expected)<={'actual_cleaning_length_m'}:
             draft.fields=expected;draft.step=expected.index('actual_coating_length_m');draft.state='editing'
             draft.save(update_fields=['fields','step','state'])
@@ -339,7 +348,9 @@ def handle(event, binding, stored_keys):
         draft.report = report
         draft.state = 'submitted'
         draft.save(update_fields=['report', 'state'])
-        queue(event, 'Отчёт сохранён в платформе и передан на проверку. Для других работ: /работы', binding=binding, job=draft.job)
+        from .draft_files import release,report_button
+        release(draft)
+        queue(event, 'Отчёт сохранён в платформе и передан на проверку.\n'+job_title(draft.job)+'\nДата: '+report.performed_date.strftime('%d.%m.%y')+f'\nНовых файлов: {report.attachments.count()}. Использовано прежних фотографий: {report.reused_photos.count()}. Для других работ: /работы', [report_button(report)], binding=binding, job=draft.job)
     elif action == 'review':
         if draft.state != 'photos':
             raise ValidationError('Сначала заполните все поля отчёта.')
@@ -366,7 +377,7 @@ def handle(event, binding, stored_keys):
             raise ValidationError('Для изменения фотографий сначала исправьте черновик.')
         keys = list(draft.photos.values_list('storage_key', flat=True))
         draft.photos.all().delete()
-        transaction.on_commit(lambda: [private_path(key).unlink(missing_ok=True) for key in keys])
+        transaction.on_commit(lambda: [discard_file(key) for key in keys])
         prompt(event, binding, draft)
     elif draft.state == 'editing':
         form = form_for(draft, user)

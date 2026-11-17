@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Reviewed insert-only completed repairs in a pinned active contract.
 
 Existing working records are authoritative: completed matches are skipped and
@@ -160,7 +161,7 @@ def prepare(user,contract_id,upload,stored_keys=None):
             return ImportBatch.objects.create(contract=contract,section_id=next(iter(bindings.values())),author=fresh,
                 filename=data['name'],storage_key=saved,size=data['size'],sha256=data['sha256'],sheet='Выполнено 2026',payload=payload)
     except Exception:
-        if saved:private_path(saved).unlink(missing_ok=True)
+        if saved:discard_file(saved)
         raise
 
 

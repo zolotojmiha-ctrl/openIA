@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 from pathlib import Path
 import unicodedata
 from django.core.exceptions import PermissionDenied,ValidationError
@@ -73,5 +74,5 @@ def upload_one(user,form):
             if d.get('upload_token'):UploadReceipt.objects.create(user=user,token=d['upload_token'],document=doc)
             return doc
     except Exception:
-        if key:private_path(key).unlink(missing_ok=True)
+        if key:discard_file(key)
         raise

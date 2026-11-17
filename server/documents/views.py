@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 import csv
 import io
 import zipfile
@@ -180,7 +181,7 @@ def replace(request,pk):
                 else:
                     key=store_file(form.file_data);make_version(locked,user,form.file_data,form.cleaned_data['comment'],key=key)
         except Exception:
-            if key:private_path(key).unlink(missing_ok=True)
+            if key:discard_file(key)
             raise
         if not form.errors:return redirect('document_detail',pk=pk)
     return render(request,'documents/form.html',{'form':form,'title':'Новая версия · '+doc.title})

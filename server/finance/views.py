@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 from functools import wraps
 from uuid import UUID
 from django.urls import reverse
@@ -213,7 +214,7 @@ def import_report(request):
                             version=make_version(doc,request.user,data,key=key)
                             draft=FinancialDraft.objects.create(user=request.user,original_name=data['name'],payload=report,source_document=doc,source_version=version)
                     except Exception:
-                        if key:private_path(key).unlink(missing_ok=True)
+                        if key:discard_file(key)
                         raise
     return render(request,'finance/import.html',{'form':form,'report':report,'draft':draft})
 

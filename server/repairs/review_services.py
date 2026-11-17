@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Leader decisions are separate from the foreman's original evidence."""
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import transaction
@@ -64,7 +65,7 @@ def correct_and_accept(user,job_id,data):
             job.refresh_from_db();confirm_work(actor,job.pk,job.version)
             return job
     except Exception:
-        for key in new_files:private_path(key).unlink(missing_ok=True)
+        for key in new_files:discard_file(key)
         raise
 
 

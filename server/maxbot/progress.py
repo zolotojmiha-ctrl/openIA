@@ -1,9 +1,10 @@
+from documents.storage import discard_file
 """Short daily-photo flow. Report completion remains a separate conversation."""
 import uuid
 from datetime import timedelta
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.utils import timezone
-from documents.storage import validate_upload,store_file
+from documents.storage import validate_upload,store_photo_file as store_file
 from repairs.progress import STAGES,ProgressForm
 from repairs.services import report_work
 from projects.access import contract_card
@@ -98,8 +99,12 @@ def handle(event,binding,stored_keys):
         report=report_work(user,draft.job_id,'note',form.cleaned_data)
         stored_keys.extend(report.attachments.values_list('storage_key',flat=True))
         draft.report=report;draft.state='submitted';draft.save(update_fields=['report','state'])
-        queue(event,'Фотоотчёт сохранён.\n'+title(user,draft.job)+'\nДата работ: '+report.performed_date.strftime('%d.%m.%y')+f'\nФотографий: {draft.photos.count()}. Ремонт остаётся в работе.',
-              [button('Добавить ещё на этот км',f'progress:select:{draft.job_id}'),button('Выбрать другую работу','progress:list:0')],binding=binding,job=draft.job);return True
+        from .draft_files import release,report_button
+        from repairs.photos import report_photo_count
+        count=report_photo_count(report)
+        release(draft)
+        queue(event,'Фотоотчёт сохранён.\n'+title(user,draft.job)+'\nДата работ: '+report.performed_date.strftime('%d.%m.%y')+f'\nФотографий: {count}. Ремонт остаётся в работе.',
+              [report_button(report),button('Добавить ещё на этот км',f'progress:select:{draft.job_id}'),button('Выбрать другую работу','progress:list:0')],binding=binding,job=draft.job);return True
     if action=='date':
         draft.raw['_input']='date';draft.save(update_fields=['raw']);queue(event,'Введите дату работ в формате ДД.ММ.ГГ. По умолчанию используется сегодня.',[button('Оставить прежнюю дату',f'progress:back:{draft.pk}')],binding=binding,job=draft.job);return True
     if action=='stages' or action=='toggle':
@@ -114,7 +119,7 @@ def handle(event,binding,stored_keys):
         from django.db import transaction
         from documents.storage import private_path
         keys=list(draft.photos.values_list('storage_key',flat=True));draft.photos.all().delete()
-        transaction.on_commit(lambda:[private_path(key).unlink(missing_ok=True) for key in keys])
+        transaction.on_commit(lambda:[discard_file(key) for key in keys])
     elif photos:
         if len(text)>3000:raise ValidationError('Подпись — до 3000 символов.')
         if draft.photos.count()+len(photos)>20:raise ValidationError('До 20 фото за одну отправку.')

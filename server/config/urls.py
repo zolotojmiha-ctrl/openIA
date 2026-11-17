@@ -1,3 +1,4 @@
+from repairs import photo_views
 from repairs import stock_reconciliation_views
 from projects import stock_exchange
 from projects import stock_group_views
@@ -200,6 +201,11 @@ urlpatterns=[
  path('cabinet/repairs/couplings/<uuid:pk>/new/',repairs.coupling_new,name='repair_coupling_new'),
  path('cabinet/repairs/sections/<uuid:pk>/assignees/',repairs.section_assignees,name='repair_assignees'),
  path('cabinet/repairs/sections/<uuid:pk>/assign/',repairs.assign_many,name='repair_assign_many'),
+ path('cabinet/repairs/photos/<uuid:pk>/edit/',photo_views.edit,{'action':'edit'},name='repair_photo_edit'),
+ path('cabinet/repairs/photos/<uuid:pk>/delete/',photo_views.edit,{'action':'delete'},name='repair_photo_delete'),
+ path('cabinet/repairs/photos/review/<uuid:pk>/',photo_views.review,name='repair_photo_review'),
+ path('cabinet/repairs/photos/<uuid:pk>/history/',photo_views.history,name='repair_photo_history'),
+ path('cabinet/repairs/photos/version/<int:pk>/',photo_views.version,name='repair_photo_version'),
  path('cabinet/repairs/files/<uuid:pk>/',repairs.attachment,name='repair_attachment'),
  path('cabinet/repairs/defects/<uuid:pk>/delete/',repairs.defect_visibility,name='repair_defect_delete'),
  path('cabinet/repairs/defects/<uuid:pk>/restore/',repairs.defect_visibility,{'restore':True},name='repair_defect_restore'),

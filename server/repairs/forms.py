@@ -12,7 +12,7 @@ from documents.storage import validate_upload
 from .access import visible_sections, selectable_couplings,repair_contracts,validate_contract_place
 from .values import kilometre,identifier,matching_defects
 from .construction import planned_parts,COUPLING_METHODS
-from .models import Section, Job, Defect, Coupling, Report, METHODS, PROBLEMS
+from .models import Attachment, Section, Job, Defect, Coupling, Report, METHODS, PROBLEMS
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
 
@@ -145,13 +145,21 @@ class ReportForm(forms.Form):
     latitude=forms.DecimalField(max_digits=9,decimal_places=6,min_value=-90,max_value=90,required=False,widget=forms.HiddenInput)
     longitude=forms.DecimalField(max_digits=9,decimal_places=6,min_value=-180,max_value=180,required=False,widget=forms.HiddenInput)
     def __init__(self,*args,job,action,user,**kwargs):
-        super().__init__(*args,**kwargs);self.action=action
+        super().__init__(*args,**kwargs);self.action=action;self.photo_user=user
         self.previous_report=None
         if self.is_bound:
             try:previous_token=forms.UUIDField().clean(self.data.get('token'))
             except forms.ValidationError:previous_token=None
             if previous_token:self.previous_report=Report.objects.filter(token=previous_token,job=job,author=user).first()
         self.simple=action in ('repaired','unrepaired');self.job=job
+        self.existing_photos=Attachment.objects.filter(report__job=job,content_type__in=('image/jpeg','image/png'),deleted_at__isnull=True).order_by('pk')
+        if action in ('result','repaired','correction') and self.existing_photos.exists():
+            self.fields['reuse_photos']=forms.ChoiceField(label='Использовать фотографии, уже загруженные на эту работу?',required=False,choices=[('no','Нет, только новые вложения'),('all','Да, использовать уже загруженные фотографии')],help_text=f'Уже загружено файлов: {self.existing_photos.count()}. Повторно отправлять их не нужно; недостающие можно добавить отдельно.')
+            from django.core import signing
+            self.fields['reuse_snapshot']=forms.CharField(widget=forms.HiddenInput,required=False)
+            self.initial['reuse_snapshot']=signing.dumps({'user':str(user.pk),'job':str(job.pk),'photos':[(str(photo.pk),photo.revision,photo.sha256) for photo in self.existing_photos]},salt='repair-photo-reuse')
+
+
         if self.simple:
             action='result' if action=='repaired' else 'problem'
             self.action=action
@@ -333,6 +341,16 @@ class ReportForm(forms.Form):
         if self.action=='correction' and not c.get('note'):self.add_error('note','Укажите причину исправления. Прежний результат останется в истории.')
         if self.action=='note' and not c.get('note') and not c.get('files'):self.add_error('note','Добавьте фото или пояснение.')
         if (c.get('latitude') is None)!=(c.get('longitude') is None):self.add_error(None,'Нужны обе координаты.')
+        reuse_choice=c.get('reuse_photos')
+        c['reuse_photos']=[]
+        if reuse_choice=='all':
+            from django.core import signing
+            try:
+                snapshot=signing.loads(c.get('reuse_snapshot',''),salt='repair-photo-reuse',max_age=7200)
+                current=[(str(photo.pk),photo.revision,photo.sha256) for photo in self.existing_photos]
+                if snapshot.get('job')!=str(self.job.pk) or snapshot.get('user')!=str(self.photo_user.pk) or [tuple(row) for row in snapshot.get('photos',[])]!=current:raise signing.BadSignature
+                c['reuse_photos']=list(self.existing_photos)
+            except signing.BadSignature:self.add_error('reuse_photos','Фотографии изменились или предпросмотр истёк. Откройте форму заново.')
         return c
 
 class AcceptanceForm(forms.Form):

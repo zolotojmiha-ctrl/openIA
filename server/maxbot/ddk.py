@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Native MAX DDK revision. Drafts are durable; only confirmation changes the job."""
 import uuid,json,hashlib
 from datetime import timedelta
@@ -5,7 +6,7 @@ from django import forms
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
 from django.utils import timezone
-from documents.storage import validate_upload,store_file,private_path
+from documents.storage import validate_upload,store_photo_file as store_file,private_path
 from repairs import ddk as service
 from repairs.construction import COUPLING_METHODS
 from repairs.models import METHODS
@@ -213,7 +214,7 @@ def handle(event,binding,stored_keys):
     elif action=='clear':
         if draft.state!='photos':raise ValidationError('Для изменения вложений вернитесь к их добавлению.')
         keys=list(draft.photos.values_list('storage_key',flat=True));draft.photos.all().delete()
-        transaction.on_commit(lambda:[private_path(key).unlink(missing_ok=True) for key in keys]);prompt(event,binding,draft)
+        transaction.on_commit(lambda:[discard_file(key) for key in keys]);prompt(event,binding,draft)
     elif attachments:
         if draft.state=='editing' and draft.fields[draft.step]=='reason' and text and not action:answer(draft,text)
         if draft.step<len(draft.fields) or draft.state=='confirm':raise ValidationError('Вложения добавляются после ответов. Для дополнения подтверждённой сводки нажмите «Добавить вложения».')

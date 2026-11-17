@@ -66,6 +66,9 @@ class ProblemReviewBrowser(StaticLiveServerTestCase):
         base.StockTests.setUpTestData.__func__(type(self))
         for user in (self.leader,self.worker):user.set_password('123456');user.save()
         completed=base.StockTests.make_job(self);blocked=base.StockTests.make_job(self)
+        completed.length_m='1.5';completed.save()
+        from .test_stock_fixture import receive
+        receive(self.leader,completed,1500,8)
         defect=completed.defects.get();defect.kilometre='308.265';defect.number='1757';defect.save()
         result=subprocess.run(['node',str(settings.BASE_DIR/'tests/problem-review-browser.cjs')],env=os.environ|{'ARMADA_TEST_URL':self.live_server_url,'ARMADA_REVIEW_FIXTURE':json.dumps({'completed':str(completed.pk),'blocked':str(blocked.pk)})},capture_output=True,text=True,timeout=90)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)

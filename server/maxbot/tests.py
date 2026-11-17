@@ -314,14 +314,17 @@ class MaxTests(TestCase):
         output = io.BytesIO(); Image.new('RGB', (2, 2), 'white').save(output, format='PNG')
         return SimpleUploadedFile('photo.png', output.getvalue(), content_type='image/png')
 
-    def test_photo_persists_then_copies_to_standard_private_attachment(self):
+    def test_photo_persists_then_transfers_to_standard_private_attachment(self):
         draft = self.fill(self.draft())
         with patch('maxbot.dialog.download_photo', return_value=self.image()):
             self.event(photos=[{'type': 'image', 'url': 'https://synthetic.invalid/photo'}])
         self.assertEqual(Photo.objects.count(), 1)
+        temporary=Photo.objects.get();key=temporary.storage_key;sha=temporary.sha256
         self.event('review:' + str(draft.pk)); self.event('confirm:' + str(draft.pk))
         self.assertEqual(Attachment.objects.count(), 1)
-        self.assertEqual(Attachment.objects.get().sha256, Photo.objects.get().sha256)
+        self.assertEqual(Attachment.objects.get().sha256,sha)
+        self.assertEqual(Attachment.objects.get().storage_key,key)
+        self.assertFalse(Photo.objects.exists())
 
     @override_settings(ARMADA_MAX_PHOTO_HOSTS=('cdn.invalid',))
     def test_max_webp_photo_converts_to_jpeg_and_submits_standard_attachment(self):

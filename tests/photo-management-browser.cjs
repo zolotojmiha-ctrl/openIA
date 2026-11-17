@@ -1,0 +1,30 @@
+const {chromium}=require('playwright'),assert=require('node:assert'),fs=require('node:fs');
+(async()=>{
+ const base=process.env.ARMADA_TEST_URL;
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
+ const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ async function login(phone){await page.goto(base+'/cabinet/login/');await page.locator('[name=phone]').fill(phone);await page.locator('[name=password]').fill(process.env.ARMADA_TEST_PASSWORD);await page.locator('button[type=submit]').click();await page.waitForURL(base+'/cabinet/');}
+ await login('+70000000002');await page.goto(base+process.env.ARMADA_PHOTO_JOB);
+ assert.equal(await page.locator('#repair-gallery img').count(),1);
+ assert.equal(await page.getByRole('link',{name:'Изменить',exact:true}).count(),0);
+ await context.clearCookies();await login('+70000000001');await page.goto(base+process.env.ARMADA_PHOTO_JOB);
+ await page.getByRole('link',{name:'Изменить',exact:true}).click();
+ await page.locator('[name=name]').fill('TEST corrected.png');await page.locator('[name=caption]').fill('TEST corrected caption');
+ await page.locator('[name=file]').setInputFiles({name:'new.png',mimeType:'image/png',buffer:Buffer.from(process.env.ARMADA_PHOTO_BASE64,'base64')});
+ await page.getByRole('button',{name:'Проверить перед подтверждением',exact:true}).click();
+ await page.getByRole('button',{name:'Подтвердить',exact:true}).click();await page.waitForURL(base+process.env.ARMADA_PHOTO_JOB);
+ assert.ok((await page.locator('#repair-gallery').textContent()).includes('TEST corrected caption'));
+ assert.equal(await page.locator('#repair-gallery img').count(),1);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.getByRole('link',{name:'Удалить',exact:true}).click();await page.getByRole('button',{name:'Проверить перед подтверждением',exact:true}).click();
+ await page.getByRole('button',{name:'Отменить',exact:true}).click();await page.waitForURL(base+process.env.ARMADA_PHOTO_JOB);
+ assert.equal(await page.locator('#repair-gallery img').count(),1);
+ await page.getByRole('link',{name:'Удалить',exact:true}).click();await page.getByRole('button',{name:'Проверить перед подтверждением',exact:true}).click();
+ await page.getByRole('button',{name:'Подтвердить',exact:true}).click();await page.waitForURL(base+process.env.ARMADA_PHOTO_JOB);
+ assert.equal(await page.locator('#repair-gallery img').count(),0);
+ await page.locator('#repair-gallery details summary').click();await page.getByRole('link',{name:'TEST corrected.png',exact:true}).click();
+ await page.waitForURL(/photos\/.*\/history\//);await page.getByText('Файл этой версии удалён; сведения об изменении сохранены.',{exact:true}).first().waitFor();
+ fs.mkdirSync('/workspace/artifacts',{recursive:true});await page.screenshot({path:'/workspace/artifacts/photo-management-phone.png',fullPage:true});
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS mobile gallery: foreman cannot edit; leader replaces, cancels deletion, deletes and sees audit.');
+})().catch(e=>{console.error(e);process.exit(1)});

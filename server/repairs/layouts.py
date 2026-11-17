@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Shared version selection, exact section-start distances and ACL-scoped neighbours."""
 from datetime import timedelta
 from decimal import Decimal
@@ -36,7 +37,7 @@ def prepare(user,section_id,upload,stored_keys=None):
             return PipeLayout.objects.create(section=section,author=fresh,filename=content['name'],storage_key=saved,
                 sha256=data['sha256'],sheet=data['sheet'],data={'rows':data['rows']},session_version=fresh.session_version,basis_id=active.pk if active else None)
     except Exception:
-        if saved:private_path(saved).unlink(missing_ok=True)
+        if saved:discard_file(saved)
         raise
 
 @transaction.atomic

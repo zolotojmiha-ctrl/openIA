@@ -22,7 +22,7 @@ const fs=require('node:fs');
  assert.equal(await original.locator('.repair-delete').count(),2);
  await original.locator('.repair-more summary').click();await original.locator('.repair-delete').first().click();await technician.getByRole('button',{name:'Удалить из списка',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');await technician.goto(base+'/cabinet/repairs/?state=all');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),1);
- await technician.goto(base+'/cabinet/repairs/'+process.env.ARMADA_REPAIR_ID+'/');assert.equal(await technician.locator('.repair-photos img').count(),1);
+ await technician.goto(base+'/cabinet/repairs/'+process.env.ARMADA_REPAIR_ID+'/');assert.equal(await technician.locator('#repair-gallery img').count(),1);
  await technician.goto(base+'/cabinet/repairs/?archive=1');await technician.getByRole('link',{name:'Восстановить',exact:true}).click();await technician.getByRole('button',{name:'Восстановить',exact:true}).click();await technician.waitForURL(base+'/cabinet/repairs/');await technician.goto(base+'/cabinet/repairs/?state=all');
  assert.equal(await technician.locator('[data-repair-group="'+process.env.ARMADA_REPAIR_ID+'"]').locator('.repair-delete').count(),2);
  for(const width of [1440,768,390,320]){await technician.setViewportSize({width,height:900});assert.equal(await technician.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'register '+width);}
@@ -45,4 +45,4 @@ const fs=require('node:fs');
  const finalText=await technician.locator('main').textContent();for(const text of ['Не устранён','П1 увеличенного диаметра','ТЕСТ Мастер','Смена ответственного мастера'])assert.ok(finalText.includes(text));
  await technician.goto(base+'/cabinet/repairs/');assert.equal(await technician.getByRole('columnheader',{name:'Код ремонта / участок',exact:true}).count(),0);assert.equal(await technician.getByRole('columnheader',{name:'Метод ремонта',exact:true}).count(),1);await technician.screenshot({path:out+'/10-register-terms.png',fullPage:true});
  assert.deepEqual(errors,[]);await browser.close();console.log('PASS technician permission, XLSX template/import/preview/assignment/export, separate repair groups and one pasted coordinate field');
-})().catch(e=>{console.error(e.message);process.exit(1);});
+})().catch(e=>{console.error(e.stack);process.exit(1);});

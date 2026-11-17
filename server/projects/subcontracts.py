@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 """Explicit company membership and per-order access never grant parent cards or files."""
 import hashlib,json,re
 from decimal import Decimal
@@ -175,7 +176,7 @@ def submit_result(user,order_id,data,accept=False):
             order.save(update_fields=['state','version']);audit(actor,'subcontract_reported',order=str(order.pk),result=str(result.pk),correction=accept,outcome=data['outcome'],quantity=str(q) if q is not None else '')
             return result
     except Exception:
-        for key in stored:private_path(key).unlink(missing_ok=True)
+        for key in stored:discard_file(key)
         raise
 
 @transaction.atomic

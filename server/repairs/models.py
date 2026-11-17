@@ -2,6 +2,7 @@ from projects.archive import ArchiveProtectedModel
 """Engineering records. Plans, field reports and customer acceptance stay separate."""
 import uuid
 from django.conf import settings
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import models
 from .values import kilometre
@@ -149,6 +150,7 @@ class Report(ArchiveProtectedModel):
     longitude=models.DecimalField(max_digits=9,decimal_places=6,null=True,blank=True)
     confirmed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     confirmed_at=models.DateTimeField(null=True,blank=True)
+    reused_photos=models.ManyToManyField('Attachment',blank=True,related_name='reused_in_reports')
     created_at=models.DateTimeField(auto_now_add=True)
     class Meta:
         ordering=['-created_at','-pk']
@@ -166,6 +168,37 @@ class Attachment(ArchiveProtectedModel):
     content_type=models.CharField(max_length=100)
     size=models.PositiveIntegerField()
     sha256=models.CharField(max_length=64)
+
+    caption=models.CharField(max_length=1000,blank=True)
+    revision=models.PositiveIntegerField(default=1)
+    deleted_at=models.DateTimeField(null=True,blank=True)
+
+
+class PhotoRevision(ArchiveProtectedModel):
+    photo=models.ForeignKey(Attachment,on_delete=models.PROTECT,related_name='versions')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
+    revision=models.PositiveIntegerField()
+    action=models.CharField(max_length=20)
+    manifest=models.JSONField(default=dict)
+    storage_key=models.CharField(max_length=40,blank=True)
+    size=models.PositiveIntegerField(default=0)
+    sha256=models.CharField(max_length=64,blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['photo','revision'],name='unique_photo_revision')]
+
+
+class PhotoOperation(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    photo=models.ForeignKey(Attachment,on_delete=models.PROTECT,related_name='operations')
+    action=models.CharField(max_length=20)
+    expected_revision=models.PositiveIntegerField()
+    payload=models.JSONField(default=dict)
+    storage_key=models.CharField(max_length=40,blank=True)
+    state=models.CharField(max_length=20,default='preview')
+    expires=models.DateTimeField()
+    created_at=models.DateTimeField(auto_now_add=True)
 
 class ImportBatch(ArchiveProtectedModel):
     contract=models.ForeignKey('projects.Contract',verbose_name='Контракт',on_delete=models.PROTECT,null=True,blank=True,related_name='repair_importbatchs')
@@ -198,3 +231,13 @@ class PipeLayout(models.Model):
     applied_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['section'],condition=models.Q(state='active'),name='repair_one_active_pipe_layout')]
+
+
+class PhotoPurge(models.Model):
+    """Explicitly requested reclamation, separate from immutable change metadata."""
+    storage_key=models.CharField(max_length=40,primary_key=True)
+    sha256=models.CharField(max_length=64)
+    size=models.PositiveIntegerField()
+    state=models.CharField(max_length=20,default='pending')
+    available_at=models.DateTimeField(default=timezone.now)
+    created_at=models.DateTimeField(auto_now_add=True)

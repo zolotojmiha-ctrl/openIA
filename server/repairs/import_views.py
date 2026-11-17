@@ -1,3 +1,4 @@
+from documents.storage import discard_file
 from decimal import Decimal
 from django import forms
 from django.contrib import messages
@@ -137,7 +138,7 @@ def upload(request):
                     item['assigned_to']=str(master.pk);item['master_name']=master.full_name
             original=validate_upload(form.cleaned_data['file']);key=store_file(original)
             try:batch=ImportBatch.objects.create(contract=form.cleaned_data['contract'],section=form.cleaned_data['section'],author=request.user,filename=original['name'],storage_key=key,size=original['size'],sha256=payload['sha256'],sheet=payload['sheet'],payload=payload)
-            except Exception:private_path(key).unlink(missing_ok=True);raise
+            except Exception:discard_file(key);raise
             return redirect('repair_import_review',pk=batch.pk)
         except ValidationError as e:form.add_error('file',e.messages[0])
     return render(request,'repairs/import.html',{'form':form,'back':back,'area':area})

@@ -30,6 +30,7 @@ PATHS={
  'repairs.job':('contract_id',), 'repairs.defect':('contract_id',),
  'repairs.jobdefect':('job__contract_id','defect__contract_id'),
  'repairs.report':('job__contract_id',), 'repairs.attachment':('report__job__contract_id',),
+ 'repairs.photorevision':('photo__report__job__contract_id',),
  'repairs.couplinguse':('job__contract_id',), 'repairs.importbatch':('contract_id',),
  'finance.financialscope':('contract_id',), 'finance.openingsnapshot':('scope__contract_id',),
  'finance.pendingwork':('scope__contract_id',), 'finance.paymentallocation':('scope__contract_id',),

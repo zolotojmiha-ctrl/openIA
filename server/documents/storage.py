@@ -38,6 +38,54 @@ def private_path(key):
     if not path.is_relative_to(root):raise ValueError('Недопустимый путь.')
     return path
 
+def photo_storage_lock():
+    """Serialize shared-photo reference creation and physical reclamation."""
+    from django.db import connection
+    if connection.vendor=='postgresql':
+        with connection.cursor() as cursor:cursor.execute('SELECT pg_advisory_xact_lock(%s)',[6333001])
+
+
+def storage_referenced(key,include_archive=True):
+    from django.apps import apps
+    for model in apps.get_models():
+        label=model._meta.label_lower
+        if label=='repairs.photopurge' or (label=='projects.photoarchive' and not include_archive):continue
+        if not any(field.name=='storage_key' for field in model._meta.concrete_fields):continue
+        rows=model._default_manager.filter(storage_key=key)
+        if label=='documents.documentversion':rows=rows.filter(document__deleted_at__isnull=True)
+        elif label=='documents.documentpart':rows=rows.filter(version__document__deleted_at__isnull=True)
+        if rows.exists():return True
+    return False
+
+
+def discard_file(key):
+    """Rollback/temporary-file cleanup must respect every live database reference."""
+    from django.db import transaction
+    with transaction.atomic():
+        photo_storage_lock()
+        if storage_referenced(key):return False
+        private_path(key).unlink(missing_ok=True)
+        return True
+
+
+def store_photo_file(data):
+    from django.db import connection
+    # Reuse immutable bytes only within a transaction that also creates the
+    # reference. Nontransactional callers retain their original ownership rules.
+    if connection.in_atomic_block and data.get('content_type') in ('image/jpeg','image/png'):
+        photo_storage_lock()
+        from repairs.models import Attachment,PhotoRevision
+        from maxbot.models import Photo
+        from itertools import chain
+        candidates=chain(*(model.objects.filter(sha256=data['sha256'],size=data['size']).exclude(storage_key='').order_by('pk') for model in (Attachment,PhotoRevision,Photo)))
+        for candidate in candidates:
+            try:
+                with private_path(candidate.storage_key).open('rb') as existing:
+                    if existing.read(MAX_FILE_SIZE+1)==data['content']:return candidate.storage_key
+            except FileNotFoundError:continue
+    return store_file(data)
+
+
 def store_file(data):
     token=uuid.uuid4().hex
     key=token[:2]+'/'+token

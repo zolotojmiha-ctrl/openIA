@@ -100,11 +100,12 @@ def _handle(event,binding):
         if not 0<=page<=10000:raise ValidationError('Неверная страница.')
         reports=list(job.reports.filter(context__progress__isnull=False).prefetch_related('attachments').order_by('-performed_date','-created_at','pk')[page*5:page*5+6])
         lines=[job_title(job),'Полученные фотоотчёты:']
+        from repairs.photos import report_photo_count
         for r in reports[:5]:
-            lines.append('Фото за '+r.performed_date.strftime('%d.%m.%Y')+f': {r.attachments.count()} шт.'+('\n'+r.note[:350] if r.note else ''))
+            lines.append('Фото за '+r.performed_date.strftime('%d.%m.%Y')+f': {report_photo_count(r)} шт.'+('\n'+r.note[:350] if r.note else ''))
         from .leadership import link
-        photo_link=link('Открыть фотографии в ЛК','repair_detail',[job.pk]);photo_link['url']+='#progress-timeline'
-        buttons=[photo_link,button('Работы участка',f'worknav:jobs:history:{job.section_id}:0'),button('Другой участок','worknav:sections:history:0'),button('Добавить фото','/фото')]
+        photo_link=link('Открыть фотографии в ЛК','repair_detail',[job.pk]);photo_link['url']+='#repair-gallery'
+        buttons=[button('Просмотреть и изменить фото',f'photos:list:{job.pk}:0'),photo_link,button('Работы участка',f'worknav:jobs:history:{job.section_id}:0'),button('Другой участок','worknav:sections:history:0'),button('Добавить фото','/фото')]
         if len(reports)>5:buttons.insert(0,button('Далее',f'worknav:history:{job.pk}:{page+1}'))
         if page:buttons.insert(0,button('Назад',f'worknav:history:{job.pk}:{page-1}'))
         emit(event,binding,'\n\n'.join(lines),buttons,'history',section=str(job.section_id),jobs=[str(job.pk)])
@@ -116,7 +117,7 @@ def _handle(event,binding):
         buttons=[]
         if photos(binding.user).filter(pk=job.pk).exists():buttons.append(button('Добавить фото хода работ',f'progress:select:{job.pk}'))
         if ddk(binding.user).filter(pk=job.pk).exists():buttons.append(button('Метод после ДДК',f'ddk:select:{job.pk}'))
-        buttons += [button('Расстояния между секциями',f'layout:job:{job.pk}:0'),button('Работы участка',f'worknav:jobs:works:{job.section_id}:0'),button('Другой участок','worknav:sections:works:0')]
+        buttons += [button('Фотографии работы',f'photos:list:{job.pk}:0'),button('Расстояния между секциями',f'layout:job:{job.pk}:0'),button('Работы участка',f'worknav:jobs:works:{job.section_id}:0'),button('Другой участок','worknav:sections:works:0')]
         emit(event,binding,job_title(job)+'\nСостояние: '+job.get_state_display(),buttons,'works',section=str(job.section_id),jobs=[str(job.pk)])
     else:raise ValidationError('Откройте меню заново: /меню')
     return True
