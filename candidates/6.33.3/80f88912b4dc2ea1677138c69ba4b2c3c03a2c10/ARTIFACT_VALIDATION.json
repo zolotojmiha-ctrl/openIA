@@ -1,0 +1,43 @@
+{
+  "source_commit": "80f88912b4dc2ea1677138c69ba4b2c3c03a2c10",
+  "archive_sha256": "6d9f16b560cdfc3fc9cf960556568464d822e6395108764bf8d3673d97102f29",
+  "installer_sha256": "47158c297ee68075781dde5831085486a5e7283025068c61136bc95a4d4d4f2b",
+  "source_files_verified": 958,
+  "private_material_scan": "passed",
+  "candidate_unsigned": true,
+  "exact_archive_upgrade": "passed",
+  "exact_archive_repeat": "passed",
+  "post_install_data_checks": "passed",
+  "encrypted_restore_before_upgrade": {
+    "tables": 156,
+    "files": 13,
+    "passed": true
+  },
+  "encrypted_restore_with_photo_schema": {
+    "tables": 160,
+    "files": 9,
+    "passed": true
+  },
+  "installer_safety": {
+    "passed": 60,
+    "failed": 0
+  },
+  "regression": {
+    "executed": 669,
+    "passed": 666,
+    "baseline_failures": 2,
+    "skipped": 1
+  },
+  "max_final": {
+    "executed": 211,
+    "passed": 210,
+    "failed": 0,
+    "skipped": 1
+  },
+  "owner_signing_tests": {
+    "passed": 5
+  },
+  "live_max_checked": false,
+  "production_installed": false,
+  "verified_at": "2026-11-17T08:33:04.615903+00:00"
+}
