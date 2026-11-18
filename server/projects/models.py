@@ -567,7 +567,8 @@ class StockActionReceipt(models.Model):
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     digest=models.CharField(max_length=64)
 
-from .release624_models import (EquipmentRental, RentalRate, RentalPeriod, RentalDay, RentalDayRevision, RentalPayment, CoatingProfile, RepairConsumption, CustomerDocumentLink)
+from .release624_models import (EquipmentRental, RentalRate, RentalPeriod, RentalDay, RentalDayRevision, RentalPayment, RentalDepositUse, CoatingProfile, RepairConsumption, CustomerDocumentLink)
+from .release624_models import RentalInvoice, RentalPaymentAllocation
 
 from .demand_mail_models import DemandMailing, DemandMailRun, DemandMailDelivery
 

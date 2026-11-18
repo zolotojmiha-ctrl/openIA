@@ -9,7 +9,7 @@ from accounts.permissions import permitted
 from accounts.models import User
 from accounts.views import audit
 from .models import (EquipmentRental, EquipmentAssignment, RentalRate, RentalDay,
- RentalDayRevision, RentalPayment, RentalPeriod, COMPANY_TAX_ID)
+ RentalDayRevision, RentalPayment, RentalDepositUse, RentalPeriod, COMPANY_TAX_ID)
 
 ZERO=Decimal('0')
 HOURS={'work':10,'idle':4,'external':0}
@@ -125,17 +125,19 @@ def save_day(user,pk,date,kind,version=0,note=''):
     return row
 
 @transaction.atomic
-def payment(user,pk,date,amount,note,token):
+def payment(user,pk,date,amount,note,token,deposit_amount=ZERO):
     if not financial_writer(user):raise PermissionDenied
     actor=actor_lock(user,True)
     if not financial_writer(actor):raise PermissionDenied
     rental=visible(actor).select_for_update(of=('self',)).get(pk=pk)
-    if amount<=0 or date>timezone.localdate() or not note.strip():raise ValidationError('Укажите положительную сумму, фактическую дату и основание.')
+    amount=money(amount);deposit_amount=money(deposit_amount)
+    if amount<=0 or date>timezone.localdate() or not note.strip() or len(note)>500:raise ValidationError('Укажите положительную сумму, фактическую дату и основание.')
+    if not ZERO<=deposit_amount<=amount:raise ValidationError('Залог должен входить в сумму перечисления.')
     old=RentalPayment.objects.filter(token=token).first()
     if old:
-        if old.rental_id!=rental.pk or old.date!=date or old.amount!=amount or old.note!=note:raise ValidationError('Эта отправка уже использована для другого платежа.')
+        if old.rental_id!=rental.pk or old.date!=date or old.amount!=amount or old.note!=note or old.deposit_amount!=deposit_amount:raise ValidationError('Эта отправка уже использована для другого платежа.')
         return old
-    row=RentalPayment.objects.create(rental=rental,date=date,amount=amount,note=note,token=token,created_by=actor)
+    row=RentalPayment.objects.create(rental=rental,date=date,amount=amount,note=note,token=token,deposit_amount=deposit_amount,purpose_confirmed=True,created_by=actor)
     audit(actor,'finance_created',kind='rental_payment',payment=str(row.pk),rental=str(pk),amount=str(amount));return row
 
 @transaction.atomic
@@ -147,6 +149,8 @@ def reverse_payment(user,pk,payment_id,reason):
     if not reason.strip():raise ValidationError('Укажите причину отмены.')
     row=rental.payments.select_for_update().get(pk=payment_id)
     if row.reversed:return row
+    if row.allocations.filter(reversed=False).exists():raise ValidationError('Сначала отмените привязки платежа к счетам.')
+    if row.deposit_uses.filter(reversed=False).exists():raise ValidationError('Сначала отмените возврат или зачёт залога по этому платежу.')
     row.reversed=True;row.reversal_reason=reason;row.save(update_fields=['reversed','reversal_reason'])
     audit(actor,'finance_corrected',kind='rental_payment_reversed',payment=str(row.pk),reason=reason)
 
@@ -154,8 +158,93 @@ def reverse_payment(user,pk,payment_id,reason):
 def totals(rental,on=None):
     days=rental.days.all();payments=rental.payments.filter(reversed=False)
     if on:days=days.filter(date__lte=on);payments=payments.filter(date__lte=on)
-    charged=days.aggregate(v=Sum('amount'))['v'] or ZERO;paid=payments.aggregate(v=Sum('amount'))['v'] or ZERO
-    return {'charged':charged,'paid':paid,'debt':max(ZERO,charged-paid),'advance':max(ZERO,paid-charged),'hours':days.aggregate(v=Sum('hours'))['v'] or 0,'unpriced':days.filter(hours__gt=0,rate__isnull=True).count()}
+    charged=days.aggregate(v=Sum('amount'))['v'] or ZERO
+    cash=payments.aggregate(v=Sum('amount'))['v'] or ZERO
+    deposited=payments.aggregate(v=Sum('deposit_amount'))['v'] or ZERO
+    uses=RentalDepositUse.objects.filter(payment__in=payments,reversed=False)
+    if on:uses=uses.filter(date__lte=on)
+    refunded=uses.filter(kind='refund').aggregate(v=Sum('amount'))['v'] or ZERO
+    offset=uses.filter(kind='offset').aggregate(v=Sum('amount'))['v'] or ZERO
+    paid=cash-deposited+offset
+    return {'charged':charged,'paid':paid,'debt':max(ZERO,charged-paid),'advance':max(ZERO,paid-charged),
+        'cash_paid':cash,'cash_net':cash-refunded,'deposit':deposited-refunded-offset,'deposit_refunded':refunded,
+        'deposit_offset':offset,'unconfirmed_payments':payments.filter(purpose_confirmed=False).count(),
+        'hours':days.aggregate(v=Sum('hours'))['v'] or 0,'unpriced':days.filter(hours__gt=0,rate__isnull=True).count()}
+
+
+def money(value):
+    try:
+        value=Decimal(str(value))
+        if not value.is_finite() or value!=value.quantize(Decimal('.01')) or abs(value)>=Decimal('10000000000000000'):
+            raise ValueError
+    except (ValueError,ArithmeticError):
+        raise ValidationError('Укажите сумму в рублях, не более двух знаков после запятой.') from None
+    return value
+
+
+def financial_lock(user, pk):
+    actor=actor_lock(user,True)
+    if not financial_writer(actor):raise PermissionDenied
+    return actor,visible(actor).select_for_update(of=('self',)).get(pk=pk)
+
+
+@transaction.atomic
+def classify_payment(user,pk,payment_id,deposit_amount,version,reason):
+    actor,rental=financial_lock(user,pk)
+    row=rental.payments.select_for_update().get(pk=payment_id)
+    amount=money(deposit_amount)
+    if row.reversed:raise ValidationError('Отменённый платёж нельзя переразнести.')
+    if not reason.strip() or len(reason)>500:raise ValidationError('Укажите причину разнесения, до 500 символов.')
+    if row.purpose_version!=version:raise ValidationError('Назначения платежа изменились. Обновите данные.')
+    used=row.deposit_uses.filter(reversed=False).aggregate(v=Sum('amount'))['v'] or ZERO
+    if not used<=amount<=row.amount:raise ValidationError('Залог должен входить в платёж и покрывать уже выполненные возвраты/зачёты.')
+    from .rental_settlements import payment_credit,allocated
+    for on in [None,*row.allocations.filter(reversed=False).values_list('date',flat=True).distinct()]:
+        if allocated(row,on)>payment_credit(row,on)+row.deposit_amount-amount:raise ValidationError('Сначала отмените привязки оплаты: сумма услуг станет меньше зачтённой.')
+    previous=str(row.deposit_amount)
+    row.deposit_amount=amount;row.purpose_confirmed=True;row.purpose_version+=1
+    row.save(update_fields=['deposit_amount','purpose_confirmed','purpose_version'])
+    audit(actor,'finance_corrected',kind='rental_payment_classified',payment=str(row.pk),previous_deposit=previous,deposit=str(amount),reason=reason,version=row.purpose_version)
+    return row
+
+
+@transaction.atomic
+def use_deposit(user,pk,payment_id,date,kind,amount,note,token):
+    actor,rental=financial_lock(user,pk)
+    row=rental.payments.select_for_update().get(pk=payment_id)
+    amount=money(amount)
+    if kind not in ('refund','offset') or amount<=0 or not note.strip() or len(note)>500 or not row.date<=date<=timezone.localdate():
+        raise ValidationError('Проверьте вид операции, сумму, дату и основание.')
+    old=RentalDepositUse.objects.filter(token=token).first()
+    if old:
+        if (old.payment_id,old.date,old.kind,old.amount,old.note)!=(row.pk,date,kind,amount,note):
+            raise ValidationError('Эта отправка уже использована для другой операции.')
+        return old
+    if row.reversed:raise ValidationError('Платёж отменён.')
+    used=row.deposit_uses.filter(reversed=False).aggregate(v=Sum('amount'))['v'] or ZERO
+    if used+amount>row.deposit_amount:raise ValidationError('Недостаточно остатка залога по этому платежу.')
+    # Backdating must never make an earlier balance negative.
+    used_before=row.deposit_uses.filter(reversed=False,date__lte=date).aggregate(v=Sum('amount'))['v'] or ZERO
+    if used_before+amount>row.deposit_amount:raise ValidationError('Недостаточно залога на дату операции.')
+    result=RentalDepositUse.objects.create(payment=row,date=date,kind=kind,amount=amount,note=note,token=token,created_by=actor)
+    audit(actor,'finance_created',kind='rental_deposit_'+kind,operation=str(result.pk),payment=str(row.pk),amount=str(amount))
+    return result
+
+
+@transaction.atomic
+def reverse_deposit_use(user,pk,operation_id,reason):
+    actor,rental=financial_lock(user,pk)
+    if not reason.strip() or len(reason)>500:raise ValidationError('Укажите причину отмены, до 500 символов.')
+    row=RentalDepositUse.objects.select_for_update().get(pk=operation_id,payment__rental=rental)
+    if row.reversed:return row
+    from .rental_settlements import payment_credit,allocated
+    if row.kind=='offset':
+        for on in [None,*row.payment.allocations.filter(reversed=False,date__gte=row.date).values_list('date',flat=True).distinct()]:
+            if allocated(row.payment,on)>payment_credit(row.payment,on)-row.amount:raise ValidationError('Сначала отмените привязки оплаты за счёт этого зачёта залога.')
+    row.reversed=True;row.reversal_reason=reason
+    row.save(update_fields=['reversed','reversal_reason'])
+    audit(actor,'finance_corrected',kind='rental_deposit_reversed',operation=str(row.pk),reason=reason)
+    return row
 
 
 def missing_dates(rental,user=None,limit=367):
@@ -167,6 +256,23 @@ def missing_dates(rental,user=None,limit=367):
         if len(result)>=limit:break
         day+=timedelta(days=1)
     return result
+
+
+def period_totals(rental, start, end):
+    """Charges for inclusive service dates; payment dates do not settle a period."""
+    period_dates(rental, start, end)
+    if (end-start).days > 366:
+        raise ValidationError('Выберите период длиной не больше года.')
+    days = rental.days.filter(date__range=(start, end))
+    values = days.aggregate(amount=Sum('amount'), hours=Sum('hours'))
+    return {
+        'start': start, 'end': end,
+        'charged': values['amount'] or ZERO,
+        'hours': values['hours'] or 0,
+        'missing': (end-start).days + 1 - days.count(),
+        'unpriced': days.filter(hours__gt=0, rate__isnull=True).count(),
+        'days': list(days.order_by('date').values('date', 'kind', 'hours', 'amount', 'version', 'rate__basis', 'rate__work_price', 'rate__idle_price')),
+    }
 
 @transaction.atomic
 def close_period(user,pk,start,end,note=''):
@@ -182,6 +288,13 @@ def close_period(user,pk,start,end,note=''):
     if days.filter(hours__gt=0,rate__isnull=True).exists():raise ValidationError('Есть дни без тарифа. Сначала задайте стоимость аренды.')
     summary=totals(rental,end)
     snapshot={k:str(v) for k,v in summary.items()};snapshot['days']=[{'date':str(d.date),'version':d.version,'hours':d.hours,'amount':str(d.amount)} for d in days.order_by('date')]
+    # Keep historical cumulative keys compatible; explicitly distinguish the
+    # selected service interval from the balance as of its end date.
+    selected = period_totals(rental, start, end)
+    snapshot['days']=[{'date':str(d.date),'version':d.version,'kind':d.kind,'hours':d.hours,'amount':str(d.amount),'rate':d.rate_id,'basis':d.rate.basis if d.rate_id else '', 'work_price':str(d.rate.work_price) if d.rate_id else '', 'idle_price':str(d.rate.idle_price) if d.rate_id else ''} for d in days.select_related('rate').order_by('date')]
+    snapshot['schema_version'] = 2
+    snapshot['period_charged'] = str(selected['charged'])
+    snapshot['period_hours'] = selected['hours']
     row=RentalPeriod.objects.create(rental=rental,starts_on=start,ends_on=end,snapshot=snapshot,note=note,created_by=actor)
     audit(actor,'finance_created',kind='rental_period_closed',period=str(row.pk));return row
 
@@ -194,6 +307,7 @@ def reopen_period(user,pk,period_id,reason):
     if not reason.strip():raise ValidationError('Укажите причину повторной сверки.')
     row=rental.periods.select_for_update().get(pk=period_id)
     if row.reopened_at:return row
+    if hasattr(row,'invoice') and not row.invoice.void_reason:raise ValidationError('Сначала отмените действующую сверку счёта.')
     row.reopened_at=timezone.now();row.reopened_by=actor;row.reopen_reason=reason
     row.save(update_fields=['reopened_at','reopened_by','reopen_reason'])
     audit(actor,'finance_corrected',kind='rental_period_reopened',period=str(row.pk),reason=reason)

@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from accounts.models import User
 from accounts.views import leader_required,audit
 from .models import RentalAccess,RentalDispute,EquipmentRental
-from . import rentals
+from . import rentals, rental_settlements
 
 
 def visible(user):
@@ -79,6 +79,7 @@ def detail(request,pk):
     return render(request,'projects/lessor_detail.html',{'access':access,'rental':access.rental,'days':days,
         'hours':days.aggregate(total=Sum('hours'))['total'] or 0,'missing':rentals.missing_dates(access.rental,limit=5000),'form':form,'disputes':access.disputes.order_by('-created_at')[:100],
         'rates':access.rental.rates.all() if access.financial else [],'payments':access.rental.payments.filter(reversed=False) if access.financial else [],
+        'settlement':rental_settlements.summary(access.rental) if access.financial else None,
         'totals':rentals.totals(access.rental) if access.financial else None})
 
 

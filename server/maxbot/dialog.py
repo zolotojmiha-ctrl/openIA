@@ -206,6 +206,8 @@ def handle(event, binding, stored_keys):
     if user.role=='lessor' and not user.is_leader:
         from .lessor import handle
         return handle(event,binding)
+    from . import rental_finance
+    if rental_finance.handle(event,binding):return
     from . import photo_management
     if photo_management.handle(event,binding,stored_keys):return
     from . import stock_reconciliation

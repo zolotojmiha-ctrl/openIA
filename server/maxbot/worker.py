@@ -136,6 +136,9 @@ def delivery_allowed(row):
     if row.scope.get('ddk_draft'):
         from .ddk import delivery_allowed as ddk_allowed
         return ddk_allowed(binding,row.scope)
+    if row.scope.get('rental_finance'):
+        from .rental_finance import delivery_allowed as finance_allowed
+        return finance_allowed(binding.user,row.scope['rental_finance'])
     if row.scope.get('rental_event') or row.scope.get('rental_overdue'):
         from .rental_notices import delivery_allowed as rental_notice_allowed
         return rental_notice_allowed(binding.user,row.scope)

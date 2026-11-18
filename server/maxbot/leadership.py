@@ -229,6 +229,7 @@ def handle(event,binding):
                 totals=rental_service.totals(row,timezone.localdate());missing=len(rental_service.missing_dates(row))
                 body+='\n\n'+str(row.placement.equipment)+'\n'+row.placement.project_object.name+'\nНа '+timezone.localdate().strftime('%d.%m.%Y')+f': {totals["hours"]} оплачиваемых ч\nНачислено: {rub(totals["charged"])}\nОплачено: {rub(totals["paid"])}\nК оплате: {rub(totals["debt"])}\nАванс: {rub(totals["advance"])}'
                 if missing or totals['unpriced']:body+=f'\nРасчёт неполный: дней без отметки {missing}, без тарифа {totals["unpriced"]}.'
+                buttons.append(button(f'{index}. Расчёты аренды',f'rentfin:home:{row.pk}:0'))
                 buttons.append(link(f'{index}. Открыть табель','rental_detail',[row.pk]))
             else:
                 body+='\n\nКонтракт: '+contract_name(user,row.contract)+'\n'+row.project_object.name+f'\n{row.name}: {row.quantity} {row.unit}'

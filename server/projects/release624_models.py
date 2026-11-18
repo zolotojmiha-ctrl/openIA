@@ -79,9 +79,60 @@ class RentalPayment(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     reversed=models.BooleanField(default=False)
     reversal_reason=models.CharField(max_length=500,blank=True)
+    deposit_amount=models.DecimalField('В том числе возвратный залог, ₽',max_digits=18,decimal_places=2,default=0)
+    purpose_version=models.PositiveIntegerField(default=1)
+    purpose_confirmed=models.BooleanField(default=False)
     class Meta:
         ordering=['-date','-pk']
-        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='rental_payment_positive')]
+        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='rental_payment_positive'),
+            models.CheckConstraint(condition=models.Q(deposit_amount__gte=0,deposit_amount__lte=models.F('amount')),name='rental_payment_deposit_range')]
+
+
+class RentalDepositUse(models.Model):
+    payment=models.ForeignKey(RentalPayment,on_delete=models.PROTECT,related_name='deposit_uses')
+    token=models.UUIDField(unique=True,default=uuid.uuid4)
+    kind=models.CharField(max_length=10,choices=[('refund','Возврат залога'),('offset','Зачёт залога в услуги')])
+    date=models.DateField()
+    amount=models.DecimalField(max_digits=18,decimal_places=2)
+    note=models.CharField(max_length=500)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
+    reversed=models.BooleanField(default=False)
+    reversal_reason=models.CharField(max_length=500,blank=True)
+    class Meta:
+        ordering=['-date','-pk']
+        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='rental_deposit_use_positive'),
+            models.CheckConstraint(condition=models.Q(kind__in=['refund','offset']),name='rental_deposit_use_kind')]
+
+
+class RentalInvoice(models.Model):
+    period=models.OneToOneField(RentalPeriod,on_delete=models.PROTECT,related_name='invoice')
+    token=models.UUIDField(unique=True,default=uuid.uuid4)
+    reference=models.CharField(max_length=200)
+    issued_on=models.DateField()
+    supplier_amount=models.DecimalField(max_digits=18,decimal_places=2)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
+    void_reason=models.CharField(max_length=500,blank=True)
+    class Meta:
+        ordering=['-period__ends_on','-pk']
+        constraints=[models.CheckConstraint(condition=models.Q(supplier_amount__gte=0),name='rental_invoice_amount_nonnegative')]
+
+
+class RentalPaymentAllocation(models.Model):
+    payment=models.ForeignKey(RentalPayment,on_delete=models.PROTECT,related_name='allocations')
+    invoice=models.ForeignKey(RentalInvoice,on_delete=models.PROTECT,related_name='allocations')
+    token=models.UUIDField(unique=True,default=uuid.uuid4)
+    date=models.DateField()
+    amount=models.DecimalField(max_digits=18,decimal_places=2)
+    note=models.CharField(max_length=500)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    created_at=models.DateTimeField(auto_now_add=True)
+    reversed=models.BooleanField(default=False)
+    reversal_reason=models.CharField(max_length=500,blank=True)
+    class Meta:
+        ordering=['-date','-pk']
+        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='rental_allocation_positive')]
 
 
 class CoatingProfile(models.Model):

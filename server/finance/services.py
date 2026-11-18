@@ -29,9 +29,10 @@ def summary(scope):
         else:due_future+=remaining
     direct=total(scope.costs.filter(kind='direct'));overhead=total(scope.costs.filter(kind='overhead'))
     cash_out=total(scope.costs,'paid_amount')
-    from projects.models import RentalDay,RentalPayment
+    from projects.models import RentalDay,RentalPayment,RentalDepositUse
     rental_cost=total(RentalDay.objects.filter(rental__financial_scope=scope))
     rental_paid=total(RentalPayment.objects.filter(rental__financial_scope=scope))
+    rental_paid-=total(RentalDepositUse.objects.filter(payment__rental__financial_scope=scope,payment__reversed=False,kind='refund'))
     rental_unpriced=RentalDay.objects.filter(rental__financial_scope=scope,hours__gt=0,rate__isnull=True).count()
     direct+=rental_cost;cash_out+=rental_paid
     has_costs=scope.costs.exists() or bool(rental_cost or rental_paid)
