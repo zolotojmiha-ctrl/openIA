@@ -1,0 +1,57 @@
+{
+  "version": "6.33.4",
+  "source_commit": "a32e0f65a42eff04196f86c5ba6e38fcf6851b8d",
+  "archive": "openIA-6.33.4-update.zip",
+  "archive_sha256": "3d62136fb95675050413658ec15ba9336360ad92888c0e1687dc1feb5b5fe0e4",
+  "archive_files": 982,
+  "excluded_service_entries": 271,
+  "installer": "install-6.33.4.sh",
+  "installer_sha256": "9d62f61066e057500039c89affd3dd20bc40a0c356e5adf8a8e04febecd5ec70",
+  "known_release_commits": {
+    "80f88912b4dc2ea1677138c69ba4b2c3c03a2c10": "6.33.3",
+    "f2ab77b474bd9db819cd88bf85af141fd1726d76": "6.33.2",
+    "a31400fad1fa63476f978a042cf046a83c600daa": "6.33.1"
+  },
+  "status": "candidate",
+  "ready_for_install": false,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": false,
+  "checksums": "SHA256SUMS-6.33.4",
+  "signature": "SHA256SUMS-6.33.4.sig",
+  "cloud_validation": {
+    "exact_archive_upgrade": "passed",
+    "repeat_install": "passed",
+    "old_rows_and_private_files": "preserved",
+    "old_env_bytes": "preserved",
+    "new_rental_ledger_and_attachment": "passed",
+    "no_outgoing_messages": true,
+    "synthetic_restore_before": {
+      "passed": true,
+      "tables": 160,
+      "files": 9
+    },
+    "synthetic_restore_after": {
+      "passed": true,
+      "tables": 164,
+      "files": 10
+    },
+    "profile_tests": 69,
+    "profile_tests_skipped": 0,
+    "frozen_regression_executions": 250,
+    "frozen_regression_passed": 249,
+    "frozen_regression_skipped": 1,
+    "owner_signing_helper_tests": 5,
+    "packaging_tests": 2
+  },
+  "validation_limitations": [
+    "Cloud synthetic data only; no production access.",
+    "Real MAX client and external services require owner pilot.",
+    "One existing PostgreSQL read-only TestCase scenario skipped.",
+    "No claim of repository-wide green tests; prior subcontract limitations remain.",
+    "PDF uses the browser print flow; no separate server PDF engine."
+  ]
+}

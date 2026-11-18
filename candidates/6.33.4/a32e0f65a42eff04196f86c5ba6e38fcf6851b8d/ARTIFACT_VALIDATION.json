@@ -1,0 +1,8 @@
+{
+  "source_commit": "a32e0f65a42eff04196f86c5ba6e38fcf6851b8d",
+  "archive_sha256": "3d62136fb95675050413658ec15ba9336360ad92888c0e1687dc1feb5b5fe0e4",
+  "installer_sha256": "9d62f61066e057500039c89affd3dd20bc40a0c356e5adf8a8e04febecd5ec70",
+  "source_files_verified": 980,
+  "private_material_scan": "passed",
+  "candidate_unsigned": true
+}
