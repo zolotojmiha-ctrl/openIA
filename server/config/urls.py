@@ -304,6 +304,7 @@ urlpatterns += [
  path('cabinet/rentals/new/',rental_views.setup,name='rental_setup'),
  path('cabinet/equipment/rental/<uuid:pk>/',rental_views.detail,name='rental_detail'),
  path('cabinet/rentals/<uuid:pk>/',rental_views.detail),
+ path('cabinet/rentals/<uuid:pk>/files/<uuid:file_id>/',rental_views.invoice_file_download,name='rental_invoice_file'),
  path('cabinet/rentals/<uuid:pk>/excel/',rental_views.export,name='rental_export'),
  path('cabinet/rentals/<uuid:pk>/invoices/<int:invoice_id>/excel/',rental_views.invoice_export,name='rental_invoice_export'),
  path('cabinet/rentals/<uuid:pk>/invoices/<int:invoice_id>/print/',rental_views.invoice_export,{'printable':True},name='rental_invoice_print'),

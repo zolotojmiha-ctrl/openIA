@@ -342,3 +342,12 @@ def update_info(user,pk,supplier,reference,agreement,version):
     row.supplier=supplier.strip();row.reference=reference.strip();row.agreement=agreement;row.version+=1
     row.save(update_fields=['supplier','reference','agreement','version'])
     audit(actor,'equipment_assigned',kind='rental_conditions',rental=str(row.pk));return row
+
+
+def equipment_cost(user,equipment_id):
+    """Historical cost across visible placements; never transfers credits between them."""
+    if not financial_reader(user):raise PermissionDenied
+    days=RentalDay.objects.filter(rental__in=visible(user).filter(placement__equipment_id=equipment_id))
+    return {'charged':days.aggregate(v=Sum('amount'))['v'] or ZERO,
+        'hours':days.aggregate(v=Sum('hours'))['v'] or 0,
+        'unpriced':days.filter(hours__gt=0,rate__isnull=True).count()}

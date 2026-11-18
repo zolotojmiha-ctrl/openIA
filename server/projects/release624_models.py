@@ -135,6 +135,27 @@ class RentalPaymentAllocation(models.Model):
         constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='rental_allocation_positive')]
 
 
+class RentalInvoiceFile(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    invoice=models.ForeignKey(RentalInvoice,on_delete=models.PROTECT,related_name='files')
+    token=models.UUIDField(unique=True,default=uuid.uuid4)
+    kind=models.CharField(max_length=10,choices=[('invoice','Счёт'),('act','Акт'),('other','Другой документ')])
+    state=models.CharField(max_length=12,default='pending',choices=[('pending','На подтверждении'),('available','Прикреплён'),('cancelled','Отменён')])
+    storage_key=models.CharField(max_length=100,blank=True)
+    name=models.CharField(max_length=200)
+    content_type=models.CharField(max_length=120)
+    sha256=models.CharField(max_length=64)
+    size=models.PositiveBigIntegerField()
+    author=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    session_version=models.PositiveIntegerField()
+    expires=models.DateTimeField()
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering=['created_at','pk']
+        constraints=[models.CheckConstraint(condition=models.Q(kind__in=['invoice','act','other']),name='rental_invoice_file_kind'),
+            models.CheckConstraint(condition=models.Q(state__in=['pending','available','cancelled']),name='rental_invoice_file_state')]
+
+
 class CoatingProfile(models.Model):
     method=models.CharField('Конструкция',max_length=10,choices=[('p1','П1'),('p2','П2')],default='p2')
     diameter_mm=models.PositiveIntegerField('Наружный диаметр трубы, мм')

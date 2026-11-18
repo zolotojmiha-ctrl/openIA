@@ -27,7 +27,10 @@ class Command(BaseCommand):
             from postoffice.site_delivery import process_one as deliver_site_request, recover_interrupted, cleanup_expired
             try:
                 recover_interrupted()
-                if ticks%360==0:cleanup_expired()
+                if ticks%360==0:
+                    cleanup_expired()
+                    from projects.rental_files import cleanup_expired as cleanup_rental_files
+                    cleanup_rental_files()
                 for _ in range(3):
                     if not deliver_site_request():break
             except Exception:self.stderr.write('Не удалось отправить уведомление о заявке с сайта; заявка сохранена в кабинете.')

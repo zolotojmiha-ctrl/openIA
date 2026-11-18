@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import reverse
 from . import test_release624 as fixture,rentals
+from .models import LegalEntity,COMPANY_TAX_ID
 
 
 class RentalSettlementsBrowserTests(StaticLiveServerTestCase):
@@ -11,6 +12,7 @@ class RentalSettlementsBrowserTests(StaticLiveServerTestCase):
     rental=fixture.Release624Tests.rental
 
     def test_mobile_split_payment_and_invoice_settlement(self):
+        LegalEntity.objects.get_or_create(tax_id=COMPANY_TAX_ID,defaults={'name':'ТЕСТ'})
         fixture.Release624Tests.setUpTestData.__func__(type(self))
         rental=self.rental()
         for offset in range(4):rentals.save_day(self.worker,rental.pk,self.today-timedelta(days=offset),'work')

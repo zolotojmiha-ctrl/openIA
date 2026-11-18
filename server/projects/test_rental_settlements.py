@@ -196,3 +196,20 @@ class RentalInvoiceTests(TestCase):
         self.client.force_login(self.worker)
         self.assertEqual(self.client.get(url).status_code,403)
         self.assertEqual(self.client.get(print_url).status_code,403)
+
+    def test_equipment_cost_spans_placements_without_moving_advance(self):
+        import uuid
+        from .models import EquipmentAssignment
+        from django.core.exceptions import PermissionDenied
+        rental=self.rental()
+        rentals.save_day(self.leader,rental.pk,rental.placement.start_date,'work')
+        rentals.payment(self.leader,rental.pk,self.today,Decimal('3000'),'ТЕСТ прежний аванс',uuid.uuid4())
+        rental.placement.end_date=self.today-timedelta(days=1);rental.placement.save(update_fields=['end_date'])
+        placement=EquipmentAssignment.objects.create(equipment=rental.placement.equipment,project_object=self.obj,contract=self.contract,start_date=self.today,created_by=self.leader)
+        other=rentals.configure(self.leader,placement.pk,'ТЕСТ другой договор','ТЕСТ другой договор')
+        rentals.add_rate(self.leader,other.pk,self.today,'hour',Decimal('200'),Decimal('80'))
+        rentals.save_day(self.leader,other.pk,self.today,'work')
+        self.assertEqual(rentals.equipment_cost(self.leader,placement.equipment_id)['charged'],3000)
+        self.assertEqual(rentals.totals(other)['debt'],2000)
+        self.assertEqual(rentals.totals(rental)['advance'],2000)
+        with self.assertRaises(PermissionDenied):rentals.equipment_cost(self.worker,placement.equipment_id)

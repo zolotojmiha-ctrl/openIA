@@ -28,11 +28,11 @@ def allocated(payment, on=None):
     return amount(rows)
 
 
-def invoice_balance(invoice, on=None):
+def invoice_balance(invoice, on=None, paid_amount=None):
     target=Decimal(invoice.period.snapshot['period_charged'])
     rows=invoice.allocations.filter(reversed=False,payment__reversed=False)
     if on:rows=rows.filter(date__lte=on)
-    paid=amount(rows) if not invoice.void_reason else ZERO
+    paid=(amount(rows) if paid_amount is None else paid_amount) if not invoice.void_reason else ZERO
     return {'charged':target,'supplier_amount':invoice.supplier_amount,
         'difference':invoice.supplier_amount-target,'paid':paid,'debt':max(ZERO,target-paid)}
 
@@ -113,11 +113,12 @@ def void_invoice(user,pk,invoice_id,reason):
 def summary(rental,on=None):
     on=on or timezone.localdate()
     rows=RentalInvoice.objects.filter(period__rental=rental,void_reason='',period__reopened_at__isnull=True,period__ends_on__lte=on,issued_on__lte=on).select_related('period').order_by('period__starts_on')
+    payments_by_invoice=dict(RentalPaymentAllocation.objects.filter(invoice__period__rental=rental,payment__reversed=False,reversed=False,date__lte=on).values('invoice_id').annotate(total=Sum('amount')).values_list('invoice_id','total'))
     start=rental.placement.start_date
     debt=ZERO
     invoices=[]
     for row in rows:
-        balance=invoice_balance(row,on)
+        balance=invoice_balance(row,on,paid_amount=payments_by_invoice.get(row.pk,ZERO))
         debt+=balance['debt'];invoices.append((row,balance))
         if row.period.starts_on==start and balance['debt']==0 and not balance['difference']:
             start=row.period.ends_on+timedelta(days=1)

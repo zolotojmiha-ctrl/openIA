@@ -72,3 +72,11 @@ class RentalFinanceBotTests(TestCase):
         self.assertIn('10 ч',page.body['text'])
         self.assertEqual(self.hire.periods.count(),0)
         self.assertEqual(self.hire.payments.count(),0)
+
+    def test_picker_has_record_buttons_and_pagination(self):
+        for _ in range(6):rentals.payment(self.leader,self.hire.pk,self.today,Decimal('1'),'ТЕСТ',uuid.uuid4())
+        page=self.send(f'rentfin:start:{self.hire.pk}:allocate')
+        self.assertIn('Следующие записи',str(page.body))
+        self.assertIn('rentfin:value:',str(page.body))
+        next_page=self.send('rentfin:choices:1')
+        self.assertIn('Предыдущие записи',str(next_page.body))

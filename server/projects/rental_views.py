@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from . import rentals
 from . import rental_settlements as settlements
+from . import rental_files
 from .models import EquipmentAssignment, CounterpartyAgreement
 
 DATE=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})
@@ -114,6 +115,17 @@ class ReversePaymentForm(forms.Form):
     payment_id=forms.IntegerField(label='Номер платежа',min_value=1)
     reason=forms.CharField(label='Причина отмены платежа',max_length=500)
 
+
+class InvoiceFileForm(forms.Form):
+    invoice_id=forms.IntegerField(label='Номер сверки',min_value=1,widget=forms.HiddenInput)
+    kind=forms.ChoiceField(label='Документ',choices=[('invoice','Счёт'),('act','Акт'),('other','Другой документ')])
+    upload=forms.FileField(label='Файл, до 32 МБ')
+    token=forms.UUIDField(widget=forms.HiddenInput,initial=uuid.uuid4)
+
+
+class InvoiceFileActionForm(forms.Form):
+    file_id=forms.UUIDField(widget=forms.HiddenInput)
+
 class FinanceLinkForm(forms.Form):
     scope=forms.ModelChoiceField(label='Финансовая карточка контракта',queryset=None,required=False)
     def __init__(self,*args,rental,**kwargs):
@@ -162,10 +174,10 @@ def detail(request,pk,embedded=False):
     deposit=DepositUseForm();deposit_error=None;invoice_form=InvoiceForm();allocation_form=AllocationForm()
     info=RentalInfoForm(initial={'supplier':rental.supplier,'reference':rental.reference,'agreement':rental.agreement_id,'version':rental.version})
     if request.method=='POST':
-        action=request.POST.get('action');form={'day':DayForm,'rate':RateForm,'payment':PaymentForm,'period':PeriodForm,'finance_link':FinanceLinkForm,'info':RentalInfoForm,'classify_payment':ClassifyPaymentForm,'deposit_use':DepositUseForm,'reverse_deposit':ReverseDepositForm,'invoice':InvoiceForm,'allocate':AllocationForm,'void_invoice':VoidInvoiceForm,'reverse_allocation':ReverseAllocationForm}.get(action)
+        action=request.POST.get('action');form={'day':DayForm,'rate':RateForm,'payment':PaymentForm,'period':PeriodForm,'finance_link':FinanceLinkForm,'info':RentalInfoForm,'classify_payment':ClassifyPaymentForm,'deposit_use':DepositUseForm,'reverse_deposit':ReverseDepositForm,'invoice':InvoiceForm,'allocate':AllocationForm,'void_invoice':VoidInvoiceForm,'reverse_allocation':ReverseAllocationForm,'file_preview':InvoiceFileForm,'file_confirm':InvoiceFileActionForm,'file_cancel':InvoiceFileActionForm}.get(action)
         if form is None:raise PermissionDenied
         if action not in ('day','info') and not can_write:raise PermissionDenied
-        bound=form(request.POST,**({'rental':rental} if action=='finance_link' else {}))
+        bound=form(request.POST,**({'files':request.FILES} if action=='file_preview' else {}),**({'rental':rental} if action=='finance_link' else {}))
         if bound.is_valid():
             try:
                 if action=='day':
@@ -180,6 +192,9 @@ def detail(request,pk,embedded=False):
                 elif action=='allocate':settlements.allocate(request.user,pk,**{k:v for k,v in bound.cleaned_data.items() if not k.startswith('_')})
                 elif action=='void_invoice':settlements.void_invoice(request.user,pk,**bound.cleaned_data)
                 elif action=='reverse_allocation':settlements.reverse_allocation(request.user,pk,**bound.cleaned_data)
+                elif action=='file_preview':rental_files.preview(request.user,pk,**bound.cleaned_data)
+                elif action=='file_confirm':rental_files.confirm(request.user,pk,**bound.cleaned_data)
+                elif action=='file_cancel':rental_files.cancel(request.user,pk,**bound.cleaned_data)
                 elif action=='info':rentals.update_info(request.user,pk,**bound.cleaned_data)
                 elif action=='finance_link':rentals.link_finance(request.user,pk,**bound.cleaned_data)
                 else:rentals.close_period(request.user,pk,**bound.cleaned_data)
@@ -201,7 +216,7 @@ def detail(request,pk,embedded=False):
         elif action=='deposit_use':deposit=bound
         elif action=='invoice':invoice_form=bound
         elif action=='allocate':allocation_form=bound
-        elif action in ('classify_payment','reverse_deposit','void_invoice','reverse_allocation'):deposit_error=bound
+        elif action in ('classify_payment','reverse_deposit','void_invoice','reverse_allocation','file_preview','file_confirm','file_cancel'):deposit_error=bound
         else:info=bound
     days=[d for d in rental.days.select_related('updated_by').prefetch_related('revisions__author').order_by('-date') if rentals.can_read_day(request.user,rental,d.date)][:100]
     for d in days:d.can_change=rentals.allowed_on(request.user,rental,d.date)
@@ -217,6 +232,7 @@ def detail(request,pk,embedded=False):
         for payment_row in context['payments']:
             payment_row.classification_form=ClassifyPaymentForm(initial={'payment_id':payment_row.pk,'version':payment_row.purpose_version,'deposit_amount':payment_row.deposit_amount})
     context['info_form']=info
+    context['invoice_file_token']=uuid.uuid4()
     range_form=RangeForm(request.GET if 'start' in request.GET or 'end' in request.GET else None)
     period_preview=None
     if financial and range_form.is_bound and range_form.is_valid():
@@ -224,6 +240,9 @@ def detail(request,pk,embedded=False):
         except ValidationError as e:range_form.add_error(None,e)
     context.update(range_form=range_form,period_preview=period_preview)
     if financial:
+        context['equipment_rental_cost']=rentals.equipment_cost(request.user,rental.placement.equipment_id)
+        context['rental_files']=rental_files.visible(request.user).filter(invoice__period__rental=rental).select_related('invoice')
+        context['pending_rental_files']=rental_files.RentalInvoiceFile.objects.filter(invoice__period__rental=rental,author=request.user,state='pending')
         context.update(settlement=settlements.summary(rental),invoice_form=invoice_form,allocation_form=allocation_form,invoice_history=rentals.RentalPeriod.objects.filter(rental=rental,invoice__isnull=False).select_related('invoice'),allocations=settlements.RentalPaymentAllocation.objects.filter(payment__rental=rental).select_related('invoice','payment'))
     context.update(deposit_form=deposit,deposit_error=deposit_error,deposit_uses=rentals.RentalDepositUse.objects.filter(payment__rental=rental).select_related('payment') if financial else [])
     if rentals.technical_reader(request.user):
@@ -300,4 +319,18 @@ def invoice_export(request,pk,invoice_id,printable=False):
         response=HttpResponse(workbook(table,headers=[],sheet_name='Расчёт аренды',numeric_columns=(1,2,3,5,6)),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition']='attachment; filename="rental-calculation.xlsx"'
     response['Cache-Control']='private, no-store'
+    return response
+
+
+@login_required
+def invoice_file_download(request,pk,file_id):
+    from django.http import FileResponse
+    from documents.storage import verified_file
+    row=get_object_or_404(rental_files.visible(request.user),pk=file_id,invoice__period__rental_id=pk)
+    try:source=verified_file(row)
+    except OSError:return HttpResponse('Файл временно недоступен.',status=503)
+    response=FileResponse(source,as_attachment=True,filename=row.name,content_type=row.content_type)
+    response['Cache-Control']='private, no-store'
+    response['X-Content-Type-Options']='nosniff'
+    response['Content-Security-Policy']="sandbox; default-src 'none'"
     return response
