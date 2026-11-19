@@ -1,0 +1,28 @@
+{
+  "exact_archive_upgrade": "passed",
+  "repeat_install": "passed",
+  "old_rows_and_private_files": "preserved",
+  "old_env_bytes": "preserved",
+  "new_rental_ledger_and_attachment": "passed",
+  "no_outgoing_messages": true,
+  "synthetic_restore_before": {
+    "passed": true,
+    "tables": 160,
+    "files": 9
+  },
+  "synthetic_restore_after": {
+    "passed": true,
+    "tables": 164,
+    "files": 10
+  },
+  "profile_tests": 69,
+  "profile_tests_skipped": 0,
+  "frozen_regression_executions": 250,
+  "frozen_regression_passed": 249,
+  "frozen_regression_skipped": 1,
+  "owner_signing_helper_tests": 5,
+  "packaging_tests": 2,
+  "owner_signatures_verified": true,
+  "outer_sha256": "1852edaec25a60aec5da5debd4f6f29562af8941e75af0568cb919efb81cac98",
+  "production_installed": false
+}
