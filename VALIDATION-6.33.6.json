@@ -1,0 +1,14 @@
+{
+  "release": "6.33.6",
+  "source_commit": "6c2c3bee0e62c61e3a762a148a07d6310c06ce25",
+  "candidate_commit": "3356bd09fa6a03e6d9917faa3d16de7f30338a6d",
+  "outer_sha256": "fc90e25fe4d81b2377150db12ddb8a59a5f1e7fc015b03e9a0c3e25f250b26c1",
+  "owner_signatures_verified": true,
+  "exact_archive_upgrade": "passed",
+  "encrypted_restores": 1,
+  "application_tests_passed": 91,
+  "application_tests_skipped": 1,
+  "live_max_checked": false,
+  "live_iphone_checked": false,
+  "production_installed": false
+}
