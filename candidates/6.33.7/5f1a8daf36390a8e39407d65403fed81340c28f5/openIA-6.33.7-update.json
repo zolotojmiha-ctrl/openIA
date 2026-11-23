@@ -1,0 +1,28 @@
+{
+  "version": "6.33.7",
+  "source_commit": "5f1a8daf36390a8e39407d65403fed81340c28f5",
+  "archive": "openIA-6.33.7-update.zip",
+  "archive_sha256": "a15281138fc4391e968f73779854b695e6afe2b7077d20d9cc11293e37f4a029",
+  "archive_files": 1041,
+  "excluded_service_entries": 276,
+  "installer": "install-6.33.7.sh",
+  "installer_sha256": "c4ccbc1b38f3207172f2bc99b14d1a98997bd8a1c9f4b6ed84c6a254e11e084e",
+  "known_release_commits": {
+    "6c2c3bee0e62c61e3a762a148a07d6310c06ce25": "6.33.6",
+    "d5077bd5cdf0f3b80d9e1533aa6bc067329c42f6": "6.33.5",
+    "a32e0f65a42eff04196f86c5ba6e38fcf6851b8d": "6.33.4",
+    "80f88912b4dc2ea1677138c69ba4b2c3c03a2c10": "6.33.3",
+    "f2ab77b474bd9db819cd88bf85af141fd1726d76": "6.33.2",
+    "a31400fad1fa63476f978a042cf046a83c600daa": "6.33.1"
+  },
+  "status": "candidate",
+  "ready_for_install": false,
+  "published": false,
+  "production_installed": false,
+  "max_default_enabled": false,
+  "live_max_checked": false,
+  "signature_required": true,
+  "signature_created": false,
+  "checksums": "SHA256SUMS-6.33.7",
+  "signature": "SHA256SUMS-6.33.7.sig"
+}
