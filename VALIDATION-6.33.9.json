@@ -1,0 +1,15 @@
+{
+  "release": "6.33.9",
+  "source_commit": "2f2e74de7d7efcca158de648ac8b3bab59f49651",
+  "candidate_commit": "446c4f5d4d0ba3abd201fe940cdc79469f0c4632",
+  "outer_sha256": "402c9975ce76a38f1ec56a4d4f5d2b7a0c7f211c4610d704d9ee6b0737b9adf5",
+  "owner_signatures_verified": true,
+  "upgrade_from": "6.33.8",
+  "repeat_install": "passed",
+  "frozen_artifact_install": "passed",
+  "encrypted_restores": 3,
+  "installer_tests_passed": 60,
+  "packaging_tests_passed": 2,
+  "owner_signing_tests_passed": 5,
+  "production_installed": false
+}
